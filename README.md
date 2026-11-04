@@ -7,17 +7,19 @@ The project has three planned levels, each built on the one before it:
 | Level | Status |
 | --- | --- |
 | Standalone web component, `<flow-script>` | Built (`packages/element`) |
-| Google Drive plugin | Not started |
-| Installable offline PWA | Not started |
+| Installable offline PWA | Built (`packages/pwa`) |
+| Google Drive | Built into the PWA, needs Google credentials to switch on |
 
 ## Getting started
 
 ```sh
 npm install
-npm run dev        # demo page with the sample script
+npm run dev        # component demo with the sample script
+npm run dev:pwa    # the PWA
 npm test           # parser, layout, conversion and PDF unit tests
 npm run test:e2e   # builds, then drives the component in Microsoft Edge
 npm run build      # writes packages/element/dist
+npm run build:pwa  # writes packages/pwa/dist
 ```
 
 ## Using the component
@@ -108,9 +110,48 @@ Two decisions shape the code:
 1. **The text is the document.** Each editor line holds raw Fountain, and all formatting is ProseMirror decoration derived from the parser. Files round-trip byte for byte, apart from line endings, which normalize to `\n`.
 2. **One layout engine.** Read-only pages and PDFs draw the same `layout()` output, and the editor uses it to place page breaks. Metrics follow [afterwriting](https://afterwriting.com/)'s print profiles.
 
+## The PWA
+
+The home page starts a new script or opens one from a provider. New scripts begin with a title page containing every field Flow prints, to keep or delete.
+
+Scripts autosave to IndexedDB on the device, so work survives closing the tab or losing the connection. The Recent list is that local copy. **Save** writes to the file, and refuses to overwrite a file that changed elsewhere without asking. After the first visit, the whole app works offline, including PDF export.
+
+Storage options live in `packages/pwa/src/providers/`. To add one, write an object with the interface described in `providers/index.js` and add it to the list.
+
+| Provider | Opening | Saving |
+| --- | --- | --- |
+| This device, Chromium browsers | File picker | Directly back to the file |
+| This device, other browsers, including iOS | File picker | Downloads a copy |
+| Google Drive | Google's picker | Directly back to the file |
+
+### Deploying to GitHub Pages
+
+Pushing to `main` runs the tests, then builds and deploys. Other branches and pull requests only run the tests. It needs one setting, once: **Settings > Pages > Build and deployment > Source: GitHub Actions**.
+
+The site then lives at `https://<owner>.github.io/<repo>/`. Builds use relative paths, so nothing depends on the repository's name.
+
+### Turning on Google Drive
+
+Without credentials, the Google Drive card says "Needs setup". To switch it on:
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), create a project and enable the **Google Drive API** and the **Google Picker API**.
+2. Configure the OAuth consent screen, and add the `.../auth/drive.file` scope. This narrow scope only reaches files people pick in Flow or create with it.
+3. Create an **OAuth client ID** of type "Web application", with your site's origin as an authorized JavaScript origin, such as `https://<owner>.github.io` and `http://localhost:5173`.
+4. Create an **API key**, restricted to the Picker API and your site.
+5. Add these as repository variables under **Settings > Secrets and variables > Actions > Variables**. They're public identifiers that ship in the page, not secrets.
+
+| Variable | Value |
+| --- | --- |
+| `GOOGLE_CLIENT_ID` | The OAuth client ID |
+| `GOOGLE_API_KEY` | The API key |
+| `GOOGLE_APP_ID` | The project number, shown on the project's dashboard |
+
+For local development, put the same values in `packages/pwa/.env.local` with a `VITE_` prefix, such as `VITE_GOOGLE_CLIENT_ID`.
+
 ## Known limitations
 
 - **Editor page breaks are approximate within a line.** They fall between source lines, so a paragraph or speech split across pages shows the break before the line, without `(MORE)`/`(CONT'D)`. Comments, sections and synopses also add visible height in the editor only, and they stay with the page they introduce. Read-only view and PDF are exact.
 - **PDFs use the built-in Courier,** which covers Western European characters only. Anything else prints as `?`, and the ribbon reports which characters were affected. Non-Latin scripts will need an embedded font.
 - **Long scripts cost more per keystroke:** about 2.5 ms on a short script and 85 ms at 113 pages on a desktop. This needs work before the PWA targets phones.
-- **Browser coverage:** automated tests run in Edge (Chromium) only. Firefox and Safari are untested.
+- **Browser coverage:** automated tests run in Chromium-based browsers only. Firefox and Safari are untested.
+- **Google Drive is tested against stand-ins:** Flow's own requests and handling are tested, but with fakes for Google's scripts and servers. It needs a real run once credentials exist.
