@@ -18,8 +18,8 @@ const TYPE_GROUPS = [
     { type: 'character', icon: '@', label: 'Character', title: 'Character cue. Type @ to force one.' },
     { type: 'parenthetical', icon: '()', label: 'Paren', title: 'Parenthetical. Wrap it in ( ) under a character.' },
     { type: 'dialogue', icon: '“', label: 'Dialogue', title: 'Dialogue. No marker needed: it is any text under a character.' },
+    { type: 'dual', icon: '^', label: 'Dual', title: 'Dual dialogue: place this speech beside the previous one. Type ^ after the name.' },
   ],
-  [{ type: 'dual', icon: '^', label: 'Dual', title: 'Dual dialogue: place this speech beside the previous one. Type ^ after the name.' }],
   [
     { type: 'action', icon: '!', label: 'Action', title: 'Action. Type ! to force it.' },
     { type: 'centered', icon: '><', label: 'Centered', title: 'Centered text. Wrap it in > <.' },
