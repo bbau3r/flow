@@ -151,3 +151,6 @@ vite.config.ts.timestamp-*
 # Playwright
 test-results/
 playwright-report/
+
+# Google OAuth downloads hold a client secret
+client_secret*.json

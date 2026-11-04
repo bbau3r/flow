@@ -13,9 +13,8 @@
 // Adding a storage option means writing one of these and listing it here.
 
 import { localProvider } from './local.js';
-import { googleDriveProvider } from './google-drive.js';
 
-export const providers = [localProvider, googleDriveProvider];
+export const providers = [localProvider];
 
 export const getProvider = (id) => providers.find((p) => p.id === id);
 
