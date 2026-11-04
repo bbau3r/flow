@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flow: flow-script demo</title>
+  <style>
+    html, body { height: 100%; margin: 0; font: 14px system-ui, sans-serif; }
+    body { display: flex; flex-direction: column; }
+    header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 8px 12px; background: #222; color: #eee; }
+    header strong { margin-right: 8px; }
+    flow-script { flex: 1; min-height: 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>flow-script</strong>
+    <label><input id="readonly" type="checkbox"> Read-only</label>
+    <label>View
+      <select id="view"><option value="page">Page</option><option value="flow">Flow</option></select>
+    </label>
+    <label>Theme
+      <select id="theme">
+        <option>amber-light</option>
+        <option>amber-dark</option>
+        <option>auto</option>
+        <option value="ocean">ocean (custom)</option>
+      </select>
+    </label>
+    <span id="stats"></span>
+  </header>
+  <flow-script id="script" theme="amber-light"></flow-script>
+
+  <script type="module">
+    import { registerTheme } from '../src/index.js';
+    import sample from './sample.fountain?raw';
+
+    registerTheme('ocean', {
+      desk: '#0b2a3a', paper: '#f2f9fc', ink: '#10303f', muted: '#4b7486', accent: '#0d7fa5',
+      'accent-ink': '#ffffff', rule: '#bcd9e4', 'ribbon-bg': '#e3f2f8', 'ribbon-ink': '#10303f',
+      'bubble-bg': '#cdeaf5', 'bubble-ink': '#0c3546',
+    });
+
+    const el = document.getElementById('script');
+    const stats = document.getElementById('stats');
+    const count = (nodes) => nodes.reduce((n, x) => n + (x.type === 'scene' ? 1 : count(x.children ?? [])), 0);
+    const showStats = () => { stats.textContent = `${el.pageCount} pages, ${count(el.outline)} scenes`; };
+
+    el.value = sample;
+    let statsTimer;
+    el.addEventListener('flow-change', () => {
+      clearTimeout(statsTimer);
+      statsTimer = setTimeout(showStats, 300);
+    });
+    showStats();
+
+    document.getElementById('readonly').addEventListener('change', (e) => { el.readonly = e.target.checked; });
+    document.getElementById('view').addEventListener('change', (e) => { el.view = e.target.value; });
+    document.getElementById('theme').addEventListener('change', (e) => { el.setAttribute('theme', e.target.value); });
+  </script>
+</body>
+</html>
