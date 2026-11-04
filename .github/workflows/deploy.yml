@@ -31,10 +31,12 @@ jobs:
       - run: npm ci
       - run: npm run build:pwa
         env:
-          # Optional, and public by design. Google Drive shows "Needs setup" without them.
-          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
-          VITE_GOOGLE_API_KEY: ${{ vars.GOOGLE_API_KEY }}
-          VITE_GOOGLE_APP_ID: ${{ vars.GOOGLE_APP_ID }}
+          # Optional. Google Drive shows "Needs setup" without them. Keeping them in secrets
+          # keeps them out of this repository, but the browser needs them, so they do appear
+          # in the published page. What protects them is the origin restrictions set at Google.
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          VITE_GOOGLE_APP_ID: ${{ secrets.GOOGLE_APP_ID }}
       # gh-pages only ever holds the latest build, so each publish replaces it outright.
       - name: Publish to gh-pages
         working-directory: packages/pwa/dist

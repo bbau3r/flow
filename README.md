@@ -138,15 +138,19 @@ Without credentials, the Google Drive card says "Needs setup". To switch it on:
 2. Configure the OAuth consent screen, and add the `.../auth/drive.file` scope. This narrow scope only reaches files people pick in Flow or create with it.
 3. Create an **OAuth client ID** of type "Web application", with your site's origin as an authorized JavaScript origin, such as `https://<owner>.github.io` and `http://localhost:5173`.
 4. Create an **API key**, restricted to the Picker API and your site.
-5. Add these as repository variables under **Settings > Secrets and variables > Actions > Variables**. They're public identifiers that ship in the page, not secrets.
+5. Add these as repository secrets under **Settings > Secrets and variables > Actions > Secrets**.
 
-| Variable | Value |
+| Secret | Value |
 | --- | --- |
 | `GOOGLE_CLIENT_ID` | The OAuth client ID |
 | `GOOGLE_API_KEY` | The API key |
 | `GOOGLE_APP_ID` | The project number, shown on the project's dashboard |
 
-For local development, put the same values in `packages/pwa/.env.local` with a `VITE_` prefix, such as `VITE_GOOGLE_CLIENT_ID`.
+For local development, put the same values in `packages/pwa/.env.local` with a `VITE_` prefix, such as `VITE_GOOGLE_CLIENT_ID`. Git ignores that file.
+
+Keeping these in GitHub secrets keeps them out of the repository, but they aren't hidden from visitors: a browser app has to send them to Google, so they appear in the published page. The restrictions in steps 3 and 4 are what stop anyone else using them.
+
+**Flow never uses the OAuth client secret.** Google's download includes one, and that file should stay out of the repository and out of the app. Git ignores `client_secret*.json` as a safeguard.
 
 ## Known limitations
 
