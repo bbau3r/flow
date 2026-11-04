@@ -110,7 +110,7 @@ Two decisions shape the code:
 
 ## Known limitations
 
-- **Editor page breaks are approximate within a line.** They fall between source lines, so a paragraph or speech split across pages shows the break before the line, without `(MORE)`/`(CONT'D)`. Comments, sections and synopses also add visible height in the editor only. Read-only view and PDF are exact.
+- **Editor page breaks are approximate within a line.** They fall between source lines, so a paragraph or speech split across pages shows the break before the line, without `(MORE)`/`(CONT'D)`. Comments, sections and synopses also add visible height in the editor only, and they stay with the page they introduce. Read-only view and PDF are exact.
 - **PDFs use the built-in Courier,** which covers Western European characters only. Anything else prints as `?`, and the ribbon reports which characters were affected. Non-Latin scripts will need an embedded font.
 - **Long scripts cost more per keystroke:** about 2.5 ms on a short script and 85 ms at 113 pages on a desktop. This needs work before the PWA targets phones.
 - **Browser coverage:** automated tests run in Edge (Chromium) only. Firefox and Safari are untested.

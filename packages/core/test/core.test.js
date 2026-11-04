@@ -343,6 +343,36 @@ describe('layout', () => {
     const src = Array.from({ length: 60 }, (_, i) => `A${i}`).join('\n');
     expect(layout(parse(src)).pageStarts[0].number).toBe(2);
   });
+  describe('page starts keep unprinted lines with the page they introduce', () => {
+    const lineOf = (source, text) => source.split('\n').findIndex((l) => l.includes(text));
+    const fill = (n) => Array.from({ length: n }, (_, i) => `Fill ${i}.`).join('\n');
+    const startOf = (source) => layout(parse(source)).pageStarts[0].line;
+
+    it('after a forced break, starts at the first section', () => {
+      const source = 'One.\n\n===\n\n# Act Two\n= Summary.\n\n## The Storm\n\nINT. A - DAY\n\nAction.';
+      expect(startOf(source)).toBe(lineOf(source, '# Act Two'));
+    });
+    it('at a natural break, brings the headings over too', () => {
+      const source = `${fill(54)}\n\n## Night\n\n= Summary.\n\nINT. B - DAY\n\nAction.`;
+      expect(startOf(source)).toBe(lineOf(source, '## Night'));
+    });
+    it('brings a leading note over too', () => {
+      const source = `${fill(54)}\n\n[[check this]]\n\nINT. B - DAY\n\nAction.`;
+      expect(startOf(source)).toBe(lineOf(source, 'check this'));
+    });
+    it('stops at the last printed line, leaving it on the old page', () => {
+      const source = 'One.\n\n===\nTwo.';
+      expect(startOf(source)).toBe(lineOf(source, 'Two.'));
+    });
+    it('does not move a page that has nothing leading into it', () => {
+      const source = `${fill(54)}\n\nINT. B - DAY\n\nAction.`;
+      expect(startOf(source)).toBe(lineOf(source, 'INT. B'));
+    });
+    it('does not move a break inside a speech', () => {
+      const source = `\nBOB\n${fill(70)}`;
+      expect(parse(source).lines[startOf(source)].type).toBe('dialogue');
+    });
+  });
   it('handles an empty script', () => {
     const { pages } = layout(parse(''));
     expect(pages).toHaveLength(1);

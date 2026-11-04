@@ -334,6 +334,19 @@ function paginate(blocks, profile, opts) {
   return pages;
 }
 
+// Sections, synopses and comments don't print but do show in the editor. They belong
+// with what follows them, so a page starts at the earliest one leading up to its
+// first printed line. Blank lines between them and the previous page stay behind.
+const LEADS_INTO_NEXT = new Set(['section', 'synopsis', 'comment']);
+function pageAnchor(lines, firstPrinted) {
+  let anchor = firstPrinted;
+  for (let i = firstPrinted - 1; i >= 0; i--) {
+    if (LEADS_INTO_NEXT.has(lines[i].type)) anchor = i;
+    else if (lines[i].type !== 'blank') break;
+  }
+  return anchor;
+}
+
 export function layout(parsed, options = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const profile = PROFILES[opts.paper] ?? PROFILES.letter;
@@ -348,6 +361,6 @@ export function layout(parsed, options = {}) {
   // Where each page after the first begins, for the editor's break markers.
   const pageStarts = pages
     .filter((p) => p.kind === 'script' && p.number > 1 && p.rows.length)
-    .map((p) => ({ number: p.number, line: p.rows[0].line, continued: p.rows[0].type === 'continued' }));
+    .map((p) => ({ number: p.number, line: pageAnchor(parsed.lines, p.rows[0].line), continued: p.rows[0].type === 'continued' }));
   return { profile, options: opts, pages, pageStarts };
 }

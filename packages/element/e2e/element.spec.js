@@ -405,6 +405,18 @@ test('editor page breaks line up with the printed pages', async ({ page }) => {
   await expect(page.locator('flow-script .fl-page-gap').first()).toBeHidden();
 });
 
+test('headings after a page break appear on the new page in the editor', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'One.\n\n===\n\n# Act Two\n\n= Summary.\n\n## The Storm\n\nINT. A - DAY\n\nAction.');
+  await expect(page.locator('flow-script .fl-page-gap')).toHaveCount(1);
+  const order = await page.locator('flow-script .ProseMirror > *').evaluateAll((els) => els.map((e) => (e.classList.contains('fl-page-gap') ? 'GAP' : e.textContent)).filter(Boolean));
+  expect(order).toEqual(['One.', '===', 'GAP', '# Act Two', '= Summary.', '## The Storm', 'INT. A - DAY', 'Action.']);
+  await expect(lineWith(page, 'Act Two')).toBeVisible();
+  const gapBox = await page.locator('flow-script .fl-page-gap').boundingBox();
+  const headingBox = await lineWith(page, 'Act Two').boundingBox();
+  expect(headingBox.y).toBeGreaterThan(gapBox.y + gapBox.height);
+});
+
 test('paste becomes plain fountain lines', async ({ page }) => {
   await open(page);
   await setValue(page, 'Start');
