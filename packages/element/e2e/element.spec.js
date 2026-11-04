@@ -11,6 +11,27 @@ const value = (page) => host(page).evaluate((el) => el.value);
 const setValue = (page, v) => host(page).evaluate((el, v) => { el.value = v; }, v);
 const lineWith = (page, text) => page.locator('flow-script .fl-line', { hasText: text }).first();
 const rib = (page, name) => page.locator('flow-script .fl-ribbon').getByRole('button', { name, exact: true });
+const topicButton = (page) => page.locator('flow-script .fl-topics .fl-menu-trigger');
+const statusbar = (page) => page.locator('flow-script .fl-statusbar');
+const viewButton = (page) => statusbar(page).locator('.fl-menu-trigger');
+const historyButton = (page, name) => statusbar(page).getByRole('button', { name, exact: true });
+
+async function chooseTopic(page, name) {
+  await topicButton(page).click();
+  await page.locator('flow-script .fl-topics').getByRole('menuitemradio', { name, exact: true }).click();
+}
+
+async function chooseView(page, name) {
+  await viewButton(page).click();
+  await statusbar(page).getByRole('menuitemradio', { name, exact: true }).click();
+}
+
+async function openExport(page) {
+  await page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true }).click();
+  const dialog = page.locator('flow-script dialog');
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
 
 async function open(page) {
   await page.goto(url);
@@ -74,9 +95,9 @@ test('B/I/U apply to a selection, via ribbon and keyboard, and toggle back off',
   await setValue(page, 'word');
   await lineWith(page, 'word').click();
   await page.keyboard.press('Control+a');
-  await rib(page, 'B').click();
+  await rib(page, 'Bold').click();
   expect(await value(page)).toBe('**word**');
-  await expect(rib(page, 'B')).toHaveAttribute('aria-pressed', 'true');
+  await expect(rib(page, 'Bold')).toHaveAttribute('aria-pressed', 'true');
   await page.keyboard.press('Control+b');
   expect(await value(page)).toBe('word');
   await page.keyboard.press('Control+i');
@@ -88,59 +109,396 @@ test('B/I/U apply to a selection, via ribbon and keyboard, and toggle back off',
   expect(await value(page)).toBe('word');
 });
 
-test('ribbon type buttons change the line and show the current type', async ({ page }) => {
+test('the topic dropdown changes the line and shows the current type', async ({ page }) => {
   await open(page);
   await setValue(page, 'Top.\n\nwords here\n\nEnd.');
   await lineWith(page, 'words here').click();
-  await expect(rib(page, 'Action')).toHaveAttribute('aria-pressed', 'true');
-  await rib(page, 'Scene').click();
+  await expect(topicButton(page)).toHaveAttribute('aria-label', 'Topic: Action');
+  await chooseTopic(page, 'Scene');
   expect(await value(page)).toBe('Top.\n\n.words here\n\nEnd.');
   await expect(lineWith(page, 'words here')).toHaveClass(/fl-scene/);
-  await expect(rib(page, 'Scene')).toHaveAttribute('aria-pressed', 'true');
-  await rib(page, 'Lyrics').click();
+  await expect(topicButton(page)).toHaveAttribute('aria-label', 'Topic: Scene');
+  await chooseTopic(page, 'Lyrics');
   expect(await value(page)).toBe('Top.\n\n~words here\n\nEnd.');
-  await rib(page, 'Lyrics').click();
+  await expect(topicButton(page)).toHaveAttribute('aria-label', 'Topic: Lyrics');
+  await chooseTopic(page, 'Lyrics');
   expect(await value(page)).toBe('Top.\n\nwords here\n\nEnd.');
-  await rib(page, 'Act').click();
+  await chooseTopic(page, 'Act');
   expect(await value(page)).toBe('Top.\n\n# words here\n\nEnd.');
   await page.keyboard.press('Control+z');
   expect(await value(page)).toBe('Top.\n\nwords here\n\nEnd.');
 });
 
-test('ribbon buttons carry their fountain character, grouped as related', async ({ page }) => {
+test('the topic shows action on an empty line, and choosing it adds nothing', async ({ page }) => {
   await open(page);
-  const groups = await page.locator('flow-script .fl-group').evaluateAll((els) => els.map((g) => (
-    [...g.querySelectorAll('button')].map((b) => {
-      const icon = b.querySelector('.fl-icon')?.textContent;
-      return icon ? `${icon} ${b.textContent.slice(icon.length)}` : b.textContent;
-    })
-  )));
-  expect(groups.slice(1, 7)).toEqual([
-    ['. Scene', '> Transition'],
-    ['@ Character', '() Paren', '“ Dialogue', '^ Dual'],
-    ['! Action', '>< Centered', '~ Lyrics'],
+  await setValue(page, 'One.\n\n\n\nTwo.');
+  await lineWith(page, 'One').click();
+  await page.keyboard.press('ArrowDown');
+  await expect(topicButton(page)).toHaveAttribute('aria-label', 'Topic: Action');
+  await chooseTopic(page, 'Action');
+  expect(await value(page)).toBe('One.\n\n\n\nTwo.');
+});
+
+test('page break has its own pill just before comments', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'words here');
+  await lineWith(page, 'words').click();
+  const labels = await page.locator('flow-script .fl-ribbon > .fl-pill').evaluateAll((pills) => pills.map((p) => p.getAttribute('aria-label')));
+  expect(labels.indexOf('Page break')).toBe(labels.indexOf('Comments') - 1);
+  await expect(rib(page, 'Page break').locator('.fl-svg')).toBeVisible();
+  await rib(page, 'Page break').click();
+  expect(await value(page)).toContain('===');
+});
+
+test('topics carry their fountain character, grouped as related', async ({ page }) => {
+  await open(page);
+  await topicButton(page).click();
+  const items = await page.locator('flow-script .fl-topics .fl-menu-popup').evaluate((popup) => {
+    const groups = [[]];
+    for (const child of popup.children) {
+      if (child.classList.contains('fl-menu-rule')) groups.push([]);
+      else groups.at(-1).push(`${child.querySelector('.fl-icon').textContent} ${child.getAttribute('aria-label')}`);
+    }
+    return groups;
+  });
+  expect(items).toEqual([
+    ['. Scene', '! Action', '> Transition', '>< Centered', '~ Lyrics'],
+    ['@ Character', '() Paren', '“ Dialogue'],
     ['# Act', '## Sequence', '= Synopsis'],
-    ['[[ Note'],
-    ['/* Boneyard'],
   ]);
-  const badge = page.locator('flow-script .fl-icon').first();
+  const badge = page.locator('flow-script .fl-menu-item .fl-icon').first();
   await expect(badge).toHaveCSS('border-top-left-radius', '3px');
   await expect(badge).toHaveCSS('color', 'rgb(180, 83, 9)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'amber-dark'));
   await expect(badge).toHaveCSS('color', 'rgb(255, 176, 0)');
   // A period sits on the baseline, so centering its ink has to lift it.
-  const lift = await page.locator('flow-script .fl-icon-glyph').first().evaluate((g) => new DOMMatrix(getComputedStyle(g).transform).m42);
+  const lift = await page.locator('flow-script .fl-menu-item .fl-icon-glyph').first().evaluate((g) => new DOMMatrix(getComputedStyle(g).transform).m42);
   expect(lift).toBeLessThan(0);
   const box = await badge.boundingBox();
   expect(Math.abs(box.width - box.height)).toBeLessThan(3);
+});
+
+test('the dual button only appears on dialogue lines', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'Action.\n\nBOB\nHello.\n\nAMY\nHi.');
+  await lineWith(page, 'Action').click();
+  await expect(rib(page, 'Dual')).toBeHidden();
+  await lineWith(page, 'Hi').click();
+  await expect(rib(page, 'Dual')).toBeVisible();
+  await rib(page, 'Dual').click();
+  expect(await value(page)).toContain('AMY ^');
+});
+
+test('the formatting row is centered', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await open(page);
+  const row = await page.locator('flow-script .fl-ribbon').boundingBox();
+  const pills = page.locator('flow-script .fl-ribbon > .fl-pill:not([hidden])');
+  const first = await pills.first().boundingBox();
+  const last = await pills.last().boundingBox();
+  expect(Math.abs((first.x - row.x) - (row.x + row.width - (last.x + last.width)))).toBeLessThan(2);
+});
+
+test('undo and redo sit at the bottom right, and follow what can be undone', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await open(page);
+  await setValue(page, 'word');
+  await expect(page.locator('flow-script .fl-ribbon').getByRole('button', { name: 'Undo', exact: true })).toHaveCount(0);
+  const undo = await historyButton(page, 'Undo').boundingBox();
+  const bar = await statusbar(page).boundingBox();
+  expect(undo.x).toBeGreaterThan(bar.x + bar.width / 2);
+  await expect(historyButton(page, 'Undo')).toBeDisabled();
+  await lineWith(page, 'word').click();
+  await page.keyboard.type('x');
+  await expect(historyButton(page, 'Undo')).toBeEnabled();
+  await expect(historyButton(page, 'Redo')).toBeDisabled();
+  await historyButton(page, 'Undo').click();
+  await expect(historyButton(page, 'Redo')).toBeEnabled();
+  await chooseView(page, 'Preview');
+  await expect(historyButton(page, 'Undo')).toBeHidden();
+  await chooseView(page, 'Paged');
+  await expect(historyButton(page, 'Undo')).toBeVisible();
+});
+
+test('the top row floats over the page too, and its menus reach over the formatting row', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 700 });
+  await open(page);
+  await setValue(page, Array.from({ length: 200 }, (_, i) => `Beat ${i}.`).join('\n\n'));
+  const pdf = page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true });
+  const sheet = page.locator('flow-script .fl-sheet');
+  const before = await pdf.boundingBox();
+  await page.locator('flow-script .fl-scroll').evaluate((el) => { el.scrollTop = 600; });
+  const after = await pdf.boundingBox();
+  expect(after.y).toBeCloseTo(before.y, 0);
+  expect((await sheet.boundingBox()).y).toBeLessThan(after.y);
+
+  // The gap between pills in the top row lets clicks through to the script.
+  const atGap = await host(page).evaluate((el, at) => el.shadowRoot.elementFromPoint(at.x, at.y)?.closest('.fl-pill, .fl-sheet')?.className ?? '', { x: 600, y: after.y + 5 });
+  expect(atGap).toContain('fl-sheet');
+  const atPdf = await host(page).evaluate((el, at) => el.shadowRoot.elementFromPoint(at.x, at.y)?.closest('.fl-pill, .fl-sheet')?.className ?? '', { x: after.x + 5, y: after.y + 5 });
+  expect(atPdf).toContain('fl-pill');
+  await pdf.click();
+  await expect(page.locator('flow-script dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // A menu from the top row sits over the formatting row and can be clicked.
+  await page.setViewportSize({ width: 500, height: 700 });
+  const holder = page.locator('flow-script .fl-export-holder');
+  await holder.getByRole('button', { name: 'Export', exact: true }).click();
+  await holder.getByRole('menuitem', { name: 'PDF', exact: true }).click();
+  await expect(page.locator('flow-script dialog')).toBeVisible();
+});
+
+test('the bottom pills are separate, and float over the page with clicks passing between them', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 700 });
+  await open(page);
+  await setValue(page, Array.from({ length: 200 }, (_, i) => `Beat ${i}.`).join('\n\n'));
+  const labels = await page.locator('flow-script .fl-statusbar > .fl-pill').evaluateAll((pills) => pills.filter((p) => !p.hidden).map((p) => p.getAttribute('aria-label')));
+  expect(labels).toEqual(['View', 'Page scale', 'History']);
+  const scaleBox = await page.locator('flow-script .fl-statusbar > .fl-pill').nth(1).boundingBox();
+  const viewBox = await page.locator('flow-script .fl-statusbar > .fl-pill').nth(0).boundingBox();
+  expect(scaleBox.x).toBeGreaterThan(viewBox.x + viewBox.width);
+
+  const sheet = page.locator('flow-script .fl-sheet');
+  const scroll = page.locator('flow-script .fl-scroll');
+  await scroll.evaluate((el) => { el.scrollTop = 800; });
+  // The script runs on beneath the pills, to the bottom of the window.
+  const bar = await statusbar(page).boundingBox();
+  const passed = await sheet.boundingBox();
+  expect(passed.y + passed.height).toBeGreaterThan(bar.y + bar.height);
+  expect(bar.y + bar.height).toBeCloseTo(700, 0);
+  const at = { x: 600, y: scaleBox.y + 10 };
+  const under = await host(page).evaluate((el, p) => el.shadowRoot.elementFromPoint(p.x, p.y)?.closest('.fl-pill, .fl-sheet')?.className ?? '', at);
+  expect(under).toContain('fl-sheet');
+
+  // The script's end stops above the pills, so its last lines can be read.
+  await scroll.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  const endOfSheet = await sheet.boundingBox();
+  expect(endOfSheet.y + endOfSheet.height).toBeLessThanOrEqual((await statusbar(page).boundingBox()).y + 1);
+
+  // A short script still leaves them at the bottom, in every view.
+  await setValue(page, 'Short.');
+  for (const view of ['Seamless', 'Fountain', 'Preview', 'Paged']) {
+    await chooseView(page, view);
+    await host(page).evaluate((el) => { el.scale = 50; });
+    await expect.poll(async () => { const box = await statusbar(page).boundingBox(); return Math.round(box.y + box.height); }).toBe(700);
+  }
+});
+
+for (const view of ['Paged', 'Seamless', 'Fountain']) {
+  test(`typing never hides the line under the bottom pills in ${view} view`, async ({ page }) => {
+    await page.setViewportSize({ width: 1000, height: 600 });
+    await open(page);
+    await setValue(page, Array.from({ length: 120 }, (_, i) => `Beat ${i}.`).join('\n\n'));
+    await chooseView(page, view);
+    await lineWith(page, 'Beat 60.').click();
+    await page.waitForTimeout(100);
+    await host(page).evaluate((el) => {
+      const scroller = el.shadowRoot.querySelector('.fl-scroll');
+      const line = [...el.shadowRoot.querySelectorAll('.fl-line')].find((l) => l.textContent === 'Beat 60.');
+      scroller.scrollTop += line.getBoundingClientRect().bottom - scroller.getBoundingClientRect().bottom + 10;
+    });
+    const barBox = await statusbar(page).boundingBox();
+    const before = await lineWith(page, 'Beat 60.').boundingBox();
+    expect(before.y + before.height).toBeGreaterThan(barBox.y);
+    await page.keyboard.type('x');
+    await expect.poll(async () => {
+      const box = await lineWith(page, 'Beat 60.x').boundingBox();
+      return box.y + box.height;
+    }).toBeLessThanOrEqual(barBox.y);
+  });
+}
+
+for (const view of ['Paged', 'Seamless', 'Fountain', 'Preview']) {
+  test(`a long script keeps both bars pinned while scrolling all the way in ${view} view`, async ({ page }) => {
+    await page.setViewportSize({ width: 1000, height: 600 });
+    await open(page);
+    await setValue(page, Array.from({ length: 200 }, (_, i) => `Beat ${i}.`).join('\n\n'));
+    await chooseView(page, view);
+    const scroll = page.locator('flow-script .fl-scroll');
+    const pdf = page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true });
+    const scale = page.locator('flow-script .fl-scale');
+    const atTop = { pdf: await pdf.boundingBox(), scale: await scale.boundingBox() };
+    const { scrollHeight, clientHeight } = await scroll.evaluate((el) => ({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }));
+    expect(scrollHeight).toBeGreaterThan(clientHeight * 3);
+    for (const fraction of [0.33, 0.66, 1]) {
+      await scroll.evaluate((el, f) => { el.scrollTop = (el.scrollHeight - el.clientHeight) * f; }, fraction);
+      expect((await pdf.boundingBox()).y).toBeCloseTo(atTop.pdf.y, 0);
+      expect((await scale.boundingBox()).y).toBeCloseTo(atTop.scale.y, 0);
+      expect((await scale.boundingBox()).y).toBeGreaterThan(500);
+    }
+    // The last of the script comes into view, clear of the bottom pills.
+    const barTop = (await statusbar(page).boundingBox()).y;
+    const last = page.locator('flow-script .fl-line, flow-script .fl-row').filter({ hasText: 'Beat 199.', visible: true }).first();
+    const lastBox = await last.boundingBox();
+    expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(barTop);
+    // A printed page keeps its blank space below the text, so there it's the page's end that shows.
+    if (view === 'Preview') {
+      const page2 = await page.locator('flow-script .fl-page').last().boundingBox();
+      expect(page2.y + page2.height).toBeLessThanOrEqual(barTop);
+    } else {
+      expect(lastBox.y).toBeGreaterThan(0);
+    }
+  });
+}
+
+test('pages appear as a script grows while typing', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await open(page);
+  await setValue(page, 'Start.');
+  const gaps = page.locator('flow-script .fl-page-gap');
+  await expect(gaps).toHaveCount(0);
+  await lineWith(page, 'Start').click();
+  await page.keyboard.press('End');
+  for (let i = 0; i < 60; i++) {
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('x');
+  }
+  await expect(gaps.first()).toBeAttached();
+  const gap = gaps.first();
+  await gap.scrollIntoViewIfNeeded();
+  await expect(gap).toBeVisible();
+  const box = await gap.boundingBox();
+  expect(box.height).toBeGreaterThan(20);
+  // The sheet holds the new page, rather than the text running out of it.
+  const sheet = await page.locator('flow-script .fl-sheet').boundingBox();
+  expect(sheet.height).toBeGreaterThan(1056);
+  const lastLine = await page.locator('flow-script .ProseMirror > .fl-line').last().boundingBox();
+  expect(lastLine.y + lastLine.height).toBeLessThanOrEqual(sheet.y + sheet.height);
+});
+
+test('the bottom pills are smaller than the top ones, including what an app adds', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 700 });
+  await open(page);
+  await host(page).evaluate((el) => {
+    const added = document.createElement('button');
+    added.className = 'fl-btn';
+    added.slot = 'status-end';
+    added.textContent = 'Added';
+    el.append(added);
+  });
+  const top = await rib(page, 'Bold').boundingBox();
+  const bottom = await statusbar(page).getByRole('button', { name: 'Larger' }).boundingBox();
+  expect(bottom.height).toBeLessThan(top.height);
+  const inherited = await host(page).getByRole('button', { name: 'Added' }).evaluate((b) => getComputedStyle(b).getPropertyValue('--fl-control-size'));
+  expect(inherited.trim()).toBe(`${bottom.height}px`);
+});
+
+test.describe('on a phone', () => {
+  test.use({ viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true });
+
+  test('the bottom pills stay the same size as on a big screen', async ({ page }) => {
+    await open(page);
+    expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+    const larger = await statusbar(page).getByRole('button', { name: 'Larger' }).boundingBox();
+    expect(larger.height).toBe(22);
+    await expect(statusbar(page).getByRole('button', { name: 'Larger' })).toHaveCSS('font-size', '11.5px');
+  });
+});
+
+test('a status message gets its own pill only when there is one', async ({ page }) => {
+  await open(page);
+  const status = page.locator('flow-script .fl-status');
+  await expect(status).toBeHidden();
+  const dialog = await openExport(page);
+  await dialog.getByRole('button', { name: 'Export PDF' }).click();
+  await expect(status).toContainText('Exported');
+  await expect(status).toBeVisible();
+});
+
+test('the formatting row starts above the page, then floats over it on scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 700 });
+  await open(page);
+  await setValue(page, Array.from({ length: 200 }, (_, i) => `Beat ${i}.`).join('\n\n'));
+  const row = page.locator('flow-script .fl-ribbon');
+  const sheet = page.locator('flow-script .fl-sheet');
+  const scroll = page.locator('flow-script .fl-scroll');
+  const before = await row.boundingBox();
+  expect((await sheet.boundingBox()).y).toBeGreaterThanOrEqual(before.y + before.height);
+
+  await scroll.evaluate((el) => { el.scrollTop = 600; });
+  const after = await row.boundingBox();
+  expect(after.y).toBeCloseTo(before.y, 0);
+  const passed = await sheet.boundingBox();
+  expect(passed.y).toBeLessThan(after.y);
+  expect(passed.y + passed.height).toBeGreaterThan(after.y + after.height);
+
+  // The pills are solid and take clicks, while the gaps beside them reach the script.
+  const hit = await host(page).evaluate((el, at) => {
+    const name = (x, y) => el.shadowRoot.elementFromPoint(x, y)?.closest('.fl-pill, .fl-sheet')?.className ?? '';
+    return { gap: name(at.bold.x - 30, at.y), pill: name(at.bold.x + 5, at.bold.y + 5) };
+  }, { x: after.x, y: after.y + 20, bold: await rib(page, 'Bold').boundingBox() });
+  expect(hit.gap).toContain('fl-sheet');
+  expect(hit.pill).toContain('fl-pill');
+  const background = await page.locator('flow-script .fl-ribbon .fl-pill').first().evaluate((p) => getComputedStyle(p).backgroundColor);
+  expect(background).toBe('rgb(253, 243, 220)');
+
+  // Formatting still works while floating.
+  await lineWith(page, 'Beat 50.').click();
+  await chooseTopic(page, 'Scene');
+  expect(await value(page)).toContain('.Beat 50.');
+});
+
+for (const view of ['Paged', 'Seamless', 'Fountain']) {
+  test(`typing never hides the line under the floating row in ${view} view`, async ({ page }) => {
+    await page.setViewportSize({ width: 1000, height: 600 });
+    await open(page);
+    await setValue(page, Array.from({ length: 120 }, (_, i) => `Beat ${i}.`).join('\n\n'));
+    await chooseView(page, view);
+    const scroll = page.locator('flow-script .fl-scroll');
+    const row = page.locator('flow-script .fl-ribbon');
+    await lineWith(page, 'Beat 60.').click();
+    // Scroll the cursor's line to sit exactly beneath the row, then type.
+    await page.waitForTimeout(100);
+    await host(page).evaluate((el) => {
+      const scroller = el.shadowRoot.querySelector('.fl-scroll');
+      const line = [...el.shadowRoot.querySelectorAll('.fl-line')].find((l) => l.textContent === 'Beat 60.');
+      scroller.scrollTop += line.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 10;
+    });
+    const rowBox = await row.boundingBox();
+    expect((await lineWith(page, 'Beat 60.').boundingBox()).y).toBeLessThan(rowBox.y + rowBox.height);
+    await page.keyboard.type('x');
+    await expect.poll(async () => (await lineWith(page, 'Beat 60.x').boundingBox()).y).toBeGreaterThanOrEqual(rowBox.y + rowBox.height);
+    expect(await scroll.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  });
+}
+
+test('a short script in continuous views needs no scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await open(page);
+  await setValue(page, 'Short.');
+  for (const view of ['Seamless', 'Fountain']) {
+    await chooseView(page, view);
+    await expect.poll(() => page.locator('flow-script .fl-scroll').evaluate((el) => el.scrollHeight - el.clientHeight)).toBe(0);
+  }
+});
+
+test('when narrow, labels give way to icons but the topic keeps its name', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await open(page);
+  await expect(rib(page, 'Comment').locator('.fl-label')).toBeVisible();
+  await expect(rib(page, 'Page break').locator('.fl-label')).toHaveText('Page break');
+  await expect(viewButton(page).locator('.fl-label')).toBeVisible();
+  await page.setViewportSize({ width: 500, height: 800 });
+  await expect(rib(page, 'Comment').locator('.fl-label')).toBeHidden();
+  await expect(rib(page, 'Page break').locator('.fl-label')).toBeHidden();
+  await expect(rib(page, 'Page break').locator('.fl-svg')).toBeVisible();
+  await expect(rib(page, 'Comment')).toBeVisible();
+  await expect(viewButton(page).locator('.fl-label')).toBeHidden();
+  await expect(page.locator('flow-script .fl-topic-name')).toBeVisible();
+  // The pills wrap rather than pushing the page sideways.
+  const overflow = await page.locator('flow-script .fl-ribbon').evaluate((r) => r.scrollWidth - r.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
 });
 
 test('scene continuation shows in read-only and on editor page breaks, from the PDF menu', async ({ page }) => {
   await open(page);
   const beats = Array.from({ length: 70 }, (_, i) => `Beat ${i}.`).join('\n');
   await setValue(page, `INT. A - DAY\n\n${beats}`);
-  await page.locator('flow-script .fl-menu summary').click();
-  await page.locator('flow-script .fl-menu').getByText('Scene continued across pages').click();
+  const dialog = await openExport(page);
+  await dialog.getByText('Scene continued across pages').click();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(page.locator('flow-script .fl-page-gap').first()).toContainText('(CONTINUED)');
   await host(page).evaluate((el) => { el.readonly = true; });
   const pages = page.locator('flow-script .fl-page');
@@ -148,45 +506,286 @@ test('scene continuation shows in read-only and on editor page breaks, from the 
   await expect(pages.nth(1)).toContainText('CONTINUED:');
 });
 
-test('the PDF menu stays on screen wherever the ribbon puts its button', async ({ page }) => {
+test('menus stay on screen wherever their button lands', async ({ page }) => {
   await open(page);
-  const toggle = page.locator('flow-script .fl-menu summary');
-  const menu = page.locator('flow-script .fl-menu-body');
-  // The browser fires toggle just after opening, so give the position a moment to settle.
-  const expectOnScreen = (label) => expect(async () => {
+  const expectOnScreen = async (popup, label) => {
     const viewport = page.viewportSize();
-    const box = await menu.boundingBox();
+    const box = await popup.boundingBox();
     expect(box.x, label).toBeGreaterThanOrEqual(0);
+    expect(box.y, label).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width, label).toBeLessThanOrEqual(viewport.width);
     expect(box.y + box.height, label).toBeLessThanOrEqual(viewport.height);
-  }).toPass({ timeout: 2000 });
+  };
+  const topicsPopup = page.locator('flow-script .fl-topics .fl-menu-popup');
+  const viewPopup = statusbar(page).locator('.fl-menu-popup');
   for (const width of [1300, 900, 600, 390, 280]) {
-    for (const buttonOnLeft of [false, true]) {
-      await page.setViewportSize({ width, height: 800 });
-      // Without the spacer, the button lands wherever wrapping leaves it, including far left.
-      await page.locator('flow-script .fl-spacer').evaluate((s, on) => { s.style.display = on ? 'none' : ''; }, buttonOnLeft);
-      await toggle.click();
-      await expect(menu).toBeVisible();
-      await expectOnScreen(`${width}px, buttonOnLeft=${buttonOnLeft}`);
-      await toggle.click();
-      await expect(menu).toBeHidden();
-    }
+    await page.setViewportSize({ width, height: 800 });
+    await topicButton(page).click();
+    await expect(topicsPopup).toBeVisible();
+    await expectOnScreen(topicsPopup, `topics at ${width}px`);
+    await topicButton(page).click();
+    await expect(topicsPopup).toBeHidden();
+    await viewButton(page).click();
+    await expect(viewPopup).toBeVisible();
+    await expectOnScreen(viewPopup, `views at ${width}px`);
+    await viewButton(page).click();
   }
-  // Force the far-left case exactly, which is what used to run off the screen.
+  // It follows a resize while open, and scrolls rather than running off a short window.
   await page.setViewportSize({ width: 800, height: 800 });
-  await page.locator('flow-script .fl-ribbon').evaluate((r) => { r.prepend(r.querySelector('.fl-menu')); });
-  await toggle.click();
-  await expectOnScreen('button first in ribbon');
-  await expect(menu.getByText('Export PDF')).toBeInViewport({ ratio: 1 });
-  // It also follows a resize while open.
+  await topicButton(page).click();
+  await page.setViewportSize({ width: 800, height: 300 });
+  await expect(() => expectOnScreen(topicsPopup, 'short window')).toPass({ timeout: 2000 });
+  // It reaches over the bottom pills rather than being cut off behind them.
+  const popupBox = await topicsPopup.boundingBox();
+  const barBox = await statusbar(page).boundingBox();
+  if (popupBox.y + popupBox.height > barBox.y) {
+    const covering = await host(page).evaluate((el, at) => el.shadowRoot.elementFromPoint(at.x, at.y)?.closest('.fl-menu-popup') != null, { x: popupBox.x + 20, y: barBox.y + 10 });
+    expect(covering).toBe(true);
+  }
+});
+
+test('menus close on outside clicks and Escape, and work from the keyboard', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'words here');
+  await lineWith(page, 'words').click();
+  const popup = page.locator('flow-script .fl-topics .fl-menu-popup');
+  await topicButton(page).click();
+  await expect(popup).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(popup).toBeHidden();
+  await topicButton(page).click();
+  await page.locator('flow-script .fl-scroll').click({ position: { x: 5, y: 5 } });
+  await expect(popup).toBeHidden();
+
+  await lineWith(page, 'words').click();
+  await topicButton(page).focus();
+  await page.keyboard.press('Enter');
+  await expect(popup).toBeVisible();
+  const focused = page.locator('flow-script .fl-menu-item:focus');
+  await expect(focused).toHaveAttribute('aria-label', 'Action');
+  await page.keyboard.press('ArrowUp');
+  await expect(focused).toHaveAttribute('aria-label', 'Scene');
+  await page.keyboard.press('Enter');
+  await expect(popup).toBeHidden();
+  expect(await value(page)).toBe('.words here');
+});
+
+test('the PDF button opens a modal of options that stays usable when small', async ({ page }) => {
+  await open(page);
+  const dialog = await openExport(page);
+  await expect(dialog.getByText('Title page')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Export PDF' })).toBeInViewport({ ratio: 1 });
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
   await page.setViewportSize({ width: 300, height: 800 });
-  await expectOnScreen('resized while open');
-  // And it fits a short window, scrolling rather than running off the bottom.
-  await page.setViewportSize({ width: 800, height: 260 });
-  await toggle.click();
-  await toggle.click();
-  await expect(menu).toBeVisible();
-  await expectOnScreen('short window');
+  const holder = page.locator('flow-script .fl-export-holder');
+  await holder.getByRole('button', { name: 'Export', exact: true }).click();
+  await holder.getByRole('menuitem', { name: 'PDF', exact: true }).click();
+  await expect(page.locator('flow-script dialog').getByRole('button', { name: 'Export PDF' })).toBeInViewport({ ratio: 1 });
+});
+
+test('preview shows the printed pages with editing off, then returns intact', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'Hello [[private]] world.\n\n/* cut */\n\nEnd.');
+  await lineWith(page, 'End').click();
+  await page.keyboard.press('End');
+  await page.keyboard.type('X');
+  await chooseView(page, 'Preview');
+  await expect(host(page)).toHaveAttribute('view', 'preview');
+  await expect(editor(page)).toBeHidden();
+  await expect(page.locator('flow-script .fl-page').first()).toBeVisible();
+  await expect(page.locator('flow-script .fl-pages')).toContainText('End.X');
+  await expect(page.locator('flow-script .fl-pages')).not.toContainText('cut');
+  await expect(page.locator('flow-script .fl-ribbon')).toBeHidden();
+  await page.keyboard.type('Y');
+  expect(await value(page)).toContain('End.X');
+  expect(await value(page)).not.toContain('Y');
+
+  // Options and values keep the preview current.
+  await setValue(page, 'Replaced.');
+  await expect(page.locator('flow-script .fl-pages')).toContainText('Replaced.');
+  await setValue(page, 'Hello.');
+
+  await chooseView(page, 'Paged');
+  await expect(editor(page)).toBeVisible();
+  await expect(page.locator('flow-script .fl-pages')).toHaveCount(0);
+  await expect(rib(page, 'Bold')).toBeVisible();
+  await page.keyboard.type('Z');
+  expect(await value(page)).toContain('Z');
+});
+
+test('preview keeps undo history', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'Hello.');
+  await lineWith(page, 'Hello').click();
+  await page.keyboard.press('End');
+  await page.keyboard.type('A');
+  await chooseView(page, 'Preview');
+  await chooseView(page, 'Paged');
+  await expect(historyButton(page, 'Undo')).toBeEnabled();
+  await historyButton(page, 'Undo').click();
+  expect(await value(page)).toBe('Hello.');
+});
+
+test('the Fountain view shows the file exactly as written, and stays editable', async ({ page }) => {
+  await open(page);
+  const text = 'Title: BIG\n\nint. room - day\n\nShe **runs** [[a note]] /* cut */.\n\n@bob\nHi.\n\n===\n\nEnd.';
+  await setValue(page, text);
+  await lineWith(page, 'She').click();
+  await chooseView(page, 'Fountain');
+  await expect(host(page)).toHaveAttribute('view', 'source');
+
+  // Every line is there as typed, with no formatting, bubbles, or page furniture.
+  const lines = page.locator('flow-script .ProseMirror > .fl-line');
+  expect(await lines.allTextContents()).toEqual(text.split('\n'));
+  await expect(page.locator('flow-script .fl-source .fl-b')).toHaveCount(0);
+  await expect(page.locator('flow-script .fl-marker')).toHaveCount(0);
+  await expect(page.locator('flow-script .fl-bubble-chip')).toHaveCount(0);
+  await expect(page.locator('flow-script .fl-page-gap')).toHaveCount(0);
+  await expect(page.locator('flow-script .fl-active')).toHaveCount(0);
+  await expect(lineWith(page, 'int. room')).toHaveCSS('text-transform', 'none');
+  await expect(lineWith(page, 'BIG')).toHaveCSS('position', 'static');
+  await expect(lineWith(page, 'bob')).toHaveCSS('margin-left', '0px');
+  await expect(lineWith(page, 'She')).toHaveCSS('font-family', /^"Courier Prime"/);
+
+  // It edits the same script, keeping the cursor and undo history across views.
+  await page.keyboard.type('X');
+  const edited = await value(page);
+  expect(edited).not.toBe(text);
+  await rib(page, 'Bold').click();
+  expect(await value(page)).toContain('**');
+  await chooseView(page, 'Paged');
+  await expect(page.locator('flow-script .ProseMirror .fl-b').first()).toBeVisible();
+  await expect(page.locator('flow-script .fl-page-gap').first()).toBeAttached();
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Control+z');
+  expect(await value(page)).toBe(text);
+});
+
+test('the view menu lists Fountain above Preview', async ({ page }) => {
+  await open(page);
+  await viewButton(page).click();
+  const names = await statusbar(page).getByRole('menuitemradio').evaluateAll((items) => items.map((i) => i.getAttribute('aria-label')));
+  expect(names).toEqual(['Seamless', 'Paged', 'Fountain', 'Preview']);
+});
+
+test('the Fountain view works read-only and follows the page scale', async ({ page }) => {
+  await open(page);
+  const text = 'She **runs** [[a note]].\n\nEnd.';
+  await setValue(page, text);
+  await host(page).evaluate((el) => { el.view = 'source'; el.scale = 150; });
+  await expect(page.locator('flow-script .fl-source')).toHaveCSS('font-size', '24px');
+  await host(page).evaluate((el) => { el.readonly = true; });
+  const shown = page.locator('flow-script pre.fl-source');
+  await expect(shown).toHaveText(text, { useInnerText: true });
+  await expect(shown).toHaveCSS('font-size', '24px');
+});
+
+test('page scale resizes every view and stops at its limits', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await open(page);
+  const sheet = page.locator('flow-script .fl-sheet');
+  const larger = statusbar(page).getByRole('button', { name: 'Larger' });
+  const smaller = statusbar(page).getByRole('button', { name: 'Smaller' });
+  const percent = page.locator('flow-script .fl-scale');
+  await expect(percent).toHaveText('100%');
+  expect((await sheet.boundingBox()).width).toBeCloseTo(816, 0);
+  await host(page).evaluate((el) => { window.scales = []; el.addEventListener('flow-scale', (e) => window.scales.push(e.detail.scale)); });
+  await larger.click();
+  await expect(percent).toHaveText('110%');
+  expect((await sheet.boundingBox()).width).toBeCloseTo(816 * 1.1, 0);
+  expect(await page.evaluate(() => window.scales)).toEqual([110]);
+
+  await chooseView(page, 'Preview');
+  expect((await page.locator('flow-script .fl-page').first().boundingBox()).width).toBeCloseTo(816 * 1.1, 0);
+  await chooseView(page, 'Seamless');
+  await expect(page.locator('flow-script .fl-flow')).toHaveCSS('font-size', '17.6px');
+
+  await host(page).evaluate((el) => { el.scale = 60; });
+  await smaller.click();
+  await expect(percent).toHaveText('50%');
+  await expect(smaller).toBeDisabled();
+  await host(page).evaluate((el) => { el.scale = 500; });
+  await expect(percent).toHaveText('200%');
+  await expect(larger).toBeDisabled();
+});
+
+test('clicking the percentage resets the page scale', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await open(page);
+  const percent = page.locator('flow-script .fl-scale');
+  const sheet = page.locator('flow-script .fl-sheet');
+  await statusbar(page).getByRole('button', { name: 'Larger' }).click();
+  await statusbar(page).getByRole('button', { name: 'Larger' }).click();
+  await expect(percent).toHaveText('120%');
+  await host(page).evaluate((el) => { window.scales = []; el.addEventListener('flow-scale', (e) => window.scales.push(e.detail.scale)); });
+  await percent.click();
+  await expect(percent).toHaveText('100%');
+  expect((await sheet.boundingBox()).width).toBeCloseTo(816, 0);
+  expect(await page.evaluate(() => window.scales)).toEqual([100]);
+  await expect(percent).toHaveAttribute('aria-label', 'Page scale 100%. Reset to 100%');
+});
+
+test('a page too big for the window can still be scrolled to both edges', async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 800 });
+  await open(page);
+  await host(page).evaluate((el) => { el.scale = 200; el.view = 'preview'; });
+  const scroll = page.locator('flow-script .fl-scroll');
+  const first = page.locator('flow-script .fl-page').first();
+  await expect(first).toBeVisible();
+  await scroll.evaluate((s) => { s.scrollLeft = 0; });
+  const scrollBox = await scroll.boundingBox();
+  expect((await first.boundingBox()).x).toBeGreaterThanOrEqual(scrollBox.x);
+});
+
+test('apps can fill the top row and status bar through slots', async ({ page }) => {
+  await open(page);
+  await host(page).evaluate((el) => {
+    for (const [slot, text] of [['document', 'Doc'], ['tabs', 'Tabs'], ['status-end', 'End']]) {
+      const span = document.createElement('span');
+      span.slot = slot;
+      span.textContent = text;
+      el.append(span);
+    }
+  });
+  const doc = await host(page).getByText('Doc', { exact: true }).boundingBox();
+  const tabs = await host(page).getByText('Tabs', { exact: true }).boundingBox();
+  const pdf = await page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true }).boundingBox();
+  expect(doc.x).toBeLessThan(tabs.x);
+  expect(tabs.x).toBeLessThan(pdf.x);
+  const end = await host(page).getByText('End', { exact: true }).boundingBox();
+  const bar = await statusbar(page).boundingBox();
+  expect(end.y).toBeGreaterThanOrEqual(bar.y);
+  // Slotted content must not turn into script text.
+  expect(await value(page)).not.toContain('Doc');
+});
+
+test('export actions show as buttons, then collapse into a vertical menu with PDF', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await open(page);
+  const exportPill = page.locator('flow-script .fl-export');
+  const more = page.locator('flow-script .fl-export-holder').getByRole('button', { name: 'Export', exact: true });
+  await expect(exportPill.locator('.fl-pill-sep')).toHaveCount(0);
+  await host(page).evaluate((el) => {
+    window.ran = [];
+    el.exportActions = [{ label: 'Keep', icon: 'save', onClick: () => window.ran.push('keep') }];
+  });
+  await expect(exportPill.locator('.fl-pill-sep')).toHaveCount(1);
+  await exportPill.getByRole('button', { name: 'Keep', exact: true }).click();
+  expect(await page.evaluate(() => window.ran)).toEqual(['keep']);
+  await expect(more).toBeHidden();
+
+  await page.setViewportSize({ width: 500, height: 800 });
+  await expect(exportPill).toBeHidden();
+  await expect(more).toBeVisible();
+  await more.click();
+  const holder = page.locator('flow-script .fl-export-holder');
+  await expect(holder.getByRole('menuitem')).toHaveCount(2);
+  await holder.getByRole('menuitem', { name: 'Keep', exact: true }).click();
+  expect(await page.evaluate(() => window.ran)).toEqual(['keep', 'keep']);
+  await more.click();
+  await holder.getByRole('menuitem', { name: 'PDF', exact: true }).click();
+  await expect(page.locator('flow-script dialog')).toBeVisible();
 });
 
 test('editor comments are bubbles that expand to the note text when opened', async ({ page }) => {
@@ -221,7 +820,7 @@ test('boneyard stays readable in place, unlike a comment bubble', async ({ page 
   await expect(delimiter).toBeVisible();
   await cut.click();
   await expect(rib(page, 'Boneyard')).toHaveAttribute('aria-pressed', 'true');
-  await expect(rib(page, 'Note')).toHaveAttribute('aria-pressed', 'false');
+  await expect(rib(page, 'Comment')).toHaveAttribute('aria-pressed', 'false');
   await host(page).evaluate((el) => { el.readonly = true; });
   const printed = await page.locator('flow-script .fl-pages').innerText();
   expect(printed).toContain('Keep');
@@ -250,12 +849,12 @@ test('each ribbon action is its own undo step', async ({ page }) => {
   await setValue(page, 'word');
   await lineWith(page, 'word').click();
   await page.keyboard.press('Control+a');
-  await rib(page, 'B').click();
-  await rib(page, 'I').click();
+  await rib(page, 'Bold').click();
+  await rib(page, 'Italic').click();
   expect(await value(page)).toBe('***word***');
-  await rib(page, 'Undo').click();
+  await historyButton(page, 'Undo').click();
   expect(await value(page)).toBe('**word**');
-  await rib(page, 'Undo').click();
+  await historyButton(page, 'Undo').click();
   expect(await value(page)).toBe('word');
 });
 
@@ -427,7 +1026,7 @@ test('view switching works in both modes and keeps edits', async ({ page }) => {
   await lineWith(page, 'Hello').click();
   await page.keyboard.press('End');
   await page.keyboard.type(' World.');
-  await rib(page, 'Page view').click();
+  await chooseView(page, 'Seamless');
   await expect(page.locator('flow-script .fl-flow.fl-editor-host .ProseMirror')).toBeVisible();
   expect(await value(page)).toBe('Hello. World.');
   await host(page).evaluate((el) => { el.readonly = true; });
@@ -446,11 +1045,11 @@ test('switching view keeps undo history and the cursor', async ({ page }) => {
   await lineWith(page, 'Hello').click();
   await page.keyboard.press('End');
   await page.keyboard.type('A');
-  await rib(page, 'Page view').click();
+  await chooseView(page, 'Seamless');
   await page.keyboard.type('B');
   expect(await value(page)).toBe('Hello.AB');
-  await rib(page, 'Page view').click();
-  await rib(page, 'Undo').click();
+  await chooseView(page, 'Paged');
+  await historyButton(page, 'Undo').click();
   expect(await value(page)).toBe('Hello.');
 });
 
@@ -487,13 +1086,57 @@ test('themes: presets, CSS variables and registered themes all apply', async ({ 
   const paper = () => page.locator('flow-script .fl-sheet');
   await expect(paper()).toHaveCSS('background-color', 'rgb(255, 250, 240)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'amber-dark'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(28, 22, 11)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'ocean'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(242, 249, 252)');
+  await expect(paper()).toHaveCSS('background-color', 'rgb(41, 39, 36)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'ocean-light'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(247, 252, 254)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'ocean-dark'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(36, 39, 41)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'volcano-light'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(255, 249, 246)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'volcano-dark'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(41, 37, 36)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'forest-light'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(251, 248, 239)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'forest-dark'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(41, 40, 36)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'tulip-light'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(253, 250, 255)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'tulip-dark'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(39, 36, 41)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sepia'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(244, 236, 216)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'amber-light'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(255, 250, 240)');
   await host(page).evaluate((el) => el.style.setProperty('--flow-paper', 'rgb(1, 2, 3)'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(1, 2, 3)');
+});
+
+test('auto themes follow the system setting', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await open(page);
+  const paper = page.locator('flow-script .fl-sheet');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'ocean-auto'));
+  await expect(paper).toHaveCSS('background-color', 'rgb(36, 39, 41)');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(paper).toHaveCSS('background-color', 'rgb(247, 252, 254)');
+});
+
+test('component tokens can be overridden from CSS or a registered theme', async ({ page }) => {
+  await open(page);
+  const pillEl = page.locator('flow-script .fl-ribbon .fl-pill').first();
+  const tabsOrExport = page.locator('flow-script .fl-export');
+  await expect(pillEl).toHaveCSS('background-color', 'rgb(253, 243, 220)');
+  await expect(pillEl).toHaveCSS('border-top-left-radius', '999px');
+
+  // Tokens set from the page's own CSS reach inside the shadow root.
+  const overrides = await page.addStyleTag({ content: 'flow-script { --flow-pill-bg: rgb(1, 2, 3); --flow-pill-radius: 4px; }' });
+  await expect(pillEl).toHaveCSS('background-color', 'rgb(1, 2, 3)');
+  await expect(tabsOrExport).toHaveCSS('border-top-left-radius', '4px');
+  await overrides.evaluate((tag) => tag.remove());
+
+  // So do tokens in a registered theme.
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sepia'));
+  await expect(pillEl).toHaveCSS('border-top-left-radius', '8px');
 });
 
 test('editor page breaks line up with the printed pages', async ({ page }) => {
@@ -502,7 +1145,7 @@ test('editor page breaks line up with the printed pages', async ({ page }) => {
   await setValue(page, body);
   const pageCount = await host(page).evaluate((el) => el.pageCount);
   await expect(page.locator('flow-script .fl-page-gap')).toHaveCount(pageCount - 1);
-  await rib(page, 'Page view').click();
+  await chooseView(page, 'Seamless');
   await expect(page.locator('flow-script .fl-page-gap').first()).toBeHidden();
 });
 
@@ -510,7 +1153,7 @@ test('headings after a page break appear on the new page in the editor', async (
   await open(page);
   await setValue(page, 'One.\n\n===\n\n# Act Two\n\n= Summary.\n\n## The Storm\n\nINT. A - DAY\n\nAction.');
   await expect(page.locator('flow-script .fl-page-gap')).toHaveCount(1);
-  const order = await page.locator('flow-script .ProseMirror > *').evaluateAll((els) => els.map((e) => (e.classList.contains('fl-page-gap') ? 'GAP' : e.textContent)).filter(Boolean));
+  const order = await page.locator('flow-script .ProseMirror > :not(.fl-page-one)').evaluateAll((els) => els.map((e) => (e.classList.contains('fl-page-gap') ? 'GAP' : e.textContent)).filter(Boolean));
   expect(order).toEqual(['One.', '===', 'GAP', '# Act Two', '= Summary.', '## The Storm', 'INT. A - DAY', 'Action.']);
   await expect(lineWith(page, 'Act Two')).toBeVisible();
   const gapBox = await page.locator('flow-script .fl-page-gap').boundingBox();
@@ -523,13 +1166,13 @@ test('the title page gets a break in every view', async ({ page }) => {
   await setValue(page, 'Title: BIG\n\n# Act One\n\nOne.\n\n===\n\nTwo.');
   const gap = page.locator('flow-script .fl-title-gap');
   await expect(gap).toBeVisible();
-  await expect(gap).toHaveText('');
+  await expect(gap).toHaveText('1.');
   const paged = await gap.boundingBox();
   expect(paged.height).toBeGreaterThan(20);
   const order = await page.locator('flow-script .ProseMirror > *').evaluateAll((els) => els.map((e) => (e.classList.contains('fl-title-gap') ? 'GAP' : e.textContent)).filter(Boolean));
   expect(order.slice(0, 3)).toEqual(['Title: BIG', 'GAP', '# Act One']);
 
-  await rib(page, 'Page view').click();
+  await chooseView(page, 'Seamless');
   await expect(gap).toBeVisible();
   await expect(gap).toHaveCSS('border-top-style', 'dashed');
   expect((await gap.boundingBox()).height).toBeLessThan(5);
@@ -572,8 +1215,43 @@ test('page view shows the cover page as a full page, spaced like print', async (
   expect((await lineWith(page, 'Melody').boundingBox()).y - sheet.y).toBeCloseTo((6 + 21) * row, 0);
 
   // Flow view returns to plain lines.
-  await rib(page, 'Page view').click();
+  await chooseView(page, 'Seamless');
   await expect(lineWith(page, 'BIG')).toHaveCSS('position', 'static');
+});
+
+test('paged view numbers page 1 on screen, while print leaves it unnumbered', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await open(page);
+  const body = Array.from({ length: 150 }, (_, i) => `Action ${i}.`).join('\n\n');
+
+  // With no title page, it sits at the top right of the sheet, without moving the text.
+  await setValue(page, body);
+  const number = page.locator('flow-script .fl-page-one');
+  await expect(number).toHaveText('1.');
+  await expect(number).toBeVisible();
+  const sheet = await page.locator('flow-script .fl-sheet').boundingBox();
+  const box = await number.boundingBox();
+  expect(box.x + box.width).toBeGreaterThan(sheet.x + sheet.width - 30);
+  expect(box.y).toBeLessThan(sheet.y + 40);
+  expect((await lineWith(page, 'Action 0.').boundingBox()).y - sheet.y).toBeCloseTo(96, 0);
+  expect(await value(page)).toBe(body);
+
+  // Other views don't have it, and the printed page 1 stays unnumbered.
+  await chooseView(page, 'Seamless');
+  await expect(number).toBeHidden();
+  await chooseView(page, 'Fountain');
+  await expect(number).toHaveCount(0);
+  await chooseView(page, 'Preview');
+  await expect(page.locator('flow-script .fl-page[data-page="1"] .fl-page-number')).toHaveCount(0);
+  await expect(page.locator('flow-script .fl-page[data-page="2"] .fl-page-number')).toHaveCount(1);
+  await chooseView(page, 'Paged');
+
+  // With a title page, it's in the break after the cover, like every later number.
+  await setValue(page, `Title: BIG\n\n${body}`);
+  await expect(page.locator('flow-script .fl-title-gap')).toHaveText('1.');
+  await expect(number).toHaveCount(0);
+  await chooseView(page, 'Seamless');
+  await expect(page.locator('flow-script .fl-title-gap span')).toBeHidden();
 });
 
 test('a cover page with no script yet still fills a page', async ({ page }) => {
@@ -593,7 +1271,7 @@ test('turning the title page off lets its lines flow normally', async ({ page })
   await expect(page.locator('flow-script .fl-title-gap')).toHaveCount(0);
 });
 
-test('an app can restyle the ribbon font', async ({ page }) => {
+test('an app can restyle the interface font', async ({ page }) => {
   await open(page);
   const ribbon = page.locator('flow-script .fl-ribbon');
   await host(page).evaluate((el) => el.style.setProperty('--flow-ui-font', 'Georgia'));
@@ -631,16 +1309,16 @@ test('flow-change fires for edits but not for programmatic value', async ({ page
   expect(Array.isArray(changes[0].outline)).toBe(true);
 });
 
-test('PDF exports from the ribbon as a real file', async ({ page }) => {
+test('PDF exports from the modal as a real file', async ({ page }) => {
   await open(page);
-  const menu = page.locator('flow-script .fl-menu');
-  await menu.locator('summary').click();
+  const dialog = await openExport(page);
   const download = page.waitForEvent('download');
-  await menu.getByText('Export PDF').click();
+  await dialog.getByRole('button', { name: 'Export PDF' }).click();
   const file = await download;
   expect(file.suggestedFilename()).toBe('THE LAST LIGHTHOUSE.pdf');
   await file.saveAs(`${process.env.FLOW_OUT ?? 'test-results'}/sample.pdf`);
   await expect(page.locator('flow-script .fl-status')).toContainText('Exported');
+  await expect(dialog).toHaveCount(0);
 });
 
 test('PDF export embeds Courier Prime, matching the screen', async ({ page }) => {
@@ -675,7 +1353,7 @@ test('screenshots for visual review', async ({ page }) => {
   await page.screenshot({ path: `${out}/edit-page-light.png` });
   await host(page).evaluate((el) => el.setAttribute('theme', 'amber-dark'));
   await page.screenshot({ path: `${out}/edit-page-dark.png` });
-  await rib(page, 'Page view').click();
+  await chooseView(page, 'Seamless');
   await page.waitForTimeout(200);
   await page.screenshot({ path: `${out}/edit-flow-dark.png` });
   await host(page).evaluate((el) => { el.setAttribute('theme', 'amber-light'); el.view = 'page'; el.readonly = true; });

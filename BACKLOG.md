@@ -43,6 +43,10 @@ Let people open and save scripts in OneDrive, like Google Drive: sign in, then c
 
 Labels such as `Copyright:` stay hidden until the cursor is on the line, so a new script shows values with no hint of which field is which. The owner wants to decide this later, probably alongside the UI work below.
 
+### Build the Overview tab
+
+The editor's Overview tab is a disabled placeholder. The owner will describe the feature; a pencil sketch of it, for planning a script through headers, sub-headers and synopses, is in their design notes.
+
 ### Refine the UI from mockups
 
 Build a design document with the owner and refine the UI against it. Open Pencil is preferred if its files can live in this repository without needing Git LFS, so check the file format and sizes first. Figma is the alternative.
@@ -60,10 +64,6 @@ Typing costs about 2.5 ms per key on a short script and about 85 ms at 113 pages
 ### Test in Firefox and Safari
 
 Automated tests only run in Chromium browsers, and CI installs only Chromium. Safari matters most, because iPhones and iPads need it for the PWA. Add both as Playwright projects and fix what fails.
-
-### Make the ribbon compact on phones
-
-The ribbon takes up about five rows on a phone. Keep the PDF menu usable if it becomes scrollable, because a scrolling container would clip the dropdown.
 
 ### Test the "new version" banner
 

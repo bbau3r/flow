@@ -1,5 +1,5 @@
 import { registerSW } from 'virtual:pwa-register';
-import { loadFonts } from '@flow/element/source';
+import { installControlStyles, loadFonts } from '@flow/element/source';
 import './styles.css';
 import { getDoc } from './store.js';
 import { renderHome } from './home.js';
@@ -20,6 +20,7 @@ async function route() {
 
 const onHome = () => !/^#\/edit\//.test(location.hash);
 
+installControlStyles();
 document.documentElement.dataset.theme = currentTheme();
 loadFonts();
 window.addEventListener('hashchange', () => route().catch((err) => toast(err.message)));

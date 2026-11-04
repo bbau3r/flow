@@ -1,226 +1,187 @@
-// The editing ribbon. Buttons keep editor focus by cancelling mousedown, so the
-// selection and active-line state survive a click.
+// What sits above the script: the top row, which an app fills through named slots, and
+// the formatting row, which follows the line the cursor is on. Both go inside the
+// scrolling area, so that the script can pass beneath them.
+
+import { actionPill, button, centerGlyphs, glyphBadge, Menu, pill, pillSep } from './controls.js';
 
 const STYLE_BUTTONS = [
-  { style: 'bold', label: 'B', cls: 'fl-b', title: 'Bold (Ctrl/Cmd+B)' },
-  { style: 'italic', label: 'I', cls: 'fl-i', title: 'Italic (Ctrl/Cmd+I)' },
-  { style: 'underline', label: 'U', cls: 'fl-u', title: 'Underline (Ctrl/Cmd+U)' },
+  { key: 'bold', label: 'Bold', text: 'B', cls: 'fl-b', title: 'Bold (Ctrl/Cmd+B)' },
+  { key: 'italic', label: 'Italic', text: 'I', cls: 'fl-i', title: 'Italic (Ctrl/Cmd+I)' },
+  { key: 'underline', label: 'Underline', text: 'U', cls: 'fl-u', title: 'Underline (Ctrl/Cmd+U)' },
 ];
 
 // Each badge shows what you could type by hand. Dialogue is the exception: Fountain
 // has no marker for it, since any text under a character cue is dialogue.
-const TYPE_GROUPS = [
+const TOPIC_SECTIONS = [
   [
-    { type: 'scene', icon: '.', label: 'Scene', title: 'Scene heading. Type . to force one.' },
-    { type: 'transition', icon: '>', label: 'Transition', title: 'Transition. Type > to force one.' },
+    { value: 'scene', glyph: '.', label: 'Scene', title: 'Scene heading. Type . to force one.' },
+    { value: 'action', glyph: '!', label: 'Action', title: 'Action. Type ! to force it.' },
+    { value: 'transition', glyph: '>', label: 'Transition', title: 'Transition. Type > to force one.' },
+    { value: 'centered', glyph: '><', label: 'Centered', title: 'Centered text. Wrap it in > <.' },
+    { value: 'lyrics', glyph: '~', label: 'Lyrics', title: 'Lyrics. Type ~ at the start of the line.' },
   ],
   [
-    { type: 'character', icon: '@', label: 'Character', title: 'Character cue. Type @ to force one.' },
-    { type: 'parenthetical', icon: '()', label: 'Paren', title: 'Parenthetical. Wrap it in ( ) under a character.' },
-    { type: 'dialogue', icon: '“', label: 'Dialogue', title: 'Dialogue. No marker needed: it is any text under a character.' },
-    { type: 'dual', icon: '^', label: 'Dual', title: 'Dual dialogue: place this speech beside the previous one. Type ^ after the name.' },
+    { value: 'character', glyph: '@', label: 'Character', title: 'Character cue. Type @ to force one.' },
+    { value: 'parenthetical', glyph: '()', label: 'Paren', title: 'Parenthetical. Wrap it in ( ) under a character.' },
+    { value: 'dialogue', glyph: '“', label: 'Dialogue', title: 'Dialogue. No marker needed: it is any text under a character.' },
   ],
   [
-    { type: 'action', icon: '!', label: 'Action', title: 'Action. Type ! to force it.' },
-    { type: 'centered', icon: '><', label: 'Centered', title: 'Centered text. Wrap it in > <.' },
-    { type: 'lyrics', icon: '~', label: 'Lyrics', title: 'Lyrics. Type ~ at the start of the line.' },
+    { value: 'section-1', glyph: '#', label: 'Act', title: 'Outline section, level 1. Type #. Not printed.' },
+    { value: 'section-2', glyph: '##', label: 'Sequence', title: 'Outline section, level 2. Type ##. Not printed.' },
+    { value: 'synopsis', glyph: '=', label: 'Synopsis', title: 'Synopsis. Type =. Not printed.' },
   ],
-  [
-    { type: 'section-1', icon: '#', label: 'Act', title: 'Outline section, level 1. Type #. Not printed.' },
-    { type: 'section-2', icon: '##', label: 'Sequence', title: 'Outline section, level 2. Type ##. Not printed.' },
-    { type: 'synopsis', icon: '=', label: 'Synopsis', title: 'Synopsis. Type =. Not printed.' },
-  ],
-  [{ type: 'note', icon: '[[', label: 'Note', title: 'Note, shown as a comment bubble. Wrap it in [[ ]].' }],
-  [{ type: 'boneyard', icon: '/*', label: 'Boneyard', title: 'Boneyard: cut text that stays in the file but never prints. Wrap it in /* */.' }],
 ];
 
-const ICON_FONT = '"Courier Prime", "Courier New", Courier, monospace';
+// Lines the dropdown can show but doesn't offer, because they have their own controls.
+const OTHER_TOPICS = [
+  { value: 'note', glyph: '[[', label: 'Comment' },
+  { value: 'boneyard', glyph: '/*', label: 'Boneyard' },
+  { value: 'page-break', glyph: '===', label: 'Page break' },
+  { value: 'section-3', glyph: '###', label: 'Section' },
+  { value: 'title', glyph: ':', label: 'Title page' },
+];
 
-// Characters like . and ^ sit far from the middle of their line, so centering the
-// text box isn't enough. This measures each glyph's ink and centers that instead.
-function centerIcons(root) {
-  const ctx = document.createElement('canvas').getContext('2d');
-  const size = 100;
-  ctx.font = `700 ${size}px ${ICON_FONT}`;
-  for (const glyph of root.querySelectorAll('.fl-icon-glyph')) {
-    const m = ctx.measureText(glyph.textContent);
-    const dx = m.width / 2 - (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2;
-    const dy = (m.fontBoundingBoxDescent - m.fontBoundingBoxAscent) / 2 - (m.actualBoundingBoxDescent - m.actualBoundingBoxAscent) / 2;
-    glyph.style.transform = `translate(${(dx / size).toFixed(3)}em, ${(dy / size).toFixed(3)}em)`;
-  }
-}
+const TOPICS = new Map([...TOPIC_SECTIONS.flat(), ...OTHER_TOPICS].map((topic) => [topic.value, topic]));
+const ACTION = TOPICS.get('action');
 
-function button(label, title, { cls, icon } = {}) {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.title = title;
-  if (cls) b.className = cls;
-  if (icon) {
-    const badge = document.createElement('span');
-    badge.className = 'fl-icon';
-    badge.setAttribute('aria-hidden', 'true');
-    const glyph = document.createElement('span');
-    glyph.className = 'fl-icon-glyph';
-    glyph.style.fontFamily = ICON_FONT;
-    glyph.textContent = icon;
-    badge.append(glyph);
-    b.append(badge);
-  }
-  b.append(label);
-  b.addEventListener('mousedown', (e) => e.preventDefault());
-  return b;
-}
+// The topics that offer dual dialogue as an extra.
+const DUAL_TOPICS = new Set(['character', 'parenthetical', 'dialogue']);
 
-const newGroup = (parent) => {
-  const g = document.createElement('div');
-  g.className = 'fl-group';
-  g.setAttribute('role', 'group');
-  parent.append(g);
-  return g;
+const slot = (name) => {
+  const node = document.createElement('slot');
+  node.name = name;
+  return node;
 };
 
+const cell = (className, ...children) => {
+  const node = document.createElement('div');
+  node.className = className;
+  node.append(...children);
+  return node;
+};
+
+function createTopBar(actions) {
+  const pdf = { label: 'PDF', title: 'Export a PDF', icon: 'pdf', onClick: () => actions.openExport() };
+  const exportHolder = cell('fl-topbar-end fl-export-holder');
+  const setExportActions = (appActions) => {
+    exportHolder.replaceChildren(actionPill({ label: 'Export', cls: 'fl-export' }, appActions.length ? [appActions, [pdf]] : [[pdf]]));
+  };
+  setExportActions([]);
+  const bar = document.createElement('div');
+  bar.className = 'fl-topbar';
+  const tabsCell = cell('fl-topbar-center', slot('tabs'));
+  bar.append(cell('fl-topbar-start', slot('document')), tabsCell, exportHolder);
+  return { bar, tabsCell, setExportActions };
+}
+
 export function createRibbon(actions) {
-  const root = document.createElement('div');
-  root.className = 'fl-ribbon';
-  root.setAttribute('role', 'toolbar');
-  root.setAttribute('aria-label', 'Formatting');
   const pressed = new Map();
-  const add = (group, b, key, onClick) => {
-    b.addEventListener('click', onClick);
-    if (key) {
-      b.setAttribute('aria-pressed', 'false');
-      pressed.set(key, b);
-    }
-    group.append(b);
+  const toggle = (key, options, onClick) => {
+    const b = button({ ...options, toggle: true, onClick });
+    pressed.set(key, b);
+    return b;
   };
 
-  const styles = newGroup(root);
-  for (const s of STYLE_BUTTONS) add(styles, button(s.label, s.title, { cls: s.cls }), s.style, () => actions.emphasis(s.style));
-  for (const types of TYPE_GROUPS) {
-    const group = newGroup(root);
-    for (const t of types) {
-      const onClick = actions[t.type] ? () => actions[t.type]() : () => actions.setLineType(t.type);
-      add(group, button(t.label, t.title, { icon: t.icon }), t.type, onClick);
-    }
-  }
-  add(newGroup(root), button('Page break', 'Insert a page break. Type === on its own line.', { icon: '===' }), null, () => actions.pageBreak());
-  const history = newGroup(root);
-  const undo = button('Undo', 'Undo (Ctrl/Cmd+Z)');
-  const redo = button('Redo', 'Redo (Ctrl/Cmd+Shift+Z)');
-  add(history, undo, null, () => actions.undo());
-  add(history, redo, null, () => actions.redo());
+  const boneyard = toggle('boneyard', {
+    label: 'Boneyard',
+    text: 'S',
+    cls: 'fl-strike',
+    title: 'Boneyard: cut text that stays in the file but never prints. Wrap it in /* */.',
+  }, () => actions.boneyard());
+  const pageBreak = button({
+    label: 'Page break',
+    title: 'Insert a page break. Type === on its own line.',
+    icon: 'page-break',
+    collapse: true,
+    onClick: () => actions.pageBreak(),
+  });
+  const styles = pill({ label: 'Text style' },
+    ...STYLE_BUTTONS.map(({ key, ...options }) => toggle(key, options, () => actions.emphasis(key))),
+    pillSep(),
+    boneyard);
 
-  const spacer = document.createElement('span');
-  spacer.className = 'fl-spacer';
-  root.append(spacer);
+  const comment = toggle('note', {
+    label: 'Comment',
+    title: 'Comment, shown as a bubble. Wrap it in [[ ]].',
+    icon: 'comment',
+    collapse: true,
+  }, () => actions.setLineType('note'));
 
-  const status = document.createElement('span');
-  status.className = 'fl-status';
-  status.setAttribute('role', 'status');
-  root.append(status);
+  // A line with nothing on it is about to be action, so that's what it shows.
+  let topic = ACTION;
+  let lineType = 'blank';
+  const topics = new Menu({
+    cls: 'fl-topics',
+    sections: TOPIC_SECTIONS.map((items) => ({ items })),
+    isChecked: (value) => value === topic.value,
+    trigger: () => {
+      const name = document.createElement('span');
+      name.className = 'fl-topic-name';
+      name.textContent = topic.label;
+      return { label: `Topic: ${topic.label}`, content: [glyphBadge(topic.glyph), name] };
+    },
+    onSelect: (value) => {
+      // A blank line is action already, and forcing it would only add a stray marker.
+      if (!(value === 'action' && lineType === 'blank')) actions.setLineType(value);
+    },
+  });
 
-  const output = newGroup(root);
-  const pageToggle = button('Page view', 'Show the script on standard pages, or as continuous text');
-  add(output, pageToggle, 'page-view', () => actions.toggleView());
-  output.append(createPdfMenu(actions));
+  const dual = toggle('dual', {
+    label: 'Dual',
+    title: 'Dual dialogue: place this speech beside the previous one. Type ^ after the name.',
+    glyph: '^',
+    collapse: true,
+  }, () => actions.dual());
+  const additions = pill({ label: 'Topic options' }, dual);
+  additions.hidden = true;
 
-  // Measure now, and again once the bundled font replaces any fallback.
-  const recenter = () => centerIcons(root);
-  recenter();
+  const row = document.createElement('div');
+  row.className = 'fl-ribbon';
+  row.setAttribute('role', 'toolbar');
+  row.setAttribute('aria-label', 'Formatting');
+  row.append(
+    styles,
+    pill({ label: 'Page break' }, pageBreak),
+    pill({ label: 'Comments' }, comment),
+    pill({ label: 'Topic' }, topics.root),
+    additions,
+  );
+
+  const root = document.createElement('div');
+  root.className = 'fl-chrome';
+  const topBar = createTopBar(actions);
+  root.append(topBar.bar, row);
+
+  // The bundled font can replace a fallback after the badges were first measured.
+  const recenter = () => centerGlyphs(root);
   document.fonts.ready.then(recenter);
   document.fonts.addEventListener('loadingdone', recenter);
 
   return {
     root,
+    setExportActions: topBar.setExportActions,
     destroy() {
       document.fonts.removeEventListener('loadingdone', recenter);
+      topics.close();
       root.remove();
     },
     update(state) {
-      for (const [key, b] of pressed) {
-        if (key !== 'page-view') b.setAttribute('aria-pressed', String(state.type === key || state[key] === true));
+      for (const [key, b] of pressed) b.setAttribute('aria-pressed', String(state.type === key || state[key] === true));
+      // This runs on every keystroke, and the topic rarely changes.
+      lineType = state.type;
+      const nextTopic = TOPICS.get(state.type) ?? ACTION;
+      if (nextTopic !== topic) {
+        topic = nextTopic;
+        topics.refresh();
       }
-      undo.disabled = !state.canUndo;
-      redo.disabled = !state.canRedo;
+      additions.hidden = !DUAL_TOPICS.has(state.type);
     },
+    // Preview is only for reading, so nothing that edits or changes tab stays on show.
     setView(view) {
-      pageToggle.setAttribute('aria-pressed', String(view !== 'flow'));
-    },
-    setStatus(text) {
-      status.textContent = text;
+      const previewing = view === 'preview';
+      row.hidden = previewing;
+      topBar.tabsCell.hidden = previewing;
+      if (previewing) topics.close();
     },
   };
-}
-
-const MENU_MARGIN = 8;
-
-// The button moves as the ribbon wraps, so the menu can't rely on a fixed anchor.
-function keepMenuOnScreen(menu) {
-  menu.style.transform = '';
-  menu.style.maxHeight = '';
-  const rect = menu.getBoundingClientRect();
-  const maxRight = document.documentElement.clientWidth - MENU_MARGIN;
-  let shift = 0;
-  if (rect.right > maxRight) shift = maxRight - rect.right;
-  if (rect.left + shift < MENU_MARGIN) shift = MENU_MARGIN - rect.left;
-  if (shift) menu.style.transform = `translateX(${shift}px)`;
-  const room = window.innerHeight - rect.top - MENU_MARGIN;
-  if (rect.height > room) menu.style.maxHeight = `${Math.max(room, 120)}px`;
-}
-
-function createPdfMenu(actions) {
-  const details = document.createElement('details');
-  details.className = 'fl-menu';
-  const summary = document.createElement('summary');
-  summary.textContent = 'PDF ▾';
-  const body = document.createElement('div');
-  body.className = 'fl-menu-body';
-
-  const options = actions.getOptions();
-  const check = (key, label) => {
-    const wrap = document.createElement('label');
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = options[key];
-    input.addEventListener('change', () => actions.setOption(key, input.checked));
-    wrap.append(input, label);
-    return wrap;
-  };
-  const paper = document.createElement('label');
-  const select = document.createElement('select');
-  for (const [value, label] of [['letter', 'US Letter'], ['a4', 'A4']]) select.add(new Option(label, value, false, options.paper === value));
-  select.addEventListener('change', () => actions.setOption('paper', select.value));
-  paper.append('Paper', select);
-
-  const go = document.createElement('button');
-  go.type = 'button';
-  go.textContent = 'Export PDF';
-  go.addEventListener('click', () => {
-    details.open = false;
-    actions.exportPdf();
-  });
-
-  body.append(
-    paper,
-    check('titlePage', 'Title page'),
-    check('sceneNumbers', 'Scene numbers'),
-    check('boldScenes', 'Bold scene headings'),
-    check('underlineScenes', 'Underline scene headings'),
-    check('doubleSpaceScenes', 'Double space before scenes'),
-    check('sceneContinued', 'Scene continued across pages'),
-    check('pageNumbers', 'Page numbers'),
-    go,
-  );
-  details.append(summary, body);
-
-  const reposition = () => keepMenuOnScreen(body);
-  details.addEventListener('toggle', () => {
-    if (details.open) {
-      reposition();
-      window.addEventListener('resize', reposition);
-    } else {
-      window.removeEventListener('resize', reposition);
-    }
-  });
-  return details;
 }

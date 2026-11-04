@@ -39,15 +39,16 @@ npm run build:pwa  # writes packages/pwa/dist
 The build produces two forms:
 
 - `flow-script.bundle.js` is one self-contained file (about 400 KB gzipped).
-- `flow-script.js` plus its chunks loads Tiptap and pdf-lib only when needed. Read-only pages need about 14 KB of code, plus 82 KB for the font.
+- `flow-script.js` plus its chunks loads Tiptap and pdf-lib only when needed. Read-only pages need about 21 KB of code, plus 82 KB for the font.
 
 ### Attributes
 
 | Attribute | Values | Default |
 | --- | --- | --- |
 | `readonly` | present or absent. Renders without Tiptap. | absent |
-| `view` | `page` (standard script pages) or `flow` (continuous) | `page` |
-| `theme` | `amber-light`, `amber-dark`, `auto`, or a registered name | `amber-light` |
+| `view` | `page` (standard script pages), `flow` (continuous), `preview` (the pages as they print, with editing off and the formatting row and tabs hidden) or `source` (the Fountain text itself, with nothing hidden or formatted, and still editable) | `page` |
+| `scale` | How large the script is shown, as a percentage from 50 to 200 | `100` |
+| `theme` | `amber`, `ocean`, `volcano`, `forest` or `tulip` followed by `-light`, `-dark` or `-auto`; plain `auto`, which means `amber-auto`; or a registered name | `amber-light` |
 | `paper` | `letter` or `a4` | `letter` |
 
 ### Properties and methods
@@ -61,6 +62,7 @@ The build produces two forms:
 | `exportPdf(options)` | Resolves to `{ blob, bytes, pageCount, unsupported }` |
 | `downloadPdf(options)` | Same, and saves the file |
 | `scrollToLine(line)` | Jumps to a source line |
+| `exportActions` | The app's own actions, shown before PDF as `{ label, title, icon, attrs, onClick }`. They appear as labeled buttons, then icons alone, then in a vertical ... menu as space runs short. |
 
 ### Events
 
@@ -69,14 +71,35 @@ The build produces two forms:
 | `flow-change` | `{ value, outline }`. Fires for user edits, not for setting `value`. |
 | `flow-selection` | Current line type and active B/I/U |
 | `flow-ready` | None. Fires when a render or editor mount finishes. |
+| `flow-scale` | `{ scale }`. Fires when the writer changes the page scale. |
+
+### Slots
+
+The editor has a top row, a formatting row and a row of pills along the bottom, all floating over the script. Apps add their own controls to them with named slots, and read-only mode shows none of them.
+
+| Slot | Where it goes |
+| --- | --- |
+| `document` | Top row, left |
+| `tabs` | Top row, after `document` |
+| `status-end` | Right end of the bottom row |
+
+### Shared controls
+
+The pills, buttons, menus, tabs and modals are exported so that an app's own controls match the editor's. Call `installControlStyles()` once to use them outside the element, which also adds the theme colors for `<html data-theme="...">`.
+
+```js
+import { actionPill, button, installControlStyles, Menu, openModal, pill, pillSep, tabs } from '@flow/element/source';
+```
 
 ## Writing
 
-Syntax markers such as `**`, `.` or `@` show only on the line you're on. Everywhere else you see just the formatted result. The ribbon writes the same Fountain syntax you could type yourself, adding blank lines or force markers only when a line needs them to parse as the chosen type.
+Syntax markers such as `**`, `.` or `@` show only on the line you're on. Everywhere else you see just the formatted result. The formatting row writes the same Fountain syntax you could type yourself, adding blank lines or force markers only when a line needs them to parse as the chosen type.
 
 - **Comments.** `[[notes]]` appear as bubbles. In the editor, clicking one opens it for editing. In read-only mode it expands in place.
-- **Boneyard.** `/* cut text */` is separate from comments. In the editor it stays readable in place, dimmed and struck through. It never appears in read-only pages or PDFs. The ribbon's Boneyard button cuts the selection, or the current line, and restores it when pressed again.
+- **Boneyard.** `/* cut text */` is separate from comments. In the editor it stays readable in place, dimmed and struck through. It never appears in read-only pages or PDFs. The strikethrough S button cuts the selection, or the current line, and restores it when pressed again.
 - **Outlining.** `#` and `##` sections and `= synopses` are visible while editing but never appear in read-only pages or PDFs, and they take no page space. They're available through `outline` for future navigation features.
+
+Paged view numbers every page, including page 1. Preview and PDFs follow the screenplay standard and leave page 1 unnumbered.
 
 ## Theming
 
@@ -98,7 +121,19 @@ registerTheme('sepia', { paper: '#f4ecd8', ink: '#3b2f1e' });
 <flow-script theme="sepia"></flow-script>
 ```
 
-Colors: `desk`, `paper`, `ink`, `muted`, `accent`, `accent-ink`, `rule`, `ribbon-bg`, `ribbon-ink`, `bubble-bg`, `bubble-ink`, `shadow`. Use `--flow-font` to change the script typeface; anything but a 0.6em-wide monospace font will throw off page alignment. Use `--flow-ui-font` to change the interface font, which defaults to the bundled Roboto. PDFs are always black on white.
+Colors: `desk`, `paper`, `ink`, `muted`, `accent`, `accent-ink`, `rule`, `ribbon-bg`, `ribbon-ink`, `bubble-bg`, `bubble-ink`, `shadow`.
+
+Each component also has its own tokens, which default to those colors. Set them the same ways, as `--flow-<token>` in CSS or by name in `registerTheme`:
+
+| Component | Tokens |
+| --- | --- |
+| Pills | `pill-bg`, `pill-ink`, `pill-border`, `pill-radius`, `pill-shadow`, `float-shadow`, `pill-tint-bg`, `pill-tint-border` |
+| Buttons | `button-radius`, `button-hover-bg`, `button-active-bg`, `button-active-ink`, `focus` |
+| Tabs | `tabs-bg`, `tabs-ink`, `tab-selected-bg`, `tab-selected-ink` |
+| Menus | `menu-bg`, `menu-ink`, `menu-border`, `menu-radius` |
+| Modals | `dialog-bg`, `dialog-ink`, `dialog-radius` |
+
+ Use `--flow-font` to change the script typeface; anything but a 0.6em-wide monospace font will throw off page alignment. Use `--flow-ui-font` to change the interface font, which defaults to the bundled Roboto. PDFs are always black on white.
 
 ## Architecture
 
@@ -132,6 +167,6 @@ The site then lives at `https://<owner>.github.io/<repo>/`. Builds use relative 
 ## Known limitations
 
 - **Editor page breaks are approximate within a line.** They fall between source lines, so a paragraph or speech split across pages shows the break before the line, without `(MORE)`/`(CONT'D)`. Comments, sections and synopses also add visible height in the editor only, and they stay with the page they introduce. Read-only view and PDF are exact.
-- **PDFs cover Western and some Central European characters.** Text uses the embedded Courier Prime, then the Courier built into PDF readers for accents it lacks. Anything else prints as `?`, and the ribbon reports which characters were affected. Other alphabets will need another font.
+- **PDFs cover Western and some Central European characters.** Text uses the embedded Courier Prime, then the Courier built into PDF readers for accents it lacks. Anything else prints as `?`, and a pill along the bottom reports which characters were affected. Other alphabets will need another font.
 - **Long scripts cost more per keystroke:** about 2.5 ms on a short script and 85 ms at 113 pages on a desktop. This needs work before the PWA targets phones.
 - **Browser coverage:** automated tests run in Chromium-based browsers only. Firefox and Safari are untested.

@@ -1,4 +1,5 @@
 import { newScript } from '@flow/core';
+import { pill } from '@flow/element/source';
 import { createDoc, deleteDoc, listDocs } from './store.js';
 import { providers } from './providers/index.js';
 import { h, themePicker, timeAgo, toast } from './ui.js';
@@ -88,7 +89,7 @@ export async function renderHome(root) {
       h('span', { class: 'spacer' }),
       navigator.onLine ? null : h('span', { class: 'badge' }, 'Offline'),
       install,
-      themePicker()),
+      pill({ label: 'Appearance' }, themePicker())),
     h('main', {},
       h('h1', {}, 'Write your screenplay'),
       h('section', { 'aria-labelledby': 'start-heading' },

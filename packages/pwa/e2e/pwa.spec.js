@@ -128,8 +128,8 @@ test.describe('new scripts', () => {
     await expect(page.locator('.doc-name')).toHaveCSS('font-family', roboto);
     await expect(page.locator('#save')).toHaveCSS('font-family', roboto);
     const ribbon = page.locator('flow-script .fl-ribbon');
-    await expect(ribbon.getByRole('button', { name: 'Scene', exact: true })).toHaveCSS('font-family', roboto);
-    for (const name of ['B', 'I', 'U']) await expect(ribbon.getByRole('button', { name, exact: true })).toHaveCSS('font-family', roboto);
+    await expect(ribbon.locator('.fl-topics .fl-menu-trigger')).toHaveCSS('font-family', roboto);
+    for (const name of ['Bold', 'Italic', 'Underline']) await expect(ribbon.getByRole('button', { name, exact: true })).toHaveCSS('font-family', roboto);
     await expect(page.locator('flow-script .fl-icon-glyph').first()).toHaveCSS('font-family', courier);
     await expect(lineWith(page, 'Written by')).toHaveCSS('font-family', courier);
     await page.goBack();
@@ -144,7 +144,9 @@ test.describe('new scripts', () => {
     await page.setViewportSize({ width: 390, height: 780 });
     await page.reload();
     await expect(page.locator('flow-script .fl-flow')).toBeVisible();
-    await page.locator('flow-script .fl-ribbon').getByRole('button', { name: 'Page view', exact: true }).click();
+    const bar = page.locator('flow-script .fl-statusbar');
+    await bar.locator('.fl-menu-trigger').click();
+    await bar.getByRole('menuitemradio', { name: 'Paged', exact: true }).click();
     await expect(page.locator('flow-script .fl-sheet')).toBeVisible();
   });
 
@@ -477,14 +479,259 @@ test.describe('installable and offline', () => {
   });
 });
 
+const themeItem = (page, name) => page.locator('.theme').getByRole('menuitemradio', { name, exact: true });
+
+async function chooseTheme(page, name) {
+  await page.locator('.theme .fl-menu-trigger').click();
+  await themeItem(page, name).click();
+}
+
 test('theme choice applies to the app and script, and persists', async ({ page }) => {
   await newScript(page);
-  await page.locator('.theme').selectOption('amber-dark');
-  await expect(page.locator('flow-script')).toHaveAttribute('theme', 'amber-dark');
-  await expect(page.locator('.editor-top')).toHaveCSS('background-color', 'rgb(25, 19, 8)');
+  await chooseTheme(page, 'Ocean');
+  await chooseTheme(page, 'Dark');
+  await expect(page.locator('flow-script')).toHaveAttribute('theme', 'ocean-dark');
+  await expect(page.locator('.doc-pill')).toHaveCSS('color', 'rgb(191, 230, 245)');
   await page.reload();
   await expect(editor(page)).toBeVisible();
-  await expect(page.locator('flow-script')).toHaveAttribute('theme', 'amber-dark');
+  await expect(page.locator('flow-script')).toHaveAttribute('theme', 'ocean-dark');
   await page.goBack();
-  await expect(page.locator('.theme')).toHaveValue('amber-dark');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'ocean-dark');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(26, 29, 30)');
+  await page.locator('.theme .fl-menu-trigger').click();
+  await expect(themeItem(page, 'Ocean')).toHaveAttribute('aria-checked', 'true');
+  await expect(themeItem(page, 'Dark')).toHaveAttribute('aria-checked', 'true');
+  await expect(themeItem(page, 'Amber')).toHaveAttribute('aria-checked', 'false');
+});
+
+test('every theme can be chosen from the menu and fits the screen', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 500 });
+  await newScript(page);
+  for (const [name, theme] of [['Amber', 'amber'], ['Ocean', 'ocean'], ['Volcano', 'volcano'], ['Forest', 'forest'], ['Tulip', 'tulip']]) {
+    await chooseTheme(page, name);
+    await expect(page.locator('flow-script')).toHaveAttribute('theme', `${theme}-auto`);
+    await page.locator('.theme .fl-menu-trigger').click();
+    await themeItem(page, 'Dark').scrollIntoViewIfNeeded();
+    await expect(themeItem(page, 'Dark')).toBeInViewport();
+    await page.locator('.theme .fl-menu-trigger').click();
+  }
+});
+
+test('a theme saved by an older version still loads', async ({ page }) => {
+  await page.goto(HOME);
+  await page.evaluate(() => localStorage.setItem('flow-theme', 'auto'));
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'amber-auto');
+  await page.evaluate(() => localStorage.setItem('flow-theme', 'amber-dark'));
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'amber-dark');
+});
+
+test.describe('editor bars', () => {
+  test('the top row runs document, tabs, then export, above the formatting pills', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await newScript(page);
+    const doc = await page.locator('.doc-pill').boundingBox();
+    const tabs = await page.getByRole('tablist', { name: 'Workspace' }).boundingBox();
+    const save = await page.locator('#save').boundingBox();
+    const pdf = await page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true }).boundingBox();
+    const ribbon = await page.locator('flow-script .fl-ribbon').boundingBox();
+    expect(doc.x + doc.width).toBeLessThanOrEqual(tabs.x);
+    expect(tabs.x + tabs.width).toBeLessThanOrEqual(save.x);
+    expect(save.x).toBeLessThan(pdf.x);
+    expect(Math.abs((doc.y + doc.height / 2) - (save.y + save.height / 2))).toBeLessThan(2);
+    expect(ribbon.y).toBeGreaterThanOrEqual(doc.y + doc.height - 1);
+    // The tabs stay in the true center, however long the title or wide the export pill.
+    expect(Math.abs(tabs.x + tabs.width / 2 - 640)).toBeLessThan(1);
+  });
+
+  test('the theme menu matches the small bottom pills beside it', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await newScript(page);
+    const bar = page.locator('flow-script .fl-statusbar');
+    const theme = await page.locator('.theme .fl-menu-trigger').boundingBox();
+    const larger = await bar.getByRole('button', { name: 'Larger' }).boundingBox();
+    const undo = await bar.getByRole('button', { name: 'Undo', exact: true }).boundingBox();
+    const bold = await page.locator('flow-script .fl-ribbon').getByRole('button', { name: 'Bold', exact: true }).boundingBox();
+    expect(theme.height).toBeCloseTo(larger.height, 0);
+    expect(undo.height).toBeCloseTo(theme.height, 0);
+    expect(larger.height).toBeLessThan(bold.height);
+
+    // Undo and redo sit directly left of the theme, in pills of the same height.
+    const pills = page.locator('flow-script .fl-statusbar .fl-pill').filter({ has: page.getByRole('button', { name: 'Undo', exact: true }) });
+    const historyPill = await pills.boundingBox();
+    const themePill = await page.locator('.theme').locator('xpath=ancestor::*[contains(@class, "fl-pill")][1]').boundingBox();
+    expect(historyPill.x + historyPill.width).toBeLessThanOrEqual(themePill.x);
+    expect(themePill.x - (historyPill.x + historyPill.width)).toBeLessThan(12);
+    expect(historyPill.height).toBeCloseTo(themePill.height, 0);
+    await expect(page.locator('.theme .fl-menu-trigger .fl-svg').first()).toBeVisible();
+  });
+
+  test('every pill in the top rows floats the same way, and all still work', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await newScript(page);
+    const shadowOf = (locator) => locator.evaluate((el) => getComputedStyle(el).boxShadow);
+    const doc = page.locator('.doc-pill');
+    const tabs = page.getByRole('tablist', { name: 'Workspace' });
+    const expected = await shadowOf(page.locator('flow-script .fl-ribbon .fl-pill').first());
+    expect(await shadowOf(doc)).toBe(expected);
+    expect(await shadowOf(tabs)).toBe(expected);
+    expect(await shadowOf(page.locator('flow-script .fl-export'))).toBe(expected);
+
+    await page.locator('flow-script').evaluate((el) => { el.value = 'Beat.\n\n'.repeat(300); });
+    await page.locator('flow-script .fl-scroll').evaluate((el) => { el.scrollTop = 900; });
+    const box = await doc.boundingBox();
+    expect(box.y).toBeLessThan(20);
+    await expect(page.locator('.home-link')).toBeInViewport();
+    await page.locator('.home-link').click();
+    await expect(page.locator('#new-script')).toBeVisible();
+  });
+
+  test('the document pill shows title, date and source, and leads home', async ({ page }) => {
+    await newScript(page);
+    await expect(page.locator('.doc-date')).toHaveText(new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }));
+    await expect(page.locator('.doc-state')).toBeVisible();
+    await expect(page.locator('.home-link')).toHaveAttribute('aria-label', 'Home');
+    await expect(page.locator('.home-link .fl-svg')).toBeVisible();
+    await page.locator('.home-link').click();
+    await expect(page.locator('#new-script')).toBeVisible();
+  });
+
+  test('Write is the current tab and Overview waits for its feature', async ({ page }) => {
+    await newScript(page);
+    await expect(page.getByRole('tab', { name: 'Write' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'Overview' })).toBeDisabled();
+  });
+
+  test('preview hides the formatting controls and tabs, and only those', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await newScript(page);
+    const bar = page.locator('flow-script .fl-statusbar');
+    const ribbon = page.locator('flow-script .fl-ribbon');
+    const tabs = page.getByRole('tablist', { name: 'Workspace' });
+    const exportPill = page.locator('flow-script .fl-export');
+    const saveBefore = await page.locator('#save').boundingBox();
+    const chooseView = async (name) => {
+      await bar.locator('.fl-menu-trigger').click();
+      await bar.getByRole('menuitemradio', { name, exact: true }).click();
+    };
+
+    await chooseView('Preview');
+    await expect(ribbon).toBeHidden();
+    await expect(tabs).toBeHidden();
+    await expect(page.locator('.doc-pill')).toBeVisible();
+    await expect(exportPill).toBeVisible();
+    await expect(bar).toBeVisible();
+    // Nothing else in the top row moves.
+    expect((await page.locator('#save').boundingBox()).x).toBeCloseTo(saveBefore.x, 0);
+
+    await page.setViewportSize({ width: 390, height: 700 });
+    await expect(page.getByRole('button', { name: 'Workspace: Write' })).toBeHidden();
+    await expect(page.locator('flow-script .fl-export-holder').getByRole('button', { name: 'Export', exact: true })).toBeInViewport({ ratio: 1 });
+
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await chooseView('Paged');
+    await expect(ribbon).toBeVisible();
+    await expect(tabs).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeVisible();
+  });
+
+  test('page scale is remembered between scripts', async ({ page }) => {
+    await newScript(page);
+    const bar = page.locator('flow-script .fl-statusbar');
+    await bar.getByRole('button', { name: 'Larger' }).click();
+    await expect(bar.locator('.fl-scale')).toHaveText('110%');
+    await newScript(page);
+    const percent = page.locator('flow-script .fl-statusbar .fl-scale');
+    await expect(percent).toHaveText('110%');
+    await percent.click();
+    await expect(percent).toHaveText('100%');
+    await newScript(page);
+    await expect(page.locator('flow-script .fl-statusbar .fl-scale')).toHaveText('100%');
+  });
+
+  for (const width of [320, 390, 560]) {
+    test(`nothing overflows sideways at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 700 });
+      await newScript(page);
+      const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(sideways).toBeLessThanOrEqual(0);
+      await expect(page.locator('flow-script .fl-export-holder').getByRole('button', { name: 'Export', exact: true })).toBeInViewport({ ratio: 1 });
+      await expect(page.locator('.theme .fl-menu-trigger')).toBeInViewport({ ratio: 1 });
+      const name = await page.locator('.doc-pill').boundingBox();
+      expect(name.x + name.width).toBeLessThanOrEqual(width);
+    });
+  }
+
+  test('export buttons go from labels to icons to a menu as the screen narrows', async ({ page }) => {
+    const exportPill = page.locator('flow-script .fl-export');
+    const holder = page.locator('flow-script .fl-export-holder');
+    const more = holder.getByRole('button', { name: 'Export', exact: true });
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await newScript(page);
+    for (const name of ['Save', 'Save as', 'PDF']) {
+      await expect(exportPill.getByRole('button', { name, exact: true })).toHaveText(name);
+    }
+    await expect(more).toBeHidden();
+
+    // Just wide enough for labels, the tabs still have the true center.
+    await page.setViewportSize({ width: 901, height: 700 });
+    await expect(exportPill.getByRole('button', { name: 'Save as', exact: true }).locator('.fl-label')).toBeVisible();
+    const fullBox = await page.getByRole('tablist', { name: 'Workspace' }).boundingBox();
+    expect(Math.abs(fullBox.x + fullBox.width / 2 - 901 / 2)).toBeLessThan(1);
+    expect((await exportPill.boundingBox()).x).toBeGreaterThanOrEqual(fullBox.x + fullBox.width);
+
+    for (const width of [900, 700, 601]) {
+      await page.setViewportSize({ width, height: 700 });
+      for (const name of ['Save', 'Save as', 'PDF']) {
+        const b = exportPill.getByRole('button', { name, exact: true });
+        await expect(b.locator('.fl-svg')).toBeVisible();
+        await expect(b.locator('.fl-label')).toBeHidden();
+        await expect(b).toBeInViewport({ ratio: 1 });
+      }
+      await expect(more).toBeHidden();
+      await expect(page.getByRole('tablist', { name: 'Workspace' })).toBeVisible();
+      const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(sideways).toBeLessThanOrEqual(0);
+    }
+
+    await page.setViewportSize({ width: 600, height: 700 });
+    await expect(exportPill).toBeHidden();
+    await expect(more).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Workspace: Write' })).toBeVisible();
+  });
+
+  test('a small screen fits the document, tab and export menus on one row', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 700 });
+    await newScript(page);
+    const doc = await page.locator('.doc-pill').boundingBox();
+    const tabMenu = page.getByRole('button', { name: 'Workspace: Write' });
+    const exportMenu = page.locator('flow-script .fl-export-holder').getByRole('button', { name: 'Export', exact: true });
+    const tab = await tabMenu.boundingBox();
+    const more = await exportMenu.boundingBox();
+    expect(doc.x + doc.width).toBeLessThanOrEqual(tab.x);
+    expect(tab.x + tab.width).toBeLessThanOrEqual(more.x);
+    expect(Math.abs((doc.y + doc.height / 2) - (tab.y + tab.height / 2))).toBeLessThan(2);
+    expect(Math.abs((doc.y + doc.height / 2) - (more.y + more.height / 2))).toBeLessThan(2);
+    await expect(page.locator('.fl-wide-only .fl-tab').first()).toBeHidden();
+
+    await tabMenu.click();
+    await expect(page.getByRole('menuitemradio', { name: 'Write' })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('menuitemradio', { name: 'Overview' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+
+    await exportMenu.click();
+    const holder = page.locator('flow-script .fl-export-holder');
+    for (const name of ['Save', 'Save as', 'PDF']) await expect(holder.getByRole('menuitem', { name, exact: true })).toBeVisible();
+  });
+
+  test('saving works from the export menu on a small screen', async ({ page }) => {
+    await page.addInitScript(fakePickers);
+    await page.setViewportSize({ width: 390, height: 700 });
+    await newScript(page);
+    const holder = page.locator('flow-script .fl-export-holder');
+    await holder.getByRole('button', { name: 'Export', exact: true }).click();
+    await holder.getByRole('menuitem', { name: 'Save', exact: true }).click();
+    await expect(page.locator('.doc-state')).toHaveText('Saved');
+  });
 });

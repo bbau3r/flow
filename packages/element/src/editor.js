@@ -65,12 +65,22 @@ function chip(comment, onOpen) {
 
 function pageGap(number, continued) {
   const dom = document.createElement('div');
-  // Page 1 only gets a break when a title page sits before it. It prints unnumbered.
+  // Page 1 only gets a break when a title page sits before it.
   dom.className = number === 1 ? 'fl-page-gap fl-title-gap' : 'fl-page-gap';
   dom.setAttribute('aria-hidden', 'true');
   const label = document.createElement('span');
-  if (number > 1) label.textContent = continued ? `(CONTINUED)  ${number}.` : `${number}.`;
+  label.textContent = continued ? `(CONTINUED)  ${number}.` : `${number}.`;
   dom.append(label);
+  return dom;
+}
+
+// With no title page, nothing separates page 1 from the top of the sheet. It prints
+// unnumbered, as is standard, but while writing every page shows its number.
+function firstPageNumber() {
+  const dom = document.createElement('span');
+  dom.className = 'fl-page-one';
+  dom.setAttribute('aria-hidden', 'true');
+  dom.textContent = '1.';
   return dom;
 }
 
@@ -238,6 +248,7 @@ function computeGaps(state, getLayoutOptions) {
   const coverGap = (pos, side) => Decoration.widget(pos, () => pageGap(1, false), { side, key: 'page-cover', ignoreSelection: true });
   const starts = new Map(pageStarts.filter((p) => p.number > 1).map((p) => [p.line, p]));
   const widgets = [];
+  if (last < 0) widgets.push(Decoration.widget(0, firstPageNumber, { side: -1, key: 'page-one', ignoreSelection: true }));
   let index = 0;
   state.doc.forEach((_node, pos) => {
     if (last >= 0 && index === last + 1) widgets.push(coverGap(pos, -1));
@@ -253,9 +264,11 @@ function computeGaps(state, getLayoutOptions) {
 
 const FountainDecorations = Extension.create({
   name: 'fountainDecorations',
-  addOptions: () => ({ getLayoutOptions: () => ({}) }),
+  addOptions: () => ({ getLayoutOptions: () => ({}), showSource: () => false }),
   addProseMirrorPlugins() {
-    const { getLayoutOptions } = this.options;
+    const { getLayoutOptions, showSource } = this.options;
+    // All formatting is decoration, so leaving it off shows the file exactly as it is.
+    const shown = (decorations) => (showSource() ? DecorationSet.empty : decorations);
     return [
       new Plugin({
         key: scriptKey,
@@ -266,7 +279,7 @@ const FountainDecorations = Extension.create({
             return tr.getMeta('flowRelayout') ? computeScript(tr.doc, getLayoutOptions()) : value;
           },
         },
-        props: { decorations: (state) => scriptKey.getState(state).decorations },
+        props: { decorations: (state) => shown(scriptKey.getState(state).decorations) },
       }),
       new Plugin({
         key: activeKey,
@@ -279,7 +292,7 @@ const FountainDecorations = Extension.create({
           },
         },
         props: {
-          decorations: (state) => activeKey.getState(state).decorations,
+          decorations: (state) => shown(activeKey.getState(state).decorations),
           handleDOMEvents: {
             focus: (view) => { view.dispatch(view.state.tr.setMeta('flowFocus', true)); return false; },
             blur: (view) => { view.dispatch(view.state.tr.setMeta('flowFocus', false)); return false; },
@@ -293,7 +306,7 @@ const FountainDecorations = Extension.create({
           init: () => DecorationSet.empty,
           apply: (tr, set) => tr.getMeta('flowGaps') ?? set.map(tr.mapping, tr.doc),
         },
-        props: { decorations: (state) => gapsKey.getState(state) },
+        props: { decorations: (state) => shown(gapsKey.getState(state)) },
         view: (view) => {
           let timer = null;
           const refresh = () => {
@@ -314,7 +327,7 @@ const FountainDecorations = Extension.create({
 });
 
 export class FlowEditor {
-  constructor(mount, { value, getLayoutOptions, onChange, onState }) {
+  constructor(mount, { value, getLayoutOptions, showSource, onChange, onState }) {
     this.onChange = onChange;
     this.onState = onState;
     this.getLayoutOptions = getLayoutOptions;
@@ -338,7 +351,7 @@ export class FlowEditor {
         Text,
         UndoRedo,
         Commands,
-        FountainDecorations.configure({ getLayoutOptions }),
+        FountainDecorations.configure({ getLayoutOptions, showSource }),
       ],
       editorProps: {
         attributes: { 'aria-label': 'Screenplay', 'aria-multiline': 'true', role: 'textbox', spellcheck: 'true', autocapitalize: 'sentences' },
@@ -380,6 +393,16 @@ export class FlowEditor {
 
   focus() {
     this.editor.commands.focus();
+  }
+
+  /** Keeps the cursor clear of whatever floats over the top and bottom of the scrolling area. */
+  setInsets(top, bottom) {
+    // The threshold is when to scroll and the margin is how far, so both have to clear them.
+    const clearance = { top: top + 8, bottom: bottom + 8 };
+    this.view.setProps({
+      scrollThreshold: { ...clearance, right: 0, left: 0 },
+      scrollMargin: { ...clearance, right: 5, left: 5 },
+    });
   }
 
   destroy() {

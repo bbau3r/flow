@@ -17,14 +17,22 @@
     <strong>flow-script</strong>
     <label><input id="readonly" type="checkbox"> Read-only</label>
     <label>View
-      <select id="view"><option value="page">Page</option><option value="flow">Flow</option></select>
+      <select id="view"><option value="page">Paged</option><option value="flow">Seamless</option><option value="source">Fountain</option><option value="preview">Preview</option></select>
     </label>
     <label>Theme
       <select id="theme">
         <option>amber-light</option>
         <option>amber-dark</option>
+        <option>ocean-light</option>
+        <option>ocean-dark</option>
+        <option>volcano-light</option>
+        <option>volcano-dark</option>
+        <option>forest-light</option>
+        <option>forest-dark</option>
+        <option>tulip-light</option>
+        <option>tulip-dark</option>
         <option>auto</option>
-        <option value="ocean">ocean (custom)</option>
+        <option value="sepia">sepia (custom)</option>
       </select>
     </label>
     <span id="stats"></span>
@@ -35,10 +43,8 @@
     import { registerTheme } from '../src/index.js';
     import sample from './sample.fountain?raw';
 
-    registerTheme('ocean', {
-      desk: '#0b2a3a', paper: '#f2f9fc', ink: '#10303f', muted: '#4b7486', accent: '#0d7fa5',
-      'accent-ink': '#ffffff', rule: '#bcd9e4', 'ribbon-bg': '#e3f2f8', 'ribbon-ink': '#10303f',
-      'bubble-bg': '#cdeaf5', 'bubble-ink': '#0c3546',
+    registerTheme('sepia', {
+      desk: '#3b2f1e', paper: '#f4ecd8', ink: '#3b2f1e', accent: '#7a4a12', 'pill-radius': '8px', 'button-radius': '6px',
     });
 
     const el = document.getElementById('script');

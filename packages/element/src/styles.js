@@ -1,3 +1,4 @@
+import { CONTROLS_CSS, token } from './controls.js';
 import { THEME_CSS } from './themes.js';
 
 // Layout maths: at 12pt Courier, 1em = 1 row = 1/6in and a column = 0.6em = 0.1in,
@@ -5,6 +6,7 @@ import { THEME_CSS } from './themes.js';
 // font-size scales with the container so a whole page still fits a phone.
 export const STYLES = `
 ${THEME_CSS}
+${CONTROLS_CSS}
 :host {
   display: flex;
   flex-direction: column;
@@ -21,68 +23,58 @@ ${THEME_CSS}
 :host([hidden]) { display: none; }
 * { box-sizing: border-box; }
 
-.fl-scroll { flex: 1; min-height: 0; overflow: auto; container-type: inline-size; }
+.fl-scroll { flex: 1; min-height: 0; overflow: auto; container-type: inline-size; scroll-padding-top: var(--fl-inset-top, 0px); scroll-padding-bottom: var(--fl-inset-bottom, 0px); }
 /* geometricPrecision keeps character widths fractional. Without it, Linux browsers at
    standard density round 9.6px up to 10px, which breaks every column on the page. */
 .fl-script { font-family: var(--fl-script-font); font-variant-ligatures: none; line-height: 1; text-rendering: geometricPrecision; }
-:host([view="page"]) .fl-script, :host(:not([view])) .fl-script { font-size: min(16px, calc(100cqw / 52.5)); }
+:host(:not([view="flow"], [view="source"])) .fl-script { font-size: calc(min(16px, var(--fl-area-w, 100cqw) / 52.5) * var(--fl-scale, 1)); }
 
-/* Ribbon */
-.fl-ribbon {
-  position: sticky; top: 0; z-index: 20;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0;
-  padding: 6px 8px;
-  background: var(--flow-ribbon-bg);
-  color: var(--flow-ribbon-ink);
-  border-bottom: 1px solid var(--flow-rule);
-  font-size: 13px;
+/* With the bars, the script fills the room between them when short, so they rest at the top
+   and bottom, and grows past them when long. A grid would confine each to its own row. */
+.fl-has-bars { display: flex; flex-direction: column; }
+.fl-has-bars > * { flex: 1 0 auto; }
+.fl-has-bars > .fl-chrome, .fl-has-bars > .fl-footer { flex: none; }
+.fl-has-bars > .fl-flow, .fl-has-bars > .fl-source { min-height: 0; }
+/* The bars float over the script: only the pills take clicks, and the script passes beneath
+   them. Being query containers lets labels collapse by width. */
+.fl-chrome, .fl-footer {
+  position: sticky; left: 0; z-index: 20;
+  container-type: inline-size;
+  pointer-events: none;
+  --flow-pill-shadow: ${token('float-shadow')};
 }
-.fl-ribbon button, .fl-menu summary {
-  appearance: none; font: inherit; color: inherit;
-  background: transparent; border: 1px solid transparent; border-radius: 5px;
-  padding: 4px 6px; min-height: 28px; cursor: pointer; white-space: nowrap;
-  list-style: none;
-}
-.fl-menu summary::-webkit-details-marker { display: none; }
-.fl-ribbon button, .fl-menu summary { display: inline-flex; align-items: center; }
-.fl-ribbon button:hover, .fl-menu summary:hover { background: color-mix(in srgb, var(--flow-accent) 15%, transparent); }
-.fl-ribbon button:focus-visible, .fl-menu summary:focus-visible, .fl-bubble summary:focus-visible { outline: 2px solid var(--flow-accent); outline-offset: 1px; }
-.fl-ribbon button[aria-pressed="true"] { background: var(--flow-accent); color: var(--flow-accent-ink); }
-.fl-ribbon button:disabled { opacity: 0.4; cursor: default; }
+.fl-chrome { top: 0; }
+.fl-footer { bottom: 0; --fl-control-size: 22px; --fl-control-pad: 6px; --fl-pill-font: 11.5px; --fl-pill-pad: 2px; }
+/* A bar with an open menu comes forward, so the menu can reach over the other bar. */
+.fl-chrome:has(.fl-menu-popup:not([hidden])), .fl-footer:has(.fl-menu-popup:not([hidden])) { z-index: 40; }
+::slotted(*) { pointer-events: auto; }
+/* Equal side columns are what keep the tabs in the true center of the bar. */
+.fl-topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; padding: 8px 12px 0; }
+.fl-topbar-start { display: flex; min-width: 0; }
+.fl-topbar-center { display: flex; }
+.fl-topbar-center[hidden], .fl-ribbon[hidden] { display: none; }
+/* Pinned to the last column so it stays put when the tabs are hidden. */
+.fl-topbar-end { grid-column: 3; display: flex; justify-content: flex-end; }
+.fl-ribbon { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; padding: 8px 12px; }
 .fl-ribbon .fl-b { font-weight: 700; }
 .fl-ribbon .fl-i { font-style: italic; }
 .fl-ribbon .fl-u { text-decoration: underline; }
-.fl-group { display: flex; align-items: center; gap: 2px; padding: 0 6px; }
-.fl-group { border-right: 1px solid var(--flow-rule); }
-.fl-group:first-child { padding-left: 0; }
-.fl-group:last-child, .fl-group:has(+ .fl-spacer) { border-right: 0; }
-.fl-group:last-child { padding-right: 0; }
-.fl-icon {
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 1.5em; height: 1.5em; padding: 0 0.2em; margin-right: 0.4em;
-  border: 1px solid var(--flow-accent); border-radius: 3px;
-  background: color-mix(in srgb, var(--flow-accent) 12%, transparent);
-  color: var(--flow-accent);
-  font-size: 0.95em; font-weight: 700; line-height: 1;
+.fl-ribbon .fl-strike { text-decoration: line-through; }
+.fl-topics .fl-menu-trigger { justify-content: flex-start; min-width: 10.5em; }
+.fl-topic-name { flex: 1; text-align: left; }
+/* Once the tabs are a dropdown, the document gets all the room that's left. */
+@container (max-width: 600px) {
+  .fl-topbar { grid-template-columns: minmax(0, 1fr) auto auto; }
 }
-.fl-icon-glyph { display: block; white-space: pre; }
-.fl-ribbon button[aria-pressed="true"] .fl-icon { color: inherit; border-color: currentColor; background: transparent; }
-.fl-spacer { flex: 1; }
-.fl-menu { position: relative; }
-.fl-menu-body {
-  position: absolute; right: 0; top: calc(100% + 4px); z-index: 30;
-  display: grid; gap: 8px; width: 15rem; max-width: calc(100vw - 16px); padding: 12px; overflow-y: auto;
-  background: var(--flow-ribbon-bg); border: 1px solid var(--flow-rule); border-radius: 8px;
-  box-shadow: 0 6px 20px var(--flow-shadow);
-}
-.fl-menu-body label { display: flex; align-items: center; gap: 8px; }
-.fl-menu-body select { font: inherit; color: inherit; background: var(--flow-paper); border: 1px solid var(--flow-rule); border-radius: 4px; padding: 2px 4px; }
-.fl-menu-body button { background: var(--flow-accent); color: var(--flow-accent-ink); }
-.fl-menu-body button:hover { background: var(--flow-accent); }
+.fl-statusbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 6px 12px; }
+.fl-scale { min-width: 3.5em; font-variant-numeric: tabular-nums; }
 .fl-status { padding: 0 8px; color: var(--flow-muted); }
+.fl-spacer { flex: 1; }
+.fl-field { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.fl-field select { margin-left: auto; font: inherit; color: inherit; background: var(--flow-paper); border: 1px solid var(--flow-rule); border-radius: 4px; padding: 2px 4px; }
 
 /* Read-only pages */
-.fl-pages { display: flex; flex-direction: column; align-items: center; gap: 1.5em; padding: 1.5em 0; }
+.fl-pages { display: flex; flex-direction: column; align-items: safe center; gap: 1.5em; padding: 1.5em 0; }
 .fl-page, .fl-sheet {
   position: relative;
   width: var(--fl-page-w);
@@ -183,7 +175,9 @@ ${THEME_CSS}
 .fl-sheet .fl-page-gap.fl-title-gap { margin-top: calc(var(--fl-page-h) - 6em); }
 
 /* Flow view: same relationships, proportional to whatever width is available */
-.fl-flow { max-width: 44em; margin: 0 auto; padding: 1.5em; background: var(--flow-paper); color: var(--flow-ink); min-height: 100%; line-height: 1.35; font-size: 16px; }
+.fl-flow { max-width: 44em; margin: 0 auto; padding: 1.5em; background: var(--flow-paper); color: var(--flow-ink); min-height: 100%; width: 100%; line-height: 1.35; font-size: calc(16px * var(--fl-scale, 1)); }
+/* The Fountain text itself: an ordinary column, with nothing placed or hidden */
+.fl-source { max-width: 52em; margin: 0 auto; padding: 1.5em; background: var(--flow-paper); color: var(--flow-ink); min-height: 100%; width: 100%; line-height: 1.35; font-size: calc(16px * var(--fl-scale, 1)); white-space: pre-wrap; overflow-wrap: break-word; }
 .fl-flow .fl-line.fl-character { margin-left: 32%; }
 .fl-flow .fl-line.fl-parenthetical { margin-left: 24%; margin-right: 20%; }
 .fl-flow .fl-line.fl-dialogue, .fl-flow .fl-line.fl-in-dialogue { margin-left: 15%; margin-right: 15%; }
@@ -220,7 +214,14 @@ ${THEME_CSS}
   box-shadow: inset 0 3px 4px -3px var(--flow-shadow), inset 0 -3px 4px -3px var(--flow-shadow);
   user-select: none;
 }
-.fl-flow .fl-page-gap { display: none; }
+.fl-flow .fl-page-gap, .fl-flow .fl-page-one { display: none; }
+.fl-flow .fl-title-gap span { display: none; }
+.fl-page-one {
+  position: absolute; top: 1em; right: 1em;
+  color: var(--flow-muted);
+  font-family: var(--flow-ui-font, Roboto, system-ui, sans-serif);
+  user-select: none;
+}
 /* Without pages to separate them, breaks in flow view are drawn as a dashed line. */
 .fl-break-rule, .fl-flow .fl-page-gap.fl-title-gap {
   display: block; height: 0; margin: 1em 0; padding: 0;
@@ -230,8 +231,8 @@ ${THEME_CSS}
 
 @media print {
   :host { background: none; }
-  .fl-ribbon { display: none; }
-  .fl-scroll { overflow: visible; container-type: normal; }
+  .fl-chrome, .fl-footer { display: none; }
+  .fl-scroll { display: block; overflow: visible; container-type: normal; }
   .fl-script { font-size: 12pt !important; }
   .fl-pages { display: block; padding: 0; }
   .fl-page { box-shadow: none; break-after: page; background: #fff; color: #000; }

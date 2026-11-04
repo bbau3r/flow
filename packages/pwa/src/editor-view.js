@@ -1,10 +1,11 @@
-import '@flow/element/source';
+import { button, openModal, pill, pillSep, tabs } from '@flow/element/source';
 import { parse } from '@flow/core';
 import { putDoc } from './store.js';
 import { getProvider, providers } from './providers/index.js';
 import { currentTheme, h, themePicker, toast } from './ui.js';
 
 const AUTOSAVE_DELAY_MS = 300;
+const SCALE_KEY = 'flow-scale';
 
 const titleOf = (value) => {
   const { lines, titlePage } = parse(value);
@@ -18,45 +19,60 @@ function chooseProvider() {
   const usable = providers.filter((provider) => provider.status().ok);
   if (usable.length === 1) return Promise.resolve(usable[0]);
   return new Promise((resolve) => {
-    const dialog = h('dialog', { class: 'save-dialog', 'aria-labelledby': 'save-heading' });
+    let chosen = null;
     const finish = (provider) => {
-      dialog.close();
-      dialog.remove();
-      resolve(provider);
+      chosen = provider;
+      modal.close();
     };
-    dialog.append(
-      h('h2', { id: 'save-heading' }, 'Save to'),
-      h('div', { class: 'cards' }, ...providers.map((provider) => {
+    const modal = openModal(document.body, {
+      title: 'Save to',
+      onClose: () => resolve(chosen),
+      body: [h('div', { class: 'cards' }, ...providers.map((provider) => {
         const status = provider.status();
         return h('button', { type: 'button', class: 'card', disabled: !status.ok, onclick: () => finish(provider) },
           h('span', { class: 'card-title' }, provider.label),
           h('span', { class: 'card-text' }, provider.saveHint()),
           status.ok ? null : h('span', { class: 'badge' }, status.reason));
-      })),
-      h('button', { type: 'button', class: 'plain', onclick: () => finish(null) }, 'Cancel'),
-    );
-    dialog.addEventListener('cancel', () => finish(null));
-    document.body.append(dialog);
-    dialog.showModal();
+      }))],
+      actions: [button({ label: 'Cancel', cls: 'fl-btn-outline', onClick: () => finish(null) })],
+    });
   });
 }
+
+const readScale = () => {
+  try {
+    return localStorage.getItem(SCALE_KEY);
+  } catch {
+    return null;
+  }
+};
 
 export function renderEditor(root, doc) {
   const script = document.createElement('flow-script');
   script.setAttribute('theme', currentTheme());
   // A whole page shrunk to fit a phone is too small to write on.
   if (window.matchMedia('(max-width: 700px)').matches) script.setAttribute('view', 'flow');
+  const scale = readScale();
+  if (scale) script.setAttribute('scale', scale);
+  script.addEventListener('flow-scale', (event) => {
+    try {
+      localStorage.setItem(SCALE_KEY, event.detail.scale);
+    } catch {
+      // Private browsing can refuse storage; the scale still applies for this visit.
+    }
+  });
   script.value = doc.value;
 
   const name = h('span', { class: 'doc-name' });
-  const state = h('span', { class: 'doc-state', role: 'status' });
+  const date = h('span', { class: 'doc-date' });
   const where = h('span', { class: 'doc-where' });
+  const state = h('span', { class: 'doc-state', role: 'status' });
   let saving = false;
 
   const refreshHeader = () => {
     name.textContent = doc.name;
-    const location = getProvider(doc.provider)?.location(doc);
-    where.textContent = location ? ` \u00B7 ${location}` : '';
+    date.textContent = new Date(doc.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    where.textContent = getProvider(doc.provider)?.location(doc) ?? '';
     if (doc.value === doc.savedValue) state.textContent = 'Saved';
     else if (doc.savedValue === null) state.textContent = 'On this device only';
     else state.textContent = 'Unsaved changes';
@@ -150,15 +166,26 @@ export function renderEditor(root, doc) {
   window.addEventListener('pagehide', onPageHide);
   refreshHeader();
 
-  root.replaceChildren(h('div', { class: 'editor' },
-    h('header', { class: 'editor-top' },
-      h('a', { class: 'plain home-link', href: '#/' }, '← Home'),
-      h('span', { class: 'doc' }, name, h('span', { class: 'doc-status' }, state, where)),
-      h('span', { class: 'spacer' }),
-      themePicker((theme) => script.setAttribute('theme', theme)),
-      h('button', { type: 'button', class: 'plain', id: 'save-as', onclick: saveAs }, 'Save as'),
-      h('button', { type: 'button', class: 'action', id: 'save', onclick: save }, 'Save')),
-    script));
+  script.exportActions = [
+    { label: 'Save', title: 'Save (Ctrl/Cmd+S)', icon: 'save', attrs: { id: 'save' }, onClick: save },
+    { label: 'Save as', title: 'Save as (Ctrl/Cmd+Shift+S)', icon: 'save-as', attrs: { id: 'save-as' }, onClick: saveAs },
+  ];
+  script.append(
+    pill({ cls: 'fl-pill-tinted doc-pill', label: 'Document', attrs: { slot: 'document' } },
+      button({ label: 'Home', title: 'Back to all scripts', icon: 'stack', iconOnly: true, href: '#/', cls: 'home-link' }),
+      pillSep(),
+      h('span', { class: 'doc' }, name, h('span', { class: 'doc-meta' }, date, where, state))),
+    tabs({ label: 'Workspace', attrs: { slot: 'tabs' } }, [
+      { label: 'Overview', disabled: true, title: 'Coming soon' },
+      { label: 'Write', selected: true },
+    ]),
+    pill({ label: 'Appearance', attrs: { slot: 'status-end' } }, themePicker({
+      up: true,
+      onChange: (theme) => script.setAttribute('theme', theme),
+    })),
+  );
+
+  root.replaceChildren(h('div', { class: 'editor' }, script));
 
   return () => {
     window.removeEventListener('keydown', onKeyDown);
