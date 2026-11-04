@@ -152,6 +152,22 @@ export function createRibbon(actions) {
   };
 }
 
+const MENU_MARGIN = 8;
+
+// The button moves as the ribbon wraps, so the menu can't rely on a fixed anchor.
+function keepMenuOnScreen(menu) {
+  menu.style.transform = '';
+  menu.style.maxHeight = '';
+  const rect = menu.getBoundingClientRect();
+  const maxRight = document.documentElement.clientWidth - MENU_MARGIN;
+  let shift = 0;
+  if (rect.right > maxRight) shift = maxRight - rect.right;
+  if (rect.left + shift < MENU_MARGIN) shift = MENU_MARGIN - rect.left;
+  if (shift) menu.style.transform = `translateX(${shift}px)`;
+  const room = window.innerHeight - rect.top - MENU_MARGIN;
+  if (rect.height > room) menu.style.maxHeight = `${Math.max(room, 120)}px`;
+}
+
 function createPdfMenu(actions) {
   const details = document.createElement('details');
   details.className = 'fl-menu';
@@ -196,5 +212,15 @@ function createPdfMenu(actions) {
     go,
   );
   details.append(summary, body);
+
+  const reposition = () => keepMenuOnScreen(body);
+  details.addEventListener('toggle', () => {
+    if (details.open) {
+      reposition();
+      window.addEventListener('resize', reposition);
+    } else {
+      window.removeEventListener('resize', reposition);
+    }
+  });
   return details;
 }

@@ -143,6 +143,46 @@ test('scene continuation shows in read-only and on editor page breaks, from the 
   await expect(pages.nth(1)).toContainText('CONTINUED:');
 });
 
+test('the PDF menu stays on screen wherever the ribbon puts its button', async ({ page }) => {
+  await open(page);
+  const toggle = page.locator('flow-script .fl-menu summary');
+  const menu = page.locator('flow-script .fl-menu-body');
+  const expectOnScreen = async (label) => {
+    const viewport = page.viewportSize();
+    const box = await menu.boundingBox();
+    expect(box.x, label).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, label).toBeLessThanOrEqual(viewport.width);
+    expect(box.y + box.height, label).toBeLessThanOrEqual(viewport.height);
+  };
+  for (const width of [1300, 900, 600, 390, 280]) {
+    for (const buttonOnLeft of [false, true]) {
+      await page.setViewportSize({ width, height: 800 });
+      // Without the spacer, the button lands wherever wrapping leaves it, including far left.
+      await page.locator('flow-script .fl-spacer').evaluate((s, on) => { s.style.display = on ? 'none' : ''; }, buttonOnLeft);
+      await toggle.click();
+      await expect(menu).toBeVisible();
+      await expectOnScreen(`${width}px, buttonOnLeft=${buttonOnLeft}`);
+      await toggle.click();
+      await expect(menu).toBeHidden();
+    }
+  }
+  // Force the far-left case exactly, which is what used to run off the screen.
+  await page.setViewportSize({ width: 800, height: 800 });
+  await page.locator('flow-script .fl-ribbon').evaluate((r) => { r.prepend(r.querySelector('.fl-menu')); });
+  await toggle.click();
+  await expectOnScreen('button first in ribbon');
+  await expect(menu.getByText('Export PDF')).toBeInViewport({ ratio: 1 });
+  // It also follows a resize while open.
+  await page.setViewportSize({ width: 300, height: 800 });
+  await expectOnScreen('resized while open');
+  // And it fits a short window, scrolling rather than running off the bottom.
+  await page.setViewportSize({ width: 800, height: 260 });
+  await toggle.click();
+  await toggle.click();
+  await expect(menu).toBeVisible();
+  await expectOnScreen('short window');
+});
+
 test('editor comments are bubbles that expand to the note text when opened', async ({ page }) => {
   await open(page);
   await setValue(page, 'Some action [[a private thought]] continues.\n\nOther line.');

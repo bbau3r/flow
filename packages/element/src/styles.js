@@ -69,7 +69,7 @@ ${THEME_CSS}
 .fl-menu { position: relative; }
 .fl-menu-body {
   position: absolute; right: 0; top: calc(100% + 4px); z-index: 30;
-  display: grid; gap: 8px; width: 15rem; padding: 12px;
+  display: grid; gap: 8px; width: 15rem; max-width: calc(100vw - 16px); padding: 12px; overflow-y: auto;
   background: var(--flow-ribbon-bg); border: 1px solid var(--flow-rule); border-radius: 8px;
   box-shadow: 0 6px 20px var(--flow-shadow);
 }
