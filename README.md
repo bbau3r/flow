@@ -8,7 +8,7 @@ The project has three planned levels, each built on the one before it:
 | --- | --- |
 | Standalone web component, `<flow-script>` | Built (`packages/element`) |
 | Installable offline PWA | Built (`packages/pwa`) |
-| Google Drive | Built into the PWA, needs Google credentials to switch on |
+| Google Drive | Shelved, with the work kept on the `feat/google-drive-folders` branch |
 
 ## Getting started
 
@@ -122,7 +122,6 @@ Storage options live in `packages/pwa/src/providers/`. To add one, write an obje
 | --- | --- | --- |
 | This device, Chromium browsers | File picker | OS save dialog, opened in the file's folder with its name filled in |
 | This device, other browsers, including iOS | File picker | Downloads a copy, because these browsers can't choose a folder |
-| Google Drive | Google's picker | Directly back to the file |
 
 ### Deploying to GitHub Pages
 
@@ -130,28 +129,9 @@ Pushing to `main` runs the tests, then builds and publishes to the `gh-pages` br
 
 The site then lives at `https://<owner>.github.io/<repo>/`. Builds use relative paths, so nothing depends on the repository's name.
 
-### Turning on Google Drive
-
-Without credentials, the Google Drive card says "Needs setup". To switch it on:
-
-1. In the [Google Cloud console](https://console.cloud.google.com/), create a project and enable the **Google Drive API** and the **Google Picker API**.
-2. Configure the OAuth consent screen, and add the `.../auth/drive.file` scope. This narrow scope only reaches files people pick in Flow or create with it.
-3. Create an **OAuth client ID** of type "Web application", with your site's origin as an authorized JavaScript origin, such as `https://<owner>.github.io` and `http://localhost:5173`.
-4. Create an **API key**, restricted to the Picker API and your site.
-5. Add these as repository variables under **Settings > Secrets and variables > Actions > Variables**. They're public identifiers that ship in the page, not secrets.
-
-| Variable | Value |
-| --- | --- |
-| `GOOGLE_CLIENT_ID` | The OAuth client ID |
-| `GOOGLE_API_KEY` | The API key |
-| `GOOGLE_APP_ID` | The project number, shown on the project's dashboard |
-
-For local development, put the same values in `packages/pwa/.env.local` with a `VITE_` prefix, such as `VITE_GOOGLE_CLIENT_ID`.
-
 ## Known limitations
 
 - **Editor page breaks are approximate within a line.** They fall between source lines, so a paragraph or speech split across pages shows the break before the line, without `(MORE)`/`(CONT'D)`. Comments, sections and synopses also add visible height in the editor only, and they stay with the page they introduce. Read-only view and PDF are exact.
 - **PDFs cover Western and some Central European characters.** Text uses the embedded Courier Prime, then the Courier built into PDF readers for accents it lacks. Anything else prints as `?`, and the ribbon reports which characters were affected. Other alphabets will need another font.
 - **Long scripts cost more per keystroke:** about 2.5 ms on a short script and 85 ms at 113 pages on a desktop. This needs work before the PWA targets phones.
 - **Browser coverage:** automated tests run in Chromium-based browsers only. Firefox and Safari are untested.
-- **Google Drive is tested against stand-ins:** Flow's own requests and handling are tested, but with fakes for Google's scripts and servers. It needs a real run once credentials exist.

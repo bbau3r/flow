@@ -53,19 +53,25 @@ const fakePickers = () => {
 };
 
 test.describe('home page', () => {
-  test('offers new, and opening from the device or a drive', async ({ page }) => {
+  test('offers a new script, or opening one from the device', async ({ page }) => {
     await page.goto(HOME);
     await expect(page.locator('#new-script')).toBeVisible();
     await expect(providerCard(page, 'local')).toBeEnabled();
     await expect(providerCard(page, 'local')).toContainText('This device');
-    await expect(providerCard(page, 'google-drive')).toContainText('Google Drive');
-    await expect(page.locator('section', { hasText: 'Open a script' }).locator('.card')).toHaveCount(2);
+    await expect(page.locator('section', { hasText: 'Open a script' }).locator('.card')).toHaveCount(1);
   });
 
-  test('Drive explains itself when it has no credentials', async ({ page }) => {
+  test('never mentions or contacts Google', async ({ page }) => {
+    const requests = [];
+    page.on('request', (r) => requests.push(r.url()));
     await page.goto(HOME);
-    await expect(providerCard(page, 'google-drive')).toBeDisabled();
-    await expect(providerCard(page, 'google-drive')).toContainText('Needs setup');
+    await expect(page.locator('#new-script')).toBeVisible();
+    await expect(page.locator('body')).not.toContainText(/google|drive/i);
+    await page.locator('#new-script').click();
+    await expect(editor(page)).toBeVisible();
+    await page.locator('#save-as').click();
+    await expect(page.locator('dialog')).toHaveCount(0);
+    expect(requests.filter((u) => /google/i.test(u))).toEqual([]);
   });
 
   test('fits a phone', async ({ page }) => {
@@ -339,18 +345,6 @@ test.describe('local files with direct saving', () => {
     expect(await page.evaluate(() => window.readFile('Untitled Screenplay.fountain'))).toContain('More.');
   });
 
-  test('with a second place to save, Flow asks which, and cancelling changes nothing', async ({ page }) => {
-    await page.addInitScript(() => {
-      globalThis.FLOW_CONFIG = { googleClientId: 'client', googleApiKey: 'key', googleAppId: '123' };
-    });
-    await newScript(page);
-    await page.locator('#save').click();
-    await expect(page.locator('dialog')).toContainText('Choose the folder and file name.');
-    await page.locator('dialog').getByRole('button', { name: 'Cancel' }).click();
-    await expect(page.locator('dialog')).toHaveCount(0);
-    await expect(page.locator('.doc-state')).toHaveText('On this device only');
-  });
-
   test('cancelling the open picker stays home', async ({ page }) => {
     await page.goto(HOME);
     await page.evaluate(() => {
@@ -396,19 +390,6 @@ test('without folder access, Flow explains why it downloaded', async ({ page }) 
   await expect(page.locator('#toast')).toContainText('can\u2019t ask where to save');
 });
 
-test('without folder access, a choice of places says a copy will be downloaded', async ({ page }) => {
-  await page.addInitScript(() => {
-    delete window.showOpenFilePicker;
-    delete window.showSaveFilePicker;
-    delete Window.prototype.showOpenFilePicker;
-    delete Window.prototype.showSaveFilePicker;
-    globalThis.FLOW_CONFIG = { googleClientId: 'client', googleApiKey: 'key', googleAppId: '123' };
-  });
-  await newScript(page);
-  await page.locator('#save').click();
-  await expect(page.locator('dialog')).toContainText('Downloads a copy');
-});
-
 test.describe('local files without direct saving, as on iOS', () => {
   test.beforeEach(({ page }) => page.addInitScript(() => {
     delete window.showOpenFilePicker;
@@ -434,159 +415,6 @@ test.describe('local files without direct saving, as on iOS', () => {
     expect(file.suggestedFilename()).toBe('phone.fountain');
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     await expect(page.locator('#toast')).toContainText('Downloaded');
-  });
-});
-
-test.describe('Google Drive', () => {
-  // Stands in for Google's sign-in and picker scripts. Drive's REST calls are intercepted
-  // below, so everything Flow itself sends and handles is exercised.
-  const fakeGoogle = () => {
-    globalThis.FLOW_CONFIG = { googleClientId: 'client', googleApiKey: 'key', googleAppId: '123' };
-    window.tokensIssued = 0;
-    const builder = {
-      addView() { return this; },
-      setOAuthToken() { return this; },
-      setDeveloperKey() { return this; },
-      setAppId() { return this; },
-      setCallback(cb) { this.cb = cb; return this; },
-      build() { return this; },
-      setVisible() { setTimeout(() => this.cb(window.pickerResult ?? { action: 'picked', docs: [{ id: 'file-1' }] }), 0); },
-    };
-    globalThis.google = {
-      accounts: {
-        oauth2: {
-          initTokenClient: ({ callback }) => ({
-            requestAccessToken() {
-              window.tokensIssued += 1;
-              callback({ access_token: `token-${window.tokensIssued}`, expires_in: 3600 });
-            },
-          }),
-        },
-      },
-      picker: {
-        PickerBuilder: function PickerBuilder() { return builder; },
-        DocsView: function DocsView() { this.setMode = () => this; },
-        ViewId: { DOCS: 'docs' },
-        DocsViewMode: { LIST: 'list' },
-        Action: { PICKED: 'picked', CANCEL: 'cancel' },
-      },
-    };
-    globalThis.gapi = { load: (_name, cb) => cb() };
-  };
-
-  function fakeDrive(page, overrides = {}) {
-    const state = { text: 'INT. DRIVE - DAY\n\nFrom Drive.', modifiedTime: 't1', requests: [], ...overrides };
-    page.route('https://www.googleapis.com/**', async (route) => {
-      const req = route.request();
-      const url = new URL(req.url());
-      state.requests.push({ method: req.method(), url: req.url(), auth: req.headers().authorization, body: req.postData() });
-      if (state.unauthorizedOnce) {
-        state.unauthorizedOnce = false;
-        await route.fulfill({ status: 401, body: '' });
-      } else if (req.method() === 'POST') {
-        state.modifiedTime = 't9';
-        await route.fulfill({ json: { id: 'new-file', name: 'Untitled Screenplay.fountain', modifiedTime: 't9' } });
-      } else if (req.method() === 'PATCH') {
-        state.text = req.postData();
-        state.modifiedTime = 't2';
-        await route.fulfill({ json: { name: 'drive.fountain', modifiedTime: 't2' } });
-      } else if (url.searchParams.get('alt') === 'media') {
-        await route.fulfill({ body: state.text, contentType: 'text/plain' });
-      } else {
-        await route.fulfill({ json: { name: 'drive.fountain', modifiedTime: state.modifiedTime } });
-      }
-    });
-    return state;
-  }
-
-  test.beforeEach(({ page }) => page.addInitScript(fakeGoogle));
-
-  test('opens a picked file and saves back to it', async ({ page }) => {
-    const drive = fakeDrive(page);
-    await page.goto(HOME);
-    await expect(providerCard(page, 'google-drive')).toBeEnabled();
-    await providerCard(page, 'google-drive').click();
-    await expect(editor(page)).toBeVisible();
-    expect(await value(page)).toBe('INT. DRIVE - DAY\n\nFrom Drive.');
-    await expect(page.locator('.doc-name')).toHaveText('drive.fountain');
-    expect(drive.requests[0].auth).toBe('Bearer token-1');
-
-    await lineWith(page, 'From Drive').click();
-    await page.keyboard.press('End');
-    await page.keyboard.type(' Edited.');
-    await page.keyboard.press('Control+s');
-    await expect(page.locator('.doc-state')).toHaveText('Saved');
-    expect(drive.text).toBe('INT. DRIVE - DAY\n\nFrom Drive. Edited.');
-    const patch = drive.requests.find((r) => r.method === 'PATCH');
-    expect(patch.url).toContain('/upload/drive/v3/files/file-1?uploadType=media');
-  });
-
-  test('a new script can be created in Drive', async ({ page }) => {
-    const drive = fakeDrive(page);
-    await newScript(page);
-    await page.locator('#save').click();
-    await page.locator('dialog').getByRole('button', { name: /Google Drive/ }).click();
-    await expect(page.locator('.doc-state')).toHaveText('Saved');
-    const post = drive.requests.find((r) => r.method === 'POST');
-    expect(post.url).toContain('uploadType=multipart');
-    expect(post.body).toContain('"name":"Untitled Screenplay.fountain"');
-    expect(post.body).toContain('Title: Untitled Screenplay');
-
-    await editorFocused(page);
-    await page.keyboard.type('More.');
-    await expect(page.locator('.doc-state')).toHaveText('Unsaved changes');
-    await page.locator('#save').click();
-    await expect(page.locator('.doc-state')).toHaveText('Saved');
-    expect(drive.requests.find((r) => r.method === 'PATCH').url).toContain('/files/new-file?');
-  });
-
-  test('an expired token signs in again and retries', async ({ page }) => {
-    const drive = fakeDrive(page, { unauthorizedOnce: true });
-    await page.goto(HOME);
-    await providerCard(page, 'google-drive').click();
-    await expect(editor(page)).toBeVisible();
-    expect(await page.evaluate(() => window.tokensIssued)).toBe(2);
-    expect(drive.requests[1].auth).toBe('Bearer token-2');
-  });
-
-  test('a file changed in Drive is not overwritten without asking', async ({ page }) => {
-    const drive = fakeDrive(page);
-    await page.goto(HOME);
-    await providerCard(page, 'google-drive').click();
-    await expect(editor(page)).toBeVisible();
-    await lineWith(page, 'From Drive').click();
-    await page.keyboard.type('X');
-    drive.modifiedTime = 'someone-else';
-    drive.text = 'Their version.';
-
-    page.once('dialog', (d) => d.dismiss());
-    await page.locator('#save').click();
-    await expect(page.locator('.doc-state')).toHaveText('Unsaved changes');
-    expect(drive.text).toBe('Their version.');
-  });
-
-  test('a failed save keeps the work and says so', async ({ page }) => {
-    fakeDrive(page);
-    await page.goto(HOME);
-    await providerCard(page, 'google-drive').click();
-    await expect(editor(page)).toBeVisible();
-    await lineWith(page, 'From Drive').click();
-    await page.keyboard.type('X');
-    await page.unroute('https://www.googleapis.com/**');
-    await page.route('https://www.googleapis.com/**', (route) => route.fulfill({ status: 500, body: '' }));
-    await page.locator('#save').click();
-    await expect(page.locator('#toast')).toContainText('kept on this device');
-    await expect(page.locator('.doc-state')).toHaveText('Unsaved changes');
-    expect(await value(page)).toContain('X');
-  });
-
-  test('cancelling the picker stays home', async ({ page }) => {
-    fakeDrive(page);
-    await page.goto(HOME);
-    await page.evaluate(() => { window.pickerResult = { action: 'cancel' }; });
-    await providerCard(page, 'google-drive').click();
-    await expect(page.locator('#new-script')).toBeVisible();
-    await expect(page.locator('#toast')).toBeHidden();
   });
 });
 
@@ -646,19 +474,6 @@ test.describe('installable and offline', () => {
     await page.reload();
     await expect(editor(page)).toBeVisible();
     expect(await value(page)).toContain('Written offline.');
-  });
-
-  test('Drive says it needs internet when offline', async ({ page, context }) => {
-    await page.addInitScript(() => {
-      globalThis.FLOW_CONFIG = { googleClientId: 'client', googleApiKey: 'key', googleAppId: '123' };
-    });
-    await page.goto(HOME);
-    await expect(providerCard(page, 'google-drive')).toBeEnabled();
-    await context.setOffline(true);
-    await expect(providerCard(page, 'google-drive')).toContainText('Needs internet');
-    await expect(providerCard(page, 'google-drive')).toBeDisabled();
-    await context.setOffline(false);
-    await expect(providerCard(page, 'google-drive')).toBeEnabled();
   });
 });
 
