@@ -48,14 +48,35 @@ ${CONTROLS_CSS}
 /* A bar with an open menu comes forward, so the menu can reach over the other bar. */
 .fl-chrome:has(.fl-menu-popup:not([hidden])), .fl-footer:has(.fl-menu-popup:not([hidden])) { z-index: 40; }
 ::slotted(*) { pointer-events: auto; }
-/* Equal side columns are what keep the tabs in the true center of the bar. */
-.fl-topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; padding: 8px 12px 0; }
-.fl-topbar-start { display: flex; min-width: 0; }
-.fl-topbar-center { display: flex; }
-.fl-topbar-center[hidden], .fl-ribbon[hidden] { display: none; }
-/* Pinned to the last column so it stays put when the tabs are hidden. */
-.fl-topbar-end { grid-column: 3; display: flex; justify-content: flex-end; }
-.fl-ribbon { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; padding: 8px 12px; }
+/* Two rows by default, with the formatting controls leaning left on the second. */
+.fl-topbar {
+  display: grid; align-items: center; gap: 6px 8px; padding: 8px 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "start end" "format format";
+}
+.fl-topbar:has(> .fl-ribbon[hidden]) { row-gap: 0; }
+/* Stretched, so that the document and tabs pills always match in height. */
+.fl-topbar-start { grid-area: start; display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+.fl-topbar-tabs { flex: none; display: flex; }
+.fl-topbar-tabs[hidden], .fl-ribbon[hidden] { display: none; }
+.fl-topbar-end { grid-area: end; display: flex; justify-content: flex-end; }
+.fl-ribbon { grid-area: format; display: flex; align-items: center; gap: 8px; }
+.fl-format-pills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
+.fl-format-pills[hidden] { display: none; }
+.fl-format-animating { flex-wrap: nowrap; }
+.fl-format-animating > * { flex: none; }
+/* A bare icon over the page, unlike the pills around it, until the pointer finds it. */
+.fl-format-toggle { pointer-events: auto; color: var(--flow-ink); }
+.fl-format-toggle .fl-svg { transition: transform 220ms ease; }
+.fl-format-toggle[aria-expanded="false"] .fl-svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .fl-format-toggle .fl-svg { transition: none; } }
+/* With room for everything, one row. The title gives way first if it's long. */
+@container (min-width: 1000px) {
+  .fl-topbar {
+    grid-template-columns: minmax(0, max-content) auto minmax(max-content, 1fr);
+    grid-template-areas: "start format end";
+  }
+}
 .fl-ribbon .fl-b { font-weight: 700; }
 .fl-ribbon .fl-i { font-style: italic; }
 .fl-ribbon .fl-u { text-decoration: underline; }
@@ -64,7 +85,20 @@ ${CONTROLS_CSS}
 .fl-topic-name { flex: 1; text-align: left; }
 /* Once the tabs are a dropdown, the document gets all the room that's left. */
 @container (max-width: 600px) {
-  .fl-topbar { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .fl-topics .fl-menu-trigger { min-width: 8em; }
+  /* One row that scrolls sideways. The padding keeps pill shadows from being cut off, and
+     the margins let pills run to the screen's edge. */
+  .fl-ribbon {
+    flex-wrap: nowrap; column-gap: 6px;
+    margin: -6px -12px -12px; padding: 6px 12px 12px;
+    overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: thin; scrollbar-color: ${token('scrollbar')} transparent;
+    pointer-events: auto;
+  }
+  .fl-ribbon > *, .fl-format-pills > * { flex: none; }
+  .fl-format-pills { flex-wrap: nowrap; column-gap: 6px; }
+  /* The row would clip a menu anchored inside it, so it anchors to the whole bar instead. */
+  .fl-ribbon .fl-menu { position: static; }
 }
 .fl-statusbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 6px 12px; }
 .fl-scale { min-width: 3.5em; font-variant-numeric: tabular-nums; }

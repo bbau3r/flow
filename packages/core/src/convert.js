@@ -156,13 +156,25 @@ export function insertPageBreak(input, index) {
 }
 
 // Toggles the dual-dialogue caret on the character cue at or above this line.
-export function toggleDual(input, index) {
-  const parsed = parse(input.join('\n')).lines;
+// The character cue a line of a speech belongs to, or -1 outside of a speech.
+function speakerOf(parsed, index) {
   let i = index;
   while (i >= 0 && parsed[i].type !== 'character') {
-    if (!inDialogue(parsed[i])) return null;
+    if (!inDialogue(parsed[i])) return -1;
     i--;
   }
+  return i;
+}
+
+/** Whether a line belongs to a speech marked as dual dialogue. Takes parsed lines. */
+export function dualAt(parsed, index) {
+  const speaker = speakerOf(parsed, index);
+  return speaker >= 0 && !!parsed[speaker].dual;
+}
+
+export function toggleDual(input, index) {
+  const parsed = parse(input.join('\n')).lines;
+  const i = speakerOf(parsed, index);
   if (i < 0) return null;
   const lines = [...input];
   lines[i] = parsed[i].dual ? lines[i].replace(/\s*\^(\s*)$/, '$1') : `${lines[i].trimEnd()} ^`;

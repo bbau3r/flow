@@ -143,7 +143,7 @@ test('page break has its own pill just before comments', async ({ page }) => {
   await open(page);
   await setValue(page, 'words here');
   await lineWith(page, 'words').click();
-  const labels = await page.locator('flow-script .fl-ribbon > .fl-pill').evaluateAll((pills) => pills.map((p) => p.getAttribute('aria-label')));
+  const labels = await page.locator('flow-script .fl-format-pills > .fl-pill').evaluateAll((pills) => pills.map((p) => p.getAttribute('aria-label')));
   expect(labels.indexOf('Page break')).toBe(labels.indexOf('Comments') - 1);
   await expect(rib(page, 'Page break').locator('.fl-svg')).toBeVisible();
   await rib(page, 'Page break').click();
@@ -163,7 +163,7 @@ test('topics carry their fountain character, grouped as related', async ({ page 
   });
   expect(items).toEqual([
     ['. Scene', '! Action', '> Transition', '>< Centered', '~ Lyrics'],
-    ['@ Character', '() Paren', '“ Dialogue'],
+    ['@ Character', '() Parenthetical', '“ Dialogue'],
     ['# Act', '## Sequence', '= Synopsis'],
   ]);
   const badge = page.locator('flow-script .fl-menu-item .fl-icon').first();
@@ -178,6 +178,183 @@ test('topics carry their fountain character, grouped as related', async ({ page 
   expect(Math.abs(box.width - box.height)).toBeLessThan(3);
 });
 
+const formatPills = (page) => page.locator('flow-script .fl-format-pills');
+const collapseToggle = (page) => page.locator('flow-script .fl-format-toggle');
+
+test('the arrow animates the formatting away, turns around, and brings it back', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await open(page);
+  await setValue(page, 'BOB\nHello.');
+  await lineWith(page, 'Hello').click();
+  const toggle = collapseToggle(page);
+  const pills = formatPills(page);
+  const rotation = () => toggle.locator('.fl-svg').evaluate((svg) => new DOMMatrix(getComputedStyle(svg).transform).a);
+  const width = (await pills.boundingBox()).width;
+
+  // It starts as a left-pointing arrow, to the right of everything it hides.
+  await expect(toggle).toHaveAttribute('aria-label', 'Hide formatting');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(await rotation()).toBeCloseTo(1, 1);
+  const dual = await rib(page, 'Dual').boundingBox();
+  expect((await toggle.boundingBox()).x).toBeGreaterThan(dual.x + dual.width);
+
+  await toggle.click();
+  // It's animating, not just vanishing.
+  expect(await pills.evaluate((el) => el.getAnimations().length)).toBe(1);
+  await expect(pills).toBeHidden();
+  await expect(toggle).toHaveAttribute('aria-label', 'Show formatting');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect.poll(rotation).toBeCloseTo(-1, 1);
+  // Its controls can't be reached by keyboard while hidden.
+  await expect(rib(page, 'Bold')).toBeHidden();
+
+  await toggle.click();
+  expect(await pills.evaluate((el) => el.getAnimations().length)).toBe(1);
+  await expect.poll(() => pills.evaluate((el) => el.getAnimations().length)).toBe(0);
+  await expect(rib(page, 'Bold')).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-label', 'Hide formatting');
+  await expect.poll(rotation).toBeCloseTo(1, 1);
+  expect((await pills.boundingBox()).width).toBeCloseTo(width, 0);
+
+  // Everything still works, and its menu isn't cut off once it's back.
+  await rib(page, 'Dual').click();
+  expect(await value(page)).toContain('BOB ^');
+  await topicButton(page).click();
+  const popup = await page.locator('flow-script .fl-topics .fl-menu-popup').boundingBox();
+  expect(popup.height).toBeGreaterThan(200);
+});
+
+test('each format action has its own shadow, tight enough to stay separate', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await open(page);
+  const pills = page.locator('flow-script .fl-format-pills > .fl-pill:not([hidden])');
+  const shadows = await pills.evaluateAll((els) => els.map((el) => getComputedStyle(el).boxShadow));
+  expect(shadows.length).toBeGreaterThan(2);
+  for (const shadow of shadows) expect(shadow).not.toBe('none');
+  await expect(page.locator('flow-script .fl-format-pills')).toHaveCSS('box-shadow', 'none');
+  await expect(page.locator('flow-script .fl-ribbon')).toHaveCSS('box-shadow', 'none');
+
+  // No layer reaches far enough to blend with the neighboring pill's.
+  const first = await pills.nth(0).boundingBox();
+  const second = await pills.nth(1).boundingBox();
+  const gap = second.x - (first.x + first.width);
+  const blurs = [...shadows[0].matchAll(/(-?[\d.]+)px (-?[\d.]+)px (-?[\d.]+)px/g)].map((m) => Number(m[3]));
+  expect(blurs.length).toBe(3);
+  expect(Math.max(...blurs)).toBeLessThanOrEqual(gap);
+
+  // Collapsing fades each pill by itself, and never clips or fades the group.
+  await collapseToggle(page).click();
+  const group = page.locator('flow-script .fl-format-pills');
+  expect(await group.evaluate((el) => getComputedStyle(el).overflowX)).toBe('visible');
+  const running = await group.evaluate((el) => ({
+    group: el.getAnimations().flatMap((a) => a.effect.getKeyframes()).some((k) => 'opacity' in k),
+    pills: [...el.children].filter((c) => !c.hidden).map((c) => c.getAnimations().length),
+  }));
+  expect(running.group).toBe(false);
+  for (const count of running.pills) expect(count).toBe(1);
+});
+
+test('the arrow is a bare icon, with a background only under the pointer', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await open(page);
+  const toggle = collapseToggle(page);
+  await expect(toggle.locator('xpath=ancestor::*[contains(@class, "fl-pill")]')).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await expect(toggle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(toggle).toHaveCSS('box-shadow', 'none');
+  await toggle.hover();
+  const hovered = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(hovered).not.toBe('rgba(0, 0, 0, 0)');
+  await page.mouse.move(0, 0);
+  await toggle.click();
+  await expect(formatPills(page)).toBeHidden();
+  await page.mouse.move(0, 0);
+  await expect(toggle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+});
+
+test('collapsing keeps the rest of the row in place, and keeps up with quick clicks', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await open(page);
+  const pdf = page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true });
+  const before = await pdf.boundingBox();
+  const toggle = collapseToggle(page);
+  await toggle.click();
+  // Turned back mid-animation, it ends up open.
+  await toggle.click();
+  await expect.poll(() => formatPills(page).evaluate((el) => el.getAnimations().length)).toBe(0);
+  await expect(rib(page, 'Bold')).toBeVisible();
+  await toggle.click();
+  await expect(formatPills(page)).toBeHidden();
+  const after = await pdf.boundingBox();
+  expect(after.x).toBeCloseTo(before.x, 0);
+  expect(after.y).toBeCloseTo(before.y, 0);
+
+  // Going through preview doesn't lose the choice.
+  await chooseView(page, 'Preview');
+  await expect(toggle).toBeHidden();
+  await chooseView(page, 'Paged');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(formatPills(page)).toBeHidden();
+});
+
+test('collapsing skips the animation for people who ask for less motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await open(page);
+  await collapseToggle(page).click();
+  await expect(formatPills(page)).toBeHidden();
+  await collapseToggle(page).click();
+  await expect(rib(page, 'Bold')).toBeVisible();
+});
+
+test('dual shows and stays highlighted across a whole speech', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'Action.\n\nBOB\nHello.\n\nAMY ^\n(softly)\nHi.\nThere.\n\nAfter.');
+  const dual = rib(page, 'Dual');
+  for (const line of ['AMY', 'softly', 'Hi.', 'There.']) {
+    await lineWith(page, line).click();
+    await expect(dual, line).toBeVisible();
+    await expect(dual, line).toHaveAttribute('aria-pressed', 'true');
+  }
+  await lineWith(page, 'Hello').click();
+  await expect(dual).toBeVisible();
+  await expect(dual).toHaveAttribute('aria-pressed', 'false');
+  await lineWith(page, 'BOB').click();
+  await expect(dual).toBeVisible();
+  await lineWith(page, 'After').click();
+  await expect(dual).toBeHidden();
+
+  // It can be turned off from any line of the speech.
+  await lineWith(page, 'softly').click();
+  await dual.click();
+  expect(await value(page)).toContain('AMY\n(softly)');
+  await expect(dual).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('a pressed dual has a primary icon on the secondary color', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await open(page);
+  await setValue(page, 'BOB\nHello.\n\nAMY ^\nHi.');
+  await lineWith(page, 'Hi.').click();
+  const dual = rib(page, 'Dual');
+  await expect(dual).toHaveAttribute('aria-pressed', 'true');
+  const accent = 'rgb(180, 83, 9)';
+  const badge = dual.locator('.fl-icon');
+  await expect(badge).toHaveCSS('background-color', accent);
+  await expect(badge).toHaveCSS('color', 'rgb(255, 250, 240)');
+  const background = await dual.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(background).not.toBe(accent);
+  expect(background).not.toBe('rgba(0, 0, 0, 0)');
+  // The label stays in the normal text color, not on primary.
+  await expect(dual.locator('.fl-label')).toHaveCSS('color', 'rgb(61, 44, 16)');
+
+  // Other pressed buttons keep the full primary look.
+  await page.keyboard.press('Home');
+  await page.keyboard.press('Shift+End');
+  await rib(page, 'Bold').click();
+  await expect(rib(page, 'Bold')).toHaveAttribute('aria-pressed', 'true');
+  await expect(rib(page, 'Bold')).toHaveCSS('background-color', accent);
+});
+
 test('the dual button only appears on dialogue lines', async ({ page }) => {
   await open(page);
   await setValue(page, 'Action.\n\nBOB\nHello.\n\nAMY\nHi.');
@@ -189,14 +366,136 @@ test('the dual button only appears on dialogue lines', async ({ page }) => {
   expect(await value(page)).toContain('AMY ^');
 });
 
-test('the formatting row is centered', async ({ page }) => {
-  await page.setViewportSize({ width: 1200, height: 800 });
+test('formatting shares the top row when it fits, and otherwise leans left on its own', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 800 });
   await open(page);
+  await setValue(page, 'BOB\nHello.');
+  await lineWith(page, 'Hello').click();
+  await expect(rib(page, 'Dual')).toBeVisible();
+  const pdf = () => page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true }).boundingBox();
+  const middle = (box) => box.y + box.height / 2;
+
+  // On one row, with the longest set of pills, nothing overlaps or leaves the window.
+  const bold = await rib(page, 'Bold').boundingBox();
+  const dual = await rib(page, 'Dual').boundingBox();
+  const export1 = await pdf();
+  expect(Math.abs(middle(bold) - middle(export1))).toBeLessThan(2);
+  expect(dual.x + dual.width).toBeLessThanOrEqual((await page.locator('flow-script .fl-export').boundingBox()).x);
+  expect(export1.x + export1.width).toBeLessThanOrEqual(1000);
+  // Dual appears at the end of the row, so nothing else moves for it.
+  await lineWith(page, 'BOB').click();
+  await setValue(page, 'Action.');
+  await lineWith(page, 'Action').click();
+  await expect(rib(page, 'Dual')).toBeHidden();
+  expect((await rib(page, 'Bold').boundingBox()).x).toBeCloseTo(bold.x, 0);
+
+  // Too narrow for one row, formatting drops to the left of its own.
+  await page.setViewportSize({ width: 999, height: 800 });
   const row = await page.locator('flow-script .fl-ribbon').boundingBox();
-  const pills = page.locator('flow-script .fl-ribbon > .fl-pill:not([hidden])');
-  const first = await pills.first().boundingBox();
-  const last = await pills.last().boundingBox();
-  expect(Math.abs((first.x - row.x) - (row.x + row.width - (last.x + last.width)))).toBeLessThan(2);
+  const narrowBold = await rib(page, 'Bold').boundingBox();
+  const narrowPdf = await pdf();
+  expect(narrowBold.y).toBeGreaterThan(narrowPdf.y + narrowPdf.height - 1);
+  expect(narrowBold.x - row.x).toBeLessThan(6);
+});
+
+test.describe('at phone width', () => {
+  test.use({ viewport: { width: 390, height: 780 } });
+
+  test('the arrow follows the pills without covering them, and collapses them', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await open(page);
+    const toggle = collapseToggle(page);
+    const comment = await rib(page, 'Comment').boundingBox();
+    const arrow = await toggle.boundingBox();
+    expect(arrow.x).toBeGreaterThanOrEqual(comment.x + comment.width);
+    await toggle.scrollIntoViewIfNeeded();
+    await expect(toggle).toBeInViewport({ ratio: 1 });
+    await toggle.click();
+    await expect(formatPills(page)).toBeHidden();
+    expect(await page.locator('flow-script .fl-ribbon').evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+    await toggle.click();
+    await expect(rib(page, 'Bold')).toBeVisible();
+  });
+
+  test('formatting scrolls sideways when it doesn\'t fit, without moving the page', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await open(page);
+    const row = page.locator('flow-script .fl-ribbon');
+    const scroll = page.locator('flow-script .fl-scroll');
+    const bold = await rib(page, 'Bold').boundingBox();
+    const comment = await rib(page, 'Comment').boundingBox();
+    expect(Math.abs(bold.y - comment.y)).toBeLessThan(2);
+    expect(await row.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(0);
+    expect(await scroll.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+
+    // The thin scrollbar uses the primary color.
+    await expect(row).toHaveCSS('scrollbar-width', 'thin');
+    const accent = await rib(page, 'Bold').evaluate((el) => getComputedStyle(el).getPropertyValue('--flow-accent').trim());
+    expect(accent).toBe('#b45309');
+    expect(await row.evaluate((el) => getComputedStyle(el).scrollbarColor)).toContain('rgb(180, 83, 9)');
+
+    // Everything can be reached and used once scrolled to.
+    await setValue(page, 'word');
+    await lineWith(page, 'word').click();
+    await rib(page, 'Comment').scrollIntoViewIfNeeded();
+    await expect(rib(page, 'Comment')).toBeInViewport({ ratio: 1 });
+    expect(await row.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+    await rib(page, 'Comment').click();
+    expect(await value(page)).toContain('[[');
+
+    // A pill's shadow isn't cut off by the scrolling row.
+    const shadowRoom = await row.evaluate((el) => {
+      const pill = el.querySelector('.fl-pill').getBoundingClientRect();
+      const box = el.getBoundingClientRect();
+      return { above: pill.top - box.top, below: box.bottom - pill.bottom };
+    });
+    expect(shadowRoom.above).toBeGreaterThanOrEqual(6);
+    expect(shadowRoom.below).toBeGreaterThanOrEqual(12);
+  });
+
+  test('the topic menu opens whole from the scrolling row, wherever it has scrolled', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await open(page);
+    await setValue(page, 'word');
+    await lineWith(page, 'word').click();
+    const row = page.locator('flow-script .fl-ribbon');
+    for (const scrollLeft of [0, 40, 400]) {
+      await row.evaluate((el, left) => { el.scrollLeft = left; }, scrollLeft);
+      await topicButton(page).click();
+      const popup = page.locator('flow-script .fl-topics .fl-menu-popup');
+      await expect(popup).toBeVisible();
+      const box = await popup.boundingBox();
+      const trigger = await topicButton(page).boundingBox();
+      expect(box.x, `left at ${scrollLeft}`).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width, `right at ${scrollLeft}`).toBeLessThanOrEqual(320);
+      expect(box.y, `below the button at ${scrollLeft}`).toBeGreaterThanOrEqual(trigger.y + trigger.height);
+      expect(box.height).toBeGreaterThan(200);
+      await page.keyboard.press('Escape');
+    }
+    await chooseTopic(page, 'Scene');
+    expect(await value(page)).toBe('.word');
+  });
+
+  test('the formatting pills fit on one row', async ({ page }) => {
+    await open(page);
+    const bold = await rib(page, 'Bold').boundingBox();
+    const comment = await rib(page, 'Comment').boundingBox();
+    expect(Math.abs(bold.y - comment.y)).toBeLessThan(2);
+  });
+});
+
+test('page break and comment sit just after the topic dropdown, as icons at every size', async ({ page }) => {
+  for (const width of [1400, 800, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    await open(page);
+    const labels = await page.locator('flow-script .fl-format-pills > .fl-pill').evaluateAll((pills) => pills.map((p) => p.getAttribute('aria-label')));
+    expect(labels.slice(1, 4)).toEqual(['Topic', 'Page break', 'Comments']);
+    for (const name of ['Page break', 'Comment']) {
+      await expect(rib(page, name).locator('.fl-svg')).toBeVisible();
+      await expect(rib(page, name).locator('.fl-label')).toHaveCount(0);
+      await expect(rib(page, name)).toHaveAttribute('title', /./);
+    }
+  }
 });
 
 test('undo and redo sit at the bottom right, and follow what can be undone', async ({ page }) => {
@@ -408,7 +707,7 @@ test('a status message gets its own pill only when there is one', async ({ page 
 });
 
 test('the formatting row starts above the page, then floats over it on scrolling', async ({ page }) => {
-  await page.setViewportSize({ width: 1200, height: 700 });
+  await page.setViewportSize({ width: 900, height: 700 });
   await open(page);
   await setValue(page, Array.from({ length: 200 }, (_, i) => `Beat ${i}.`).join('\n\n'));
   const row = page.locator('flow-script .fl-ribbon');
@@ -427,7 +726,7 @@ test('the formatting row starts above the page, then floats over it on scrolling
   // The pills are solid and take clicks, while the gaps beside them reach the script.
   const hit = await host(page).evaluate((el, at) => {
     const name = (x, y) => el.shadowRoot.elementFromPoint(x, y)?.closest('.fl-pill, .fl-sheet')?.className ?? '';
-    return { gap: name(at.bold.x - 30, at.y), pill: name(at.bold.x + 5, at.bold.y + 5) };
+    return { gap: name(650, at.y), pill: name(at.bold.x + 5, at.bold.y + 5) };
   }, { x: after.x, y: after.y + 20, bold: await rib(page, 'Bold').boundingBox() });
   expect(hit.gap).toContain('fl-sheet');
   expect(hit.pill).toContain('fl-pill');
@@ -477,13 +776,8 @@ test('a short script in continuous views needs no scrolling', async ({ page }) =
 test('when narrow, labels give way to icons but the topic keeps its name', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
   await open(page);
-  await expect(rib(page, 'Comment').locator('.fl-label')).toBeVisible();
-  await expect(rib(page, 'Page break').locator('.fl-label')).toHaveText('Page break');
   await expect(viewButton(page).locator('.fl-label')).toBeVisible();
   await page.setViewportSize({ width: 500, height: 800 });
-  await expect(rib(page, 'Comment').locator('.fl-label')).toBeHidden();
-  await expect(rib(page, 'Page break').locator('.fl-label')).toBeHidden();
-  await expect(rib(page, 'Page break').locator('.fl-svg')).toBeVisible();
   await expect(rib(page, 'Comment')).toBeVisible();
   await expect(viewButton(page).locator('.fl-label')).toBeHidden();
   await expect(page.locator('flow-script .fl-topic-name')).toBeVisible();

@@ -10,7 +10,7 @@ import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { Fragment, Slice } from '@tiptap/pm/model';
 import { closeHistory } from '@tiptap/pm/history';
-import { parse, layout, titlePositions, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '@flow/core';
+import { parse, layout, titlePositions, applyLineType, dualAt, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '@flow/core';
 
 const NOTE_ICON = '\u{1F4AC}︎';
 
@@ -541,7 +541,7 @@ export class FlowEditor {
     this.onState({
       type: lineTypeKey(line),
       boneyard: parsed.comments.some((c) => c.type === 'boneyard' && c.start <= selEnd && selStart <= c.end),
-      dual: !!line.dual,
+      dual: dualAt(parsed.lines, first),
       ...emphasis,
       canUndo: this.editor.can().undo(),
       canRedo: this.editor.can().redo(),

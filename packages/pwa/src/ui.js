@@ -68,7 +68,7 @@ export function themePicker({ onChange, up } = {}) {
     trigger: () => {
       const { label } = PALETTES[theme.palette];
       const mode = MODES.find(([value]) => value === theme.mode)[1];
-      return { label: `Theme: ${label}, ${mode}`, content: [icon('palette'), h('span', {}, label)] };
+      return { label: `Theme: ${label}, ${mode}`, content: [icon('palette'), h('span', { class: 'fl-compact-hide' }, label)] };
     },
     onSelect: (value) => {
       const [kind, name] = value.split(':');

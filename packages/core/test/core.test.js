@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { PDFDict, PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import { newScript, parse, parseInline, layout, titlePositions, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '../src/index.js';
+import { newScript, parse, parseInline, layout, titlePositions, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey, dualAt } from '../src/index.js';
 import { renderPdf } from '../src/pdf.js';
 
 const types = (src) => parse(src).lines.map((l) => l.type);
@@ -666,5 +666,17 @@ describe('pdf', () => {
   it('keeps smart quotes and dashes', async () => {
     const { unsupported } = await renderPdf('“Quote” — it’s fine…');
     expect(unsupported).toEqual([]);
+  });
+});
+
+describe('dualAt', () => {
+  const lines = parse('Action.\n\nBOB\nHello.\n\nAMY ^\n(softly)\nHi.\nThere.\n\nMore action.').lines;
+
+  it('is true on every line of a dual speech', () => {
+    for (const index of [5, 6, 7, 8]) expect(dualAt(lines, index)).toBe(true);
+  });
+
+  it('is false on a normal speech and outside of speeches', () => {
+    for (const index of [0, 1, 2, 3, 4, 9, 10]) expect(dualAt(lines, index)).toBe(false);
   });
 });
