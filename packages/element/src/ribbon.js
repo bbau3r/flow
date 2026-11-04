@@ -7,39 +7,55 @@ const STYLE_BUTTONS = [
   { style: 'underline', label: 'U', cls: 'fl-u', title: 'Underline (Ctrl/Cmd+U)' },
 ];
 
+// Each badge shows what you could type by hand. Dialogue is the exception: Fountain
+// has no marker for it, since any text under a character cue is dialogue.
 const TYPE_GROUPS = [
   [
-    { type: 'scene', label: 'Scene', title: 'Scene heading' },
-    { type: 'action', label: 'Action', title: 'Action' },
-    { type: 'character', label: 'Character', title: 'Character cue' },
-    { type: 'parenthetical', label: 'Paren', title: 'Parenthetical' },
-    { type: 'dialogue', label: 'Dialogue', title: 'Dialogue' },
-    { type: 'lyrics', label: 'Lyrics', title: 'Lyrics' },
-    { type: 'transition', label: 'Transition', title: 'Transition' },
-    { type: 'centered', label: 'Centered', title: 'Centered text' },
+    { type: 'scene', icon: '.', label: 'Scene', title: 'Scene heading. Type . to force one.' },
+    { type: 'transition', icon: '>', label: 'Transition', title: 'Transition. Type > to force one.' },
   ],
   [
-    { type: 'section-1', label: '# Act', title: 'Outline section, level 1 (not printed)' },
-    { type: 'section-2', label: '## Seq', title: 'Outline section, level 2 (not printed)' },
-    { type: 'synopsis', label: '= Synopsis', title: 'Synopsis (not printed)' },
-    { type: 'note', label: 'Note', title: 'Note (shows as a comment bubble)' },
+    { type: 'character', icon: '@', label: 'Character', title: 'Character cue. Type @ to force one.' },
+    { type: 'parenthetical', icon: '()', label: 'Paren', title: 'Parenthetical. Wrap it in ( ) under a character.' },
+    { type: 'dialogue', icon: '“', label: 'Dialogue', title: 'Dialogue. No marker needed: it is any text under a character.' },
   ],
+  [{ type: 'dual', icon: '^', label: 'Dual', title: 'Dual dialogue: place this speech beside the previous one. Type ^ after the name.' }],
+  [
+    { type: 'action', icon: '!', label: 'Action', title: 'Action. Type ! to force it.' },
+    { type: 'centered', icon: '><', label: 'Centered', title: 'Centered text. Wrap it in > <.' },
+    { type: 'lyrics', icon: '~', label: 'Lyrics', title: 'Lyrics. Type ~ at the start of the line.' },
+  ],
+  [
+    { type: 'section-1', icon: '#', label: 'Act', title: 'Outline section, level 1. Type #. Not printed.' },
+    { type: 'section-2', icon: '##', label: 'Sequence', title: 'Outline section, level 2. Type ##. Not printed.' },
+    { type: 'synopsis', icon: '=', label: 'Synopsis', title: 'Synopsis. Type =. Not printed.' },
+  ],
+  [{ type: 'note', icon: '[[', label: 'Note', title: 'Note, shown as a comment bubble. Wrap it in [[ ]].' }],
 ];
 
-function button(label, title, className) {
+function button(label, title, { cls, icon } = {}) {
   const b = document.createElement('button');
   b.type = 'button';
-  b.textContent = label;
   b.title = title;
-  if (className) b.className = className;
+  if (cls) b.className = cls;
+  if (icon) {
+    const badge = document.createElement('span');
+    badge.className = 'fl-icon';
+    badge.textContent = icon;
+    badge.setAttribute('aria-hidden', 'true');
+    b.append(badge);
+  }
+  b.append(label);
   b.addEventListener('mousedown', (e) => e.preventDefault());
   return b;
 }
 
-const separator = () => {
-  const s = document.createElement('span');
-  s.className = 'fl-sep';
-  return s;
+const newGroup = (parent) => {
+  const g = document.createElement('div');
+  g.className = 'fl-group';
+  g.setAttribute('role', 'group');
+  parent.append(g);
+  return g;
 };
 
 export function createRibbon(actions) {
@@ -48,28 +64,30 @@ export function createRibbon(actions) {
   root.setAttribute('role', 'toolbar');
   root.setAttribute('aria-label', 'Formatting');
   const pressed = new Map();
-  const add = (b, key, onClick) => {
+  const add = (group, b, key, onClick) => {
     b.addEventListener('click', onClick);
     if (key) {
       b.setAttribute('aria-pressed', 'false');
       pressed.set(key, b);
     }
-    root.append(b);
+    group.append(b);
   };
 
-  for (const s of STYLE_BUTTONS) add(button(s.label, s.title, s.cls), s.style, () => actions.emphasis(s.style));
-  for (const group of TYPE_GROUPS) {
-    root.append(separator());
-    for (const t of group) add(button(t.label, t.title), t.type, () => actions.setLineType(t.type));
+  const styles = newGroup(root);
+  for (const s of STYLE_BUTTONS) add(styles, button(s.label, s.title, { cls: s.cls }), s.style, () => actions.emphasis(s.style));
+  for (const types of TYPE_GROUPS) {
+    const group = newGroup(root);
+    for (const t of types) {
+      const onClick = t.type === 'dual' ? () => actions.dual() : () => actions.setLineType(t.type);
+      add(group, button(t.label, t.title, { icon: t.icon }), t.type, onClick);
+    }
   }
-  root.append(separator());
-  add(button('Dual', 'Dual dialogue: place this speech beside the previous one'), 'dual', () => actions.dual());
-  add(button('Page break', 'Insert a page break'), null, () => actions.pageBreak());
-  root.append(separator());
+  add(newGroup(root), button('Page break', 'Insert a page break. Type === on its own line.', { icon: '===' }), null, () => actions.pageBreak());
+  const history = newGroup(root);
   const undo = button('Undo', 'Undo (Ctrl/Cmd+Z)');
   const redo = button('Redo', 'Redo (Ctrl/Cmd+Shift+Z)');
-  add(undo, null, () => actions.undo());
-  add(redo, null, () => actions.redo());
+  add(history, undo, null, () => actions.undo());
+  add(history, redo, null, () => actions.redo());
 
   const spacer = document.createElement('span');
   spacer.className = 'fl-spacer';
@@ -80,10 +98,10 @@ export function createRibbon(actions) {
   status.setAttribute('role', 'status');
   root.append(status);
 
+  const output = newGroup(root);
   const pageToggle = button('Page view', 'Show the script on standard pages, or as continuous text');
-  add(pageToggle, 'page-view', () => actions.toggleView());
-
-  root.append(createPdfMenu(actions));
+  add(output, pageToggle, 'page-view', () => actions.toggleView());
+  output.append(createPdfMenu(actions));
 
   return {
     root,
@@ -142,6 +160,7 @@ function createPdfMenu(actions) {
     check('boldScenes', 'Bold scene headings'),
     check('underlineScenes', 'Underline scene headings'),
     check('doubleSpaceScenes', 'Double space before scenes'),
+    check('sceneContinued', 'Scene continued across pages'),
     check('pageNumbers', 'Page numbers'),
     go,
   );

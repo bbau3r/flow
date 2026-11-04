@@ -10,7 +10,7 @@ const editor = (page) => page.locator('flow-script .ProseMirror');
 const value = (page) => host(page).evaluate((el) => el.value);
 const setValue = (page, v) => host(page).evaluate((el, v) => { el.value = v; }, v);
 const lineWith = (page, text) => page.locator('flow-script .fl-line', { hasText: text }).first();
-const rib = (page, name) => page.locator('flow-script .fl-ribbon button').getByText(name, { exact: true }).first();
+const rib = (page, name) => page.locator('flow-script .fl-ribbon').getByRole('button', { name, exact: true });
 
 async function open(page) {
   await page.goto(url);
@@ -95,10 +95,45 @@ test('ribbon type buttons change the line and show the current type', async ({ p
   expect(await value(page)).toBe('Top.\n\n~words here\n\nEnd.');
   await rib(page, 'Lyrics').click();
   expect(await value(page)).toBe('Top.\n\nwords here\n\nEnd.');
-  await rib(page, '# Act').click();
+  await rib(page, 'Act').click();
   expect(await value(page)).toBe('Top.\n\n# words here\n\nEnd.');
   await page.keyboard.press('Control+z');
   expect(await value(page)).toBe('Top.\n\nwords here\n\nEnd.');
+});
+
+test('ribbon buttons carry their fountain character, grouped as related', async ({ page }) => {
+  await open(page);
+  const groups = await page.locator('flow-script .fl-group').evaluateAll((els) => els.map((g) => (
+    [...g.querySelectorAll('button')].map((b) => {
+      const icon = b.querySelector('.fl-icon')?.textContent;
+      return icon ? `${icon} ${b.textContent.slice(icon.length)}` : b.textContent;
+    })
+  )));
+  expect(groups.slice(1, 7)).toEqual([
+    ['. Scene', '> Transition'],
+    ['@ Character', '() Paren', '“ Dialogue'],
+    ['^ Dual'],
+    ['! Action', '>< Centered', '~ Lyrics'],
+    ['# Act', '## Sequence', '= Synopsis'],
+    ['[[ Note'],
+  ]);
+  const badge = page.locator('flow-script .fl-icon').first();
+  await expect(badge).toHaveCSS('border-top-left-radius', '3px');
+  const box = await badge.boundingBox();
+  expect(Math.abs(box.width - box.height)).toBeLessThan(3);
+});
+
+test('scene continuation shows in read-only and on editor page breaks, from the PDF menu', async ({ page }) => {
+  await open(page);
+  const beats = Array.from({ length: 70 }, (_, i) => `Beat ${i}.`).join('\n');
+  await setValue(page, `INT. A - DAY\n\n${beats}`);
+  await page.locator('flow-script .fl-menu summary').click();
+  await page.locator('flow-script .fl-menu').getByText('Scene continued across pages').click();
+  await expect(page.locator('flow-script .fl-page-gap').first()).toContainText('(CONTINUED)');
+  await host(page).evaluate((el) => { el.readonly = true; });
+  const pages = page.locator('flow-script .fl-page');
+  await expect(pages.nth(0)).toContainText('(CONTINUED)');
+  await expect(pages.nth(1)).toContainText('CONTINUED:');
 });
 
 test('editor comments are bubbles that expand to the note text when opened', async ({ page }) => {

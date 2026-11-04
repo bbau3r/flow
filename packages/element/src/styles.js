@@ -28,7 +28,7 @@ ${THEME_CSS}
 /* Ribbon */
 .fl-ribbon {
   position: sticky; top: 0; z-index: 20;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 2px 3px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0;
   padding: 6px 8px;
   background: var(--flow-ribbon-bg);
   color: var(--flow-ribbon-ink);
@@ -42,6 +42,7 @@ ${THEME_CSS}
   list-style: none;
 }
 .fl-menu summary::-webkit-details-marker { display: none; }
+.fl-ribbon button, .fl-menu summary { display: inline-flex; align-items: center; }
 .fl-ribbon button:hover, .fl-menu summary:hover { background: color-mix(in srgb, var(--flow-accent) 15%, transparent); }
 .fl-ribbon button:focus-visible, .fl-menu summary:focus-visible, .fl-bubble summary:focus-visible { outline: 2px solid var(--flow-accent); outline-offset: 1px; }
 .fl-ribbon button[aria-pressed="true"] { background: var(--flow-accent); color: var(--flow-accent-ink); }
@@ -49,7 +50,19 @@ ${THEME_CSS}
 .fl-ribbon .fl-b { font-weight: 700; }
 .fl-ribbon .fl-i { font-style: italic; font-family: Georgia, serif; }
 .fl-ribbon .fl-u { text-decoration: underline; }
-.fl-sep { width: 1px; align-self: stretch; margin: 3px 4px; background: var(--flow-rule); }
+.fl-group { display: flex; align-items: center; gap: 2px; padding: 0 6px; }
+.fl-group { border-right: 1px solid var(--flow-rule); }
+.fl-group:first-child { padding-left: 0; }
+.fl-group:last-child, .fl-group:has(+ .fl-spacer) { border-right: 0; }
+.fl-group:last-child { padding-right: 0; }
+.fl-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.5em; height: 1.5em; padding: 0 0.2em; margin-right: 0.4em;
+  border: 1px solid var(--flow-rule); border-radius: 3px;
+  background: color-mix(in srgb, var(--flow-accent) 12%, transparent);
+  font: 700 0.95em/1 "Courier Prime", "Courier New", Courier, monospace;
+}
+.fl-ribbon button[aria-pressed="true"] .fl-icon { border-color: currentColor; background: transparent; }
 .fl-spacer { flex: 1; }
 .fl-menu { position: relative; }
 .fl-menu-body {
