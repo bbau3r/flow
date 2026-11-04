@@ -17,6 +17,12 @@ async function open(page) {
   await expect(editor(page)).toBeVisible();
 }
 
+// document.fonts.ready can resolve before Flow has registered its font, and machines
+// without Courier measure differently until it arrives, so wait for the faces themselves.
+const bundledFontLoaded = (page) => page.waitForFunction(
+  () => [...document.fonts].filter((f) => f.family.includes('Courier Prime') && f.status === 'loaded').length === 4,
+);
+
 test('source round-trips exactly through the editor', async ({ page }) => {
   await open(page);
   expect(await value(page)).toBe(SAMPLE);
@@ -374,8 +380,8 @@ test('page geometry: a letter page is 8.5x11in with one column at 0.1in', async 
   const box = await page.locator('flow-script .fl-page').first().boundingBox();
   expect(box.width).toBeCloseTo(816, 0);
   expect(box.height).toBeCloseTo(1056, 0);
-  const m = await host(page).evaluate(async (el) => {
-    await document.fonts.ready;
+  await bundledFontLoaded(page);
+  const m = await host(page).evaluate((el) => {
     const cell = [...el.shadowRoot.querySelectorAll('.fl-cell')].find((c) => c.textContent.length > 20);
     const r = document.createRange();
     r.selectNodeContents(cell);
@@ -386,12 +392,7 @@ test('page geometry: a letter page is 8.5x11in with one column at 0.1in', async 
 
 test('the bundled Courier Prime faces load and are used', async ({ page }) => {
   await open(page);
-  const loaded = await page.evaluate(async () => {
-    await document.fonts.ready;
-    await Promise.all([...document.fonts].map((f) => f.load()));
-    return [...document.fonts].filter((f) => f.family.includes('Courier Prime') && f.status === 'loaded').length;
-  });
-  expect(loaded).toBe(4);
+  await bundledFontLoaded(page);
 });
 
 test('editor wraps at the same column as the printed page', async ({ page }) => {
@@ -399,8 +400,7 @@ test('editor wraps at the same column as the printed page', async ({ page }) => 
   await open(page);
   const longLine = 'word '.repeat(30).trim();
   await setValue(page, longLine);
-  const printed = await host(page).evaluate((el) => el.exportPdf().then(() => true));
-  expect(printed).toBe(true);
+  await bundledFontLoaded(page);
   const metrics = await lineWith(page, 'word').evaluate((line) => {
     const r = document.createRange();
     r.selectNodeContents(line);
