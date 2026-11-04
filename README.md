@@ -126,7 +126,7 @@ Storage options live in `packages/pwa/src/providers/`. To add one, write an obje
 
 ### Deploying to GitHub Pages
 
-Pushing to `main` runs the tests, then builds and deploys. Other branches and pull requests only run the tests. It needs one setting, once: **Settings > Pages > Build and deployment > Source: GitHub Actions**. Without it, the deploy step fails with a 404.
+Pushing to `main` runs the tests, then builds and publishes to the `gh-pages` branch, which GitHub Pages serves. Other branches and pull requests only run the tests. Pages must stay set to **Deploy from a branch: `gh-pages`**, which is the current setting.
 
 The site then lives at `https://<owner>.github.io/<repo>/`. Builds use relative paths, so nothing depends on the repository's name.
 
@@ -151,7 +151,7 @@ For local development, put the same values in `packages/pwa/.env.local` with a `
 ## Known limitations
 
 - **Editor page breaks are approximate within a line.** They fall between source lines, so a paragraph or speech split across pages shows the break before the line, without `(MORE)`/`(CONT'D)`. Comments, sections and synopses also add visible height in the editor only, and they stay with the page they introduce. Read-only view and PDF are exact.
-- **PDFs use the built-in Courier,** which covers Western European characters only. Anything else prints as `?`, and the ribbon reports which characters were affected. Non-Latin scripts will need an embedded font.
+- **PDFs cover Western and some Central European characters.** Text uses the embedded Courier Prime, then the Courier built into PDF readers for accents it lacks. Anything else prints as `?`, and the ribbon reports which characters were affected. Other alphabets will need another font.
 - **Long scripts cost more per keystroke:** about 2.5 ms on a short script and 85 ms at 113 pages on a desktop. This needs work before the PWA targets phones.
 - **Browser coverage:** automated tests run in Chromium-based browsers only. Firefox and Safari are untested.
 - **Google Drive is tested against stand-ins:** Flow's own requests and handling are tested, but with fakes for Google's scripts and servers. It needs a real run once credentials exist.

@@ -137,10 +137,13 @@ export function renderEditor(root, doc) {
     timer = setTimeout(persist, AUTOSAVE_DELAY_MS);
   });
 
-  // New scripts put the cursor below the title page, ready to write.
+  // New scripts open on the cover page with the title selected, ready to type over.
   if (sessionStorage.getItem('flow-new-doc') === doc.id) {
     sessionStorage.removeItem('flow-new-doc');
-    script.addEventListener('flow-ready', () => script.scrollToLine(parse(doc.value).lines.length - 1), { once: true });
+    script.addEventListener('flow-ready', () => {
+      const title = parse(doc.value).lines[0];
+      script.selectText(0, title.contentStart, title.contentEnd);
+    }, { once: true });
   }
 
   window.addEventListener('keydown', onKeyDown);

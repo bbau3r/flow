@@ -102,12 +102,28 @@ test.describe('new scripts', () => {
     expect(edited).toContain('Author:');
   });
 
-  test('put the cursor below the title page, ready to write', async ({ page }) => {
+  test('open on the cover page with the title ready to type over', async ({ page }) => {
+    await page.setViewportSize({ width: 1100, height: 760 });
     await newScript(page);
-    await page.keyboard.type('FADE IN:');
+    const scrolled = await page.locator('flow-script').evaluate((el) => el.shadowRoot.querySelector('.fl-scroll').scrollTop);
+    expect(scrolled).toBe(0);
+    await expect(lineWith(page, 'Written by')).toBeInViewport();
+    await page.keyboard.type('My Film');
     const lines = (await value(page)).split('\n');
-    expect(lines.at(-1)).toBe('FADE IN:');
-    expect(lines.at(-2)).toBe('');
+    expect(lines[0]).toBe('Title: My Film');
+    expect(lines[1]).toBe('Credit: Written by');
+    await expect(page.locator('.doc-name')).toHaveText('My Film');
+  });
+
+  test('use Courier Prime throughout the app', async ({ page }) => {
+    await newScript(page);
+    const family = /^"Courier Prime"/;
+    await expect(page.locator('.doc-name')).toHaveCSS('font-family', family);
+    await expect(page.locator('#save')).toHaveCSS('font-family', family);
+    await expect(page.locator('flow-script .fl-ribbon')).toHaveCSS('font-family', family);
+    await page.goBack();
+    await expect(page.locator('h1')).toHaveCSS('font-family', family);
+    await page.waitForFunction(() => [...document.fonts].some((f) => f.family.includes('Courier Prime') && f.status === 'loaded'));
   });
 
   test('open as pages on a big screen and continuous text on a phone', async ({ page }) => {
@@ -141,7 +157,7 @@ test.describe('autosave and recent', () => {
     expect(await value(page)).toContain('Typed before reload.');
 
     await page.locator('.home-link').click();
-    const row = page.locator('.recent-row', { hasText: 'Untitled Screenplay' });
+    const row = page.locator('.recent-row', { hasText: 'Typed before reload.' });
     await expect(row).toContainText('unsaved changes');
     await row.locator('.recent-open').click();
     await expect(editor(page)).toBeVisible();

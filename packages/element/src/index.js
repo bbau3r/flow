@@ -1,6 +1,6 @@
-import { FlowScript } from './flow-script.js';
+import { FlowScript, loadFonts } from './flow-script.js';
 
-export { FlowScript };
+export { FlowScript, loadFonts };
 export { registerTheme } from './themes.js';
 export { parse, layout, DEFAULT_OPTIONS } from '@flow/core';
 

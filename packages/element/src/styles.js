@@ -12,7 +12,7 @@ ${THEME_CSS}
   min-height: 0;
   background: var(--flow-desk);
   color: var(--flow-ink);
-  font-family: system-ui, sans-serif;
+  font-family: var(--flow-ui-font, system-ui, sans-serif);
   --fl-script-font: var(--flow-font, "Courier Prime", "Courier New", Courier, monospace);
   --fl-page-w: 51em;
   --fl-page-h: 66em;
@@ -84,6 +84,7 @@ ${THEME_CSS}
 /* Read-only pages */
 .fl-pages { display: flex; flex-direction: column; align-items: center; gap: 1.5em; padding: 1.5em 0; }
 .fl-page, .fl-sheet {
+  position: relative;
   width: var(--fl-page-w);
   background: var(--flow-paper);
   color: var(--flow-ink);
@@ -100,7 +101,7 @@ ${THEME_CSS}
 /* Comment bubbles. The summary keeps its place and size whether open or closed, and
    the note opens as an overlay behind it, so together they read as one pill and
    nothing around them moves. */
-.fl-bubble { position: relative; isolation: isolate; font-family: system-ui, sans-serif; font-size: 0.8em; line-height: 1.3; }
+.fl-bubble { position: relative; isolation: isolate; font-family: var(--flow-ui-font, system-ui, sans-serif); font-size: 0.8em; line-height: 1.3; }
 .fl-bubble[open] { z-index: 6; }
 .fl-bubble summary {
   position: relative; z-index: 1;
@@ -147,7 +148,7 @@ ${THEME_CSS}
 .fl-line .fl-u { text-decoration: underline; }
 .fl-scene-number { color: var(--flow-muted); }
 .fl-line.fl-section, .fl-line.fl-synopsis {
-  font-family: system-ui, sans-serif; color: var(--flow-muted); text-transform: none;
+  font-family: var(--flow-ui-font, system-ui, sans-serif); color: var(--flow-muted); text-transform: none;
 }
 .fl-line.fl-section { font-weight: 600; }
 .fl-line.fl-section-1 { font-size: 1.15em; }
@@ -167,6 +168,20 @@ ${THEME_CSS}
 .fl-sheet .fl-line.fl-dialogue, .fl-sheet .fl-line.fl-in-dialogue { margin-left: 6em; max-width: 21.6em; }
 .fl-sheet .fl-line { max-width: var(--fl-action-w); }
 
+/* The cover page in page view: placed by row, as in print, and always a full page */
+.fl-sheet .fl-line.fl-title-placed {
+  position: absolute; top: calc((6 + var(--fl-title-y)) * 1em);
+  left: 0; right: 0; max-width: none; text-align: center;
+}
+.fl-sheet .fl-line.fl-title-placed.fl-title-notes, .fl-sheet .fl-line.fl-title-placed.fl-title-copyright {
+  left: 9em; right: auto; width: 18em; text-align: left;
+}
+.fl-sheet .fl-line.fl-title-placed.fl-title-draft-date, .fl-sheet .fl-line.fl-title-placed.fl-title-date, .fl-sheet .fl-line.fl-title-placed.fl-title-contact {
+  left: calc(9em + var(--fl-action-w) - 18em); right: auto; width: 18em; text-align: left;
+}
+.fl-sheet .fl-title-separator:not(.fl-active) { height: 0; min-height: 0; overflow: hidden; }
+.fl-sheet .fl-page-gap.fl-title-gap { margin-top: calc(var(--fl-page-h) - 6em); }
+
 /* Flow view: same relationships, proportional to whatever width is available */
 .fl-flow { max-width: 44em; margin: 0 auto; padding: 1.5em; background: var(--flow-paper); color: var(--flow-ink); min-height: 100%; line-height: 1.35; font-size: 16px; }
 .fl-flow .fl-line.fl-character { margin-left: 32%; }
@@ -183,6 +198,7 @@ ${THEME_CSS}
 
 /* Editor */
 .fl-sheet {
+  position: relative;
   --fl-pad-right: calc(var(--fl-page-w) - 9em - var(--fl-action-w));
   margin: 1.5em auto; padding: 6em var(--fl-pad-right) 6em 9em; min-height: var(--fl-page-h);
 }
@@ -194,13 +210,13 @@ ${THEME_CSS}
 .fl-active .fl-comment-src { display: inline; color: var(--flow-bubble-ink); background: var(--flow-bubble-bg); font-style: normal; font-weight: 400; }
 .fl-active .fl-bubble-chip { display: none; }
 .fl-comment-hidden:not(.fl-active) { display: none; }
-.fl-editor-host .fl-bubble-chip { margin: 0 0.25em; font-family: system-ui, sans-serif; font-size: 0.8em; line-height: 1.3; vertical-align: baseline; }
+.fl-editor-host .fl-bubble-chip { margin: 0 0.25em; font-family: var(--flow-ui-font, system-ui, sans-serif); font-size: 0.8em; line-height: 1.3; vertical-align: baseline; }
 .fl-boneyard { color: var(--flow-muted); opacity: 0.75; text-decoration: line-through; }
 .fl-page-gap {
   display: flex; align-items: center; justify-content: flex-end;
   height: 3em; margin: 2em calc(-1 * var(--fl-pad-right, 0em)) 2em -9em; padding: 0 1em;
   background: var(--flow-desk); color: var(--flow-muted);
-  font-family: system-ui, sans-serif;
+  font-family: var(--flow-ui-font, system-ui, sans-serif);
   box-shadow: inset 0 3px 4px -3px var(--flow-shadow), inset 0 -3px 4px -3px var(--flow-shadow);
   user-select: none;
 }

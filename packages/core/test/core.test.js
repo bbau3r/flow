@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { PDFDocument } from 'pdf-lib';
-import { newScript, parse, parseInline, layout, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '../src/index.js';
+import { PDFDict, PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
+import { newScript, parse, parseInline, layout, titlePositions, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '../src/index.js';
 import { renderPdf } from '../src/pdf.js';
 
 const types = (src) => parse(src).lines.map((l) => l.type);
@@ -373,6 +374,17 @@ describe('layout', () => {
       expect(parse(source).lines[startOf(source)].type).toBe('dialogue');
     });
   });
+  it('places each title line where it prints, for the editor to match', () => {
+    const parsed = parse('Title: BIG\nAuthor: Me\nContact:\n    a@b.c\nNotes: Hi\n\nAction.');
+    const positions = titlePositions(parsed);
+    const printed = layout(parsed).pages[0].rows;
+    for (const [line, y] of positions) expect(printed.find((r) => r.line === line).y).toBe(y);
+    expect(positions.get(0)).toBe(15);
+    expect(positions.get(3)).toBe(54);
+    expect(titlePositions(parsed, { titlePage: false }).size).toBe(0);
+    expect(titlePositions(parse('Action.')).size).toBe(0);
+    expect(titlePositions(parsed, { paper: 'a4' }).get(3)).toBe(56);
+  });
   it('reports the start of page 1 only when a title page comes before it', () => {
     const titled = 'Title: BIG\n\n# Act One\n\nINT. A - DAY\n\nAction.';
     expect(layout(parse(titled)).pageStarts).toEqual([{ number: 1, line: 2, continued: false }]);
@@ -587,6 +599,63 @@ describe('pdf', () => {
     expect(doc.getPage(0).getSize()).toEqual({ width: 612, height: 792 });
     expect(doc.getTitle()).toBeTruthy();
     expect(unsupported).toEqual([]);
+  });
+  describe('with Courier Prime embedded', () => {
+    const face = (name) => readFileSync(new URL(`../../../node_modules/@fontsource/courier-prime/files/courier-prime-latin-${name}.woff`, import.meta.url));
+    const fonts = { regular: face('400-normal'), bold: face('700-normal'), italic: face('400-italic'), boldItalic: face('700-italic') };
+    const fontNames = async (bytes) => {
+      const doc = await PDFDocument.load(bytes);
+      return doc.context.enumerateIndirectObjects()
+        .map(([, object]) => /\/BaseFont \/(\S+)/.exec(object.toString())?.[1])
+        .filter(Boolean);
+    };
+
+    it('uses it for each style that appears, and only those', async () => {
+      const names = await fontNames((await renderPdf('Plain and **bold** text.', { fonts })).bytes);
+      expect(names.some((n) => /CourierPrime-Regular/.test(n))).toBe(true);
+      expect(names.some((n) => /CourierPrime-Bold/.test(n))).toBe(true);
+      expect(names.some((n) => /Italic/.test(n))).toBe(false);
+    });
+    it('embeds font programs that are complete and that PDF readers can use', async () => {
+      const doc = await PDFDocument.load((await renderPdf('Some **bold** text.', { fonts })).bytes);
+      const programs = [];
+      for (const [, object] of doc.context.enumerateIndirectObjects()) {
+        if (!(object instanceof PDFDict)) continue;
+        for (const key of ['FontFile', 'FontFile2', 'FontFile3']) {
+          const ref = object.get(PDFName.of(key));
+          if (ref) programs.push(Buffer.from(decodePDFRawStream(doc.context.lookup(ref)).decode()));
+        }
+      }
+      expect(programs).toHaveLength(2);
+      for (const program of programs) {
+        expect(program.subarray(0, 4).toString('latin1')).not.toMatch(/^wOF/);
+        const parsed = fontkit.create(program);
+        expect(parsed.numGlyphs).toBeGreaterThan(1);
+        // A rebuilt font that loses these tables opens in nothing, or shows blank text.
+        for (const table of ['glyf', 'loca', 'head', 'hmtx']) expect(parsed.directory.tables[table], table).toBeTruthy();
+        // Layout relies on every character being 0.6em wide.
+        expect(parsed.getGlyph(1).advanceWidth / parsed.unitsPerEm).toBeCloseTo(0.6, 2);
+      }
+    });
+    it('renders the whole sample with no characters lost', async () => {
+      const src = readFileSync(new URL('../../element/demo/sample.fountain', import.meta.url), 'utf8');
+      const { pageCount, unsupported, bytes } = await renderPdf(src, { fonts });
+      expect(pageCount).toBe(layout(parse(src)).pages.length);
+      expect(unsupported).toEqual([]);
+      expect(await fontNames(bytes)).not.toContain('Courier');
+    });
+    it('keeps smart quotes and dashes in Courier Prime', async () => {
+      const { unsupported, bytes } = await renderPdf('“Quote” — it’s fine…', { fonts });
+      expect(unsupported).toEqual([]);
+      expect(await fontNames(bytes)).not.toContain('Courier');
+    });
+    it('falls back to built-in Courier for accents it lacks, then reports the rest', async () => {
+      const { unsupported, bytes } = await renderPdf('Plain Ž 日', { fonts });
+      expect(unsupported).toEqual(['日']);
+      const names = await fontNames(bytes);
+      expect(names).toContain('Courier');
+      expect(names.some((n) => n.includes('CourierPrime'))).toBe(true);
+    });
   });
   it('supports A4 and reports characters Courier cannot draw', async () => {
     const { bytes, unsupported } = await renderPdf('Hello 日本', { paper: 'a4' });
