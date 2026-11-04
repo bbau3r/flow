@@ -8,6 +8,8 @@ import { parseInline } from './inline.js';
 export const SCENE_RE = /^(?:int\.?\/ext|i\/e|int|ext|est)[. ]/i;
 const TITLE_KEYS = new Set(['title', 'credit', 'author', 'authors', 'source', 'draft date', 'date', 'contact', 'copyright', 'notes', 'revision']);
 const MASK = '\0';
+// A title page value's indent: two or more spaces or a tab, whatever else follows them.
+export const TITLE_INDENT = /^(?: {2}|\t)[ \t]*/;
 
 function findComments(src) {
   const comments = [];
@@ -193,21 +195,35 @@ export function parse(input) {
   let bodyStart = 0;
   const first = lines.findIndex((l) => !l.blank && !l.commentOnly);
   const keyRe = /^([^\s:][^:]*):[ \t]*/;
+  const titleContinues = (j) => {
+    const next = lines[j];
+    return !next || next.blank || TITLE_INDENT.test(next.masked) || TITLE_KEYS.has(keyRe.exec(next.masked)?.[1].trim().toLowerCase());
+  };
   if (first >= 0 && TITLE_KEYS.has(keyRe.exec(lines[first].visible)?.[1].trim().toLowerCase())) {
     let j = first;
+    // The first value under a key sets the indent the rest of that key's values have to match.
+    let fieldIndent = null;
+    const fitsField = (text) => {
+      const indent = TITLE_INDENT.exec(text)?.[0];
+      return indent !== undefined && (fieldIndent === null || indent === fieldIndent);
+    };
     for (; j < lines.length; j++) {
       const l = lines[j];
       if (l.commentOnly) continue;
-      if (l.blank) break;
+      // Indentation alone is a value still to be typed, as long as the title page goes on after it.
+      if (l.blank && !(titlePage.length && fitsField(l.raw) && titleContinues(j + 1))) break;
+      l.blank = false;
       const key = /^[ \t]/.test(l.masked) ? null : keyRe.exec(l.masked);
       if (key) {
+        fieldIndent = null;
         l.titleKey = key[1].trim().toLowerCase();
         l.prefix.push([0, key[0].length]);
         l.contentStart = key[0].length;
         titlePage.push({ key: l.titleKey, label: key[1].trim(), lines: [j] });
-      } else if (titlePage.length && /^(?: {3,}|\t)/.test(l.masked)) {
+      } else if (titlePage.length && fitsField(l.masked)) {
+        if (l.visible.trim()) fieldIndent = TITLE_INDENT.exec(l.masked)[0];
         l.titleKey = titlePage[titlePage.length - 1].key;
-        l.contentStart = firstReal(l.masked);
+        l.contentStart = firstReal(l.masked) < 0 ? l.raw.length : firstReal(l.masked);
         l.prefix.push([0, l.contentStart]);
         titlePage[titlePage.length - 1].lines.push(j);
       } else {
@@ -263,4 +279,10 @@ export function parse(input) {
   }
 
   return { source, lines, comments, titlePage, outline: buildOutline(lines) };
+}
+
+/** The script's title on one line, with a title on several lines joined by separators. */
+export function scriptTitle({ lines, titlePage }) {
+  const entry = titlePage.find((e) => e.key === 'title');
+  return entry ? entry.lines.map((i) => lines[i].text.trim()).filter(Boolean).join(' \u00b7 ') : '';
 }

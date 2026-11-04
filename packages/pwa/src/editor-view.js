@@ -1,17 +1,11 @@
 import { button, openModal, pill, pillSep, tabs } from '@flow/element/source';
-import { parse } from '@flow/core';
+import { parse, scriptTitle } from '@flow/core';
 import { putDoc } from './store.js';
 import { getProvider, providers } from './providers/index.js';
 import { currentTheme, h, themePicker, toast } from './ui.js';
 
 const AUTOSAVE_DELAY_MS = 300;
 const SCALE_KEY = 'flow-scale';
-
-const titleOf = (value) => {
-  const { lines, titlePage } = parse(value);
-  const entry = titlePage.find((e) => e.key === 'title');
-  return entry ? lines[entry.lines[0]].text.trim() : '';
-};
 
 // Asks where a script that isn't a file yet should go. With only one place available
 // there's nothing to ask, so the browser's own save dialog comes up straight away.
@@ -159,7 +153,7 @@ export function renderEditor(root, doc) {
     doc.value = event.detail.value;
     doc.updatedAt = Date.now();
     // A script nobody has saved yet takes its name from its title page.
-    if (doc.savedValue === null) doc.name = titleOf(doc.value) || 'Untitled Screenplay';
+    if (doc.savedValue === null) doc.name = scriptTitle(parse(doc.value)) || 'Untitled Screenplay';
     refreshHeader();
     clearTimeout(timer);
     timer = setTimeout(persist, AUTOSAVE_DELAY_MS);

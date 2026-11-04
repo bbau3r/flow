@@ -10,7 +10,7 @@ import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { Fragment, Slice } from '@tiptap/pm/model';
 import { closeHistory } from '@tiptap/pm/history';
-import { parse, layout, titlePositions, applyLineType, dualAt, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '@flow/core';
+import { parse, layout, titlePositions, TITLE_INDENT, continueTitleField, joinTitleValue, applyLineType, dualAt, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '@flow/core';
 
 const NOTE_ICON = '\u{1F4AC}︎';
 
@@ -123,7 +123,8 @@ function lineDecorations(node, pos, line, index, cover) {
     class: classes.filter(Boolean).join(' '),
     ...(row !== undefined ? { style: `--fl-title-y: ${row}` } : {}),
   }));
-  for (const [a, b] of line.markers) if (b > a) decorations.push(Decoration.inline(at(a), at(b), { class: 'fl-marker' }));
+  const indented = line.type === 'title' && TITLE_INDENT.test(line.raw);
+  for (const [a, b] of line.markers) if (b > a) decorations.push(Decoration.inline(at(a), at(b), { class: indented && a === 0 ? 'fl-marker fl-indent' : 'fl-marker' }));
   if (line.sceneNumberRange) decorations.push(Decoration.inline(at(line.sceneNumberRange[0]), at(line.sceneNumberRange[1]), { class: 'fl-scene-number' }));
   for (const run of line.runs) {
     const classes = [run.bold && 'fl-b', run.italic && 'fl-i', run.underline && 'fl-u'].filter(Boolean).join(' ');
@@ -229,6 +230,13 @@ function activeDecorations(state, parsed, focused) {
       last = Math.max(last, c.lineEnd);
     }
   }
+  // So does a title page field, so that its key shows from any of its values.
+  for (const { lines } of parsed.titlePage) {
+    if (lines[0] <= last && lines[lines.length - 1] >= first) {
+      first = Math.min(first, lines[0]);
+      last = Math.max(last, lines[lines.length - 1]);
+    }
+  }
   const decorations = [];
   let pos = 0;
   for (let i = 0; i <= last; i++) {
@@ -299,6 +307,17 @@ const FountainDecorations = Extension.create({
           },
         },
       }),
+      // A title page value's indent is out of sight, so the cursor doesn't stop inside it.
+      new Plugin({
+        appendTransaction: (transactions, _old, state) => {
+          if (showSource() || !transactions.some((tr) => tr.selectionSet || tr.docChanged)) return null;
+          const { selection, doc } = state;
+          if (!selection.empty) return null;
+          const line = scriptKey.getState(state).parsed.lines[selection.$from.index(0)];
+          if (line.type !== 'title' || !TITLE_INDENT.test(line.raw) || selection.$from.parentOffset >= line.contentStart) return null;
+          return state.tr.setSelection(TextSelection.create(doc, selection.$from.start() + line.contentStart));
+        },
+      }),
       // Page breaks need a full layout, so they follow a pause in typing.
       new Plugin({
         key: gapsKey,
@@ -331,11 +350,18 @@ export class FlowEditor {
     this.onChange = onChange;
     this.onState = onState;
     this.getLayoutOptions = getLayoutOptions;
+    this.showSource = showSource;
     this.silent = false;
     const self = this;
     const Commands = Extension.create({
       name: 'flowKeys',
+      priority: 1000, // ahead of the default Enter
       addKeyboardShortcuts: () => ({
+        Enter: () => self.titleEnter(),
+        Backspace: () => self.titleBackspace(),
+        ArrowLeft: () => self.titleLeft(),
+        ArrowUp: () => self.titleVertical(-1),
+        ArrowDown: () => self.titleVertical(1),
         'Mod-b': () => (self.emphasis('bold'), true),
         'Mod-i': () => (self.emphasis('italic'), true),
         'Mod-u': () => (self.emphasis('underline'), true),
@@ -466,6 +492,60 @@ export class FlowEditor {
   commitFromOutline(lines, { typing = false } = {}) {
     const tr = this.linesTransaction(lines);
     this.editor.view.dispatch(typing ? tr : closeHistory(tr));
+  }
+
+  titleEnter() {
+    const { selection, doc } = this.editor.state;
+    if (!selection.empty) return false;
+    const result = continueTitleField(docLines(doc), selection.$from.index(0), selection.$from.parentOffset);
+    if (result) this.commit(result.lines, result.cursor);
+    return !!result;
+  }
+
+  // The title page line the cursor is on, unless the indents are on show in the Fountain view.
+  titleCursor() {
+    const { selection } = this.editor.state;
+    if (this.showSource() || !selection.empty) return null;
+    const index = selection.$from.index(0);
+    const line = scriptKey.getState(this.editor.state).parsed.lines[index];
+    return line.type === 'title' ? { index, line, offset: selection.$from.parentOffset } : null;
+  }
+
+  atValueStart({ index, line, offset }) {
+    return index > 0 && TITLE_INDENT.test(line.raw) && offset <= line.contentStart;
+  }
+
+  titleBackspace() {
+    const current = this.titleCursor();
+    if (!current || !this.atValueStart(current)) return false;
+    const { lines, cursor } = joinTitleValue(docLines(this.editor.state.doc), current.index);
+    this.commit(lines, cursor);
+    return true;
+  }
+
+  // Left from where a value starts would only land in its hidden indent.
+  titleLeft() {
+    const current = this.titleCursor();
+    if (!current || !this.atValueStart(current)) return false;
+    const { state } = this.editor;
+    this.view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, this.lineStart(current.index) - 1)).scrollIntoView());
+    return true;
+  }
+
+  // Title page lines are placed around the page, so the browser can't follow them by sight.
+  // These go through them in order, leaving a wrapped line's own rows to the browser.
+  titleVertical(direction) {
+    const current = this.titleCursor();
+    if (!current || !this.view.endOfTextblock(direction < 0 ? 'up' : 'down')) return false;
+    const { index, line, offset } = current;
+    const target = scriptKey.getState(this.editor.state).parsed.lines[index + direction];
+    if (target?.type !== 'title') return false;
+    const column = Math.max(0, offset - line.contentStart);
+    const end = Math.max(target.contentStart, target.contentEnd);
+    const { state } = this.editor;
+    const pos = this.lineStart(index + direction) + 1 + Math.min(target.contentStart + column, end);
+    this.view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, pos)).scrollIntoView());
+    return true;
   }
 
   setLineType(type) {

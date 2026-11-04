@@ -71,15 +71,17 @@ const runsLen = (runs) => runs.reduce((n, r) => n + r.text.length, 0);
 const plainRun = (text) => [{ text, bold: false, italic: false, underline: false }];
 const blankRow = (line) => ({ cells: [], line, type: 'blank', notes: [] });
 
-function titleRows(parsed, profile) {
+// A value line with only its indent so far has a place on screen for the cursor, but prints nothing.
+function titleRows(parsed, profile, { placeEmpty = false } = {}) {
   const { titlePage, lines } = parsed;
   if (!titlePage.length) return null;
   const rows = [];
+  const shown = (i) => placeEmpty || lines[i].raw.trim() !== '';
   const pageCols = Math.round(profile.widthIn * 10);
   const wrapped = (keys, width) =>
     titlePage
       .filter((e) => keys.includes(e.key))
-      .map((e) => e.lines.flatMap((i) => wrapRuns(cleanRuns(lines[i]), width).map((runs) => ({ runs, line: i }))));
+      .map((e) => e.lines.filter(shown).flatMap((i) => wrapRuns(cleanRuns(lines[i]), width).map((runs) => ({ runs, line: i }))));
 
   let y = 15; // 3.5in from the page top, below the 1in margin
   for (const entry of wrapped(['title', 'credit', 'author', 'authors', 'source'], profile.actionWidth)) {
@@ -104,7 +106,7 @@ export function titlePositions(parsed, options = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const positions = new Map();
   if (!opts.titlePage) return positions;
-  for (const row of titleRows(parsed, PROFILES[opts.paper] ?? PROFILES.letter) ?? []) {
+  for (const row of titleRows(parsed, PROFILES[opts.paper] ?? PROFILES.letter, { placeEmpty: true }) ?? []) {
     if (!positions.has(row.line)) positions.set(row.line, row.y);
   }
   return positions;

@@ -757,6 +757,18 @@ test.describe('editor bars', () => {
     await expect(page.locator('.doc-state')).toHaveText('On this device only');
   });
 
+  test('the document pill joins a title on several lines with separators', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await newScript(page);
+    await page.locator('flow-script').evaluate((el) => { el.value = 'Title:\n    The Long\n    Way Home\nAuthor: Me\n\nAction.'; });
+    await page.locator('flow-script .fl-line', { hasText: 'Way Home' }).click();
+    await page.waitForTimeout(100);
+    await page.keyboard.press('End');
+    await page.waitForTimeout(100);
+    await page.keyboard.type('!');
+    await expect(page.locator('.doc-name')).toHaveText('The Long · Way Home!');
+  });
+
   test('Write comes first, and the address remembers the tab through a reload', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 700 });
     await newScript(page);
