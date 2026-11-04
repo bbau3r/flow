@@ -40,6 +40,20 @@ async function writeTo(handle, text) {
   return (await handle.getFile()).lastModified;
 }
 
+async function pickSaveTarget(doc) {
+  try {
+    return await window.showSaveFilePicker({
+      suggestedName: fileNameFor(doc.name),
+      types: TYPES,
+      // startIn opens the folder holding that file. Otherwise, reuse the last folder.
+      ...(doc.ref?.handle ? { startIn: doc.ref.handle } : { id: PICKER_ID }),
+    });
+  } catch (err) {
+    if (isCancel(err)) return null;
+    throw err;
+  }
+}
+
 export const localProvider = {
   id: 'local',
   label: 'This device',
@@ -51,8 +65,8 @@ export const localProvider = {
     ? 'Choose the folder and file name.'
     : 'Downloads a copy. This browser can\u2019t choose a folder.'),
 
-  // Browsers never reveal a file's folder path, only that they can write back to it.
-  location: (doc) => (doc.ref?.handle ? 'Original file on this device' : 'Downloaded copy'),
+  // Browsers can open a file's folder but never reveal its path.
+  location: (doc) => (doc.ref?.handle ? 'On this device' : 'Downloaded copy'),
 
   async open() {
     if (!canWriteFiles()) {
@@ -69,35 +83,25 @@ export const localProvider = {
     }
   },
 
-  async save(doc, { force = false } = {}) {
-    const { handle, lastModified } = doc.ref ?? {};
-    // Without a file to return to, a browser that can ask where to save should ask.
-    if (!handle) return canWriteFiles() ? this.saveAs(doc) : download(doc);
-    // The browser forgets write permission between sessions, so ask again if needed.
-    if ((await handle.queryPermission({ mode: 'readwrite' })) !== 'granted'
-      && (await handle.requestPermission({ mode: 'readwrite' })) !== 'granted') {
-      throw new Error('Permission to save to this file was denied.');
+  // Saving always shows the OS dialog, opened in the file's folder with its name filled
+  // in, so confirming is one keypress and choosing somewhere else is just as easy.
+  async save(doc, { force = false, target = null } = {}) {
+    if (!canWriteFiles()) return download(doc);
+    const original = doc.ref?.handle;
+    const handle = target ?? await pickSaveTarget(doc);
+    if (!handle) return null;
+    if (!force && original && await handle.isSameEntry(original)) {
+      const current = await handle.getFile();
+      if (current.lastModified > doc.ref.lastModified) {
+        const conflict = new ConflictError(`${doc.name} changed outside Flow since it was last opened or saved.`);
+        conflict.target = handle;
+        throw conflict;
+      }
     }
-    const current = await handle.getFile();
-    if (!force && current.lastModified > lastModified) {
-      throw new ConflictError(`${doc.name} changed outside Flow since it was last opened or saved.`);
-    }
-    return { name: doc.name, ref: { handle, lastModified: await writeTo(handle, doc.value) } };
+    return { name: handle.name, ref: { handle, lastModified: await writeTo(handle, doc.value) } };
   },
 
-  async saveAs(doc) {
-    if (!canWriteFiles()) return download(doc);
-    try {
-      // Start next to the original when there is one, so a copy lands beside it.
-      const handle = await window.showSaveFilePicker({
-        suggestedName: fileNameFor(doc.name),
-        types: TYPES,
-        ...(doc.ref?.handle ? { startIn: doc.ref.handle } : { id: PICKER_ID }),
-      });
-      return { name: handle.name, ref: { handle, lastModified: await writeTo(handle, doc.value) } };
-    } catch (err) {
-      if (isCancel(err)) return null;
-      throw err;
-    }
+  saveAs(doc) {
+    return this.save(doc);
   },
 };

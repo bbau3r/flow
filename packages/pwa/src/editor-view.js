@@ -80,7 +80,7 @@ export function renderEditor(root, doc) {
     } catch (err) {
       if (err.name !== 'ConflictError') throw err;
       if (!confirm(`${err.message}\n\nOverwrite it with this version?`)) return null;
-      return saveExisting(provider, { force: true });
+      return saveExisting(provider, { force: true, target: err.target });
     }
   };
 
