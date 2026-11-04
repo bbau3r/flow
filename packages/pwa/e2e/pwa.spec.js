@@ -294,6 +294,21 @@ test.describe('local files with direct saving', () => {
     expect(save).toEqual({ kind: 'save', id: 'flow-scripts', suggestedName: 'Untitled Screenplay.fountain' });
   });
 
+  test('a title on several lines is saved with dashes in the file name', async ({ page }) => {
+    await newScript(page);
+    await page.locator('flow-script').evaluate((el) => { el.value = 'Title:\n    The Long\n    Way Home\n\nAction.'; });
+    await page.locator('flow-script .fl-line', { hasText: 'Way Home' }).click();
+    await page.waitForTimeout(100);
+    await page.keyboard.press('End');
+    await page.waitForTimeout(100);
+    await page.keyboard.type('!');
+    await expect(page.locator('.doc-name')).toHaveText('The Long · Way Home!');
+    await page.locator('#save').click();
+    await expect(page.locator('.doc-state')).toHaveText('Saved');
+    const save = (await page.evaluate(() => window.pickerCalls)).find((c) => c.kind === 'save');
+    expect(save.suggestedName).toBe('The Long - Way Home!.fountain');
+  });
+
   test('a script with no file to return to asks where instead of downloading', async ({ page }) => {
     await newScript(page);
     await page.locator('.home-link').click();

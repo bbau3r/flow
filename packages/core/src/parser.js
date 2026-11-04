@@ -281,8 +281,8 @@ export function parse(input) {
   return { source, lines, comments, titlePage, outline: buildOutline(lines) };
 }
 
-/** The script's title on one line, with a title on several lines joined by separators. */
-export function scriptTitle({ lines, titlePage }) {
+/** The script's title on one line, with a title on several lines joined by the separator. */
+export function scriptTitle({ lines, titlePage }, separator = ' \u00b7 ') {
   const entry = titlePage.find((e) => e.key === 'title');
-  return entry ? entry.lines.map((i) => lines[i].text.trim()).filter(Boolean).join(' \u00b7 ') : '';
+  return entry ? entry.lines.map((i) => lines[i].text.trim()).filter(Boolean).join(separator) : '';
 }

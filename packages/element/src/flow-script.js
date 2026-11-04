@@ -244,7 +244,7 @@ export class FlowScript extends HTMLElement {
   /** Builds the PDF and saves it as a download. */
   async downloadPdf(options = {}) {
     const result = await this.exportPdf(options);
-    const name = scriptTitle(parse(this.value));
+    const name = scriptTitle(parse(this.value), ' - ');
     const link = document.createElement('a');
     link.href = URL.createObjectURL(result.blob);
     link.download = `${(options.filename ?? name ?? '').replace(/[\\/:*?"<>|]+/g, '') || 'screenplay'}.pdf`;
