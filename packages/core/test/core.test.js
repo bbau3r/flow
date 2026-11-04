@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { PDFDocument } from 'pdf-lib';
-import { parse, parseInline, layout, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '../src/index.js';
+import { newScript, parse, parseInline, layout, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '../src/index.js';
 import { renderPdf } from '../src/pdf.js';
 
 const types = (src) => parse(src).lines.map((l) => l.type);
@@ -537,6 +537,36 @@ describe('emphasis toggling', () => {
   it('round trips', () => {
     const on = toggleEmphasis('word', 0, 4, 'underline');
     expect(toggleEmphasis(on.text, on.from, on.to, 'underline').text).toBe('word');
+  });
+});
+
+describe('new script template', () => {
+  const when = new Date(2026, 10, 3);
+  const page = () => layout(parse(newScript(when))).pages[0];
+  const printed = () => page().rows.map((r) => r.cells[0].runs.map((x) => x.text).join(''));
+
+  it('is entirely a title page, with an empty line to start writing on', () => {
+    const { lines, titlePage } = parse(newScript(when));
+    expect(titlePage.map((e) => e.key)).toEqual(['title', 'credit', 'author', 'source', 'draft date', 'contact', 'copyright', 'notes']);
+    expect(lines.at(-1).type).toBe('blank');
+    expect(lines.slice(0, -2).every((l) => l.type === 'title')).toBe(true);
+  });
+  it('prints every field it offers, so nothing in it is a dead end', () => {
+    expect(page().kind).toBe('title');
+    expect(printed()).toEqual(expect.arrayContaining([
+      'Untitled Screenplay', 'Written by', 'Your Name', 'Based on the novel by Someone Else',
+      'November 3, 2026', 'you@example.com', '555-0100', '(c) 2026 Your Name', 'First draft',
+    ]));
+  });
+  it('still parses cleanly with any one field removed', () => {
+    const lines = newScript(when).split('\n');
+    for (const key of ['Title:', 'Credit:', 'Author:', 'Source:', 'Draft date:', 'Copyright:', 'Notes:']) {
+      const without = lines.filter((l) => !l.startsWith(key)).join('\n');
+      const { titlePage } = parse(`${without}Action.`);
+      expect(titlePage.length, key).toBeGreaterThan(0);
+      expect(titlePage.map((e) => `${e.label}:`)).not.toContain(key);
+      expect(parse(`${without}Action.`).lines.at(-1).type, key).toBe('action');
+    }
   });
 });
 
