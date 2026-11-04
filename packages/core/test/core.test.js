@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { PDFDict, PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import { newScript, parse, parseInline, layout, titlePositions, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey, dualAt, outlineCards, outlineSlots, moveOutlineBlock, setOutlineSceneNumber, addOutlineHeader, addOutlineSubheader, addOutlineSynopsis, setOutlineText, removeOutlineCard, removeOutlineSynopsis } from '../src/index.js';
+import { newScript, parse, parseInline, layout, titlePositions, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey, dualAt, scriptTitle, continueTitleField, joinTitleValue, outlineCards, outlineSlots, moveOutlineBlock, setOutlineSceneNumber, addOutlineHeader, addOutlineSubheader, addOutlineSynopsis, setOutlineText, removeOutlineCard, removeOutlineSynopsis } from '../src/index.js';
 import { renderPdf } from '../src/pdf.js';
 
 const types = (src) => parse(src).lines.map((l) => l.type);
@@ -1055,5 +1055,117 @@ describe('dualAt', () => {
 
   it('is false on a normal speech and outside of speeches', () => {
     for (const index of [0, 1, 2, 3, 4, 9, 10]) expect(dualAt(lines, index)).toBe(false);
+  });
+});
+
+describe('title page fields with values on the lines below', () => {
+  const titled = (lines) => parse(lines.join('\n')).titlePage.map((e) => e.key);
+
+  it('starts an indented value after a key with nothing beside it', () => {
+    expect(continueTitleField(['Contact:'], 0)).toEqual({ lines: ['Contact:', '    '], cursor: { line: 1, from: 4 } });
+    expect(continueTitleField(['Contact: '], 0).lines).toEqual(['Contact: ', '    ']);
+  });
+  it('keeps going at the same indent', () => {
+    expect(continueTitleField(['Contact:', '   One'], 1)).toEqual({ lines: ['Contact:', '   One', '   '], cursor: { line: 2, from: 3 } });
+    expect(continueTitleField(['Contact:', '\tOne'], 1).lines).toEqual(['Contact:', '\tOne', '\t']);
+  });
+  it('stops on a second Enter, leaving a blank line', () => {
+    expect(continueTitleField(['Contact:', '    One', '    '], 2)).toEqual({ lines: ['Contact:', '    One', ''], cursor: { line: 2, from: 0 } });
+  });
+  it('stops without ending the title page when there are fields below', () => {
+    const result = continueTitleField(['Contact:', '    ', 'Notes: N'], 1);
+    expect(result).toEqual({ lines: ['Contact:', 'Notes: N'], cursor: { line: 1, from: 0 } });
+    expect(titled(result.lines)).toEqual(['contact', 'notes']);
+  });
+  it('reads any indent of two or more spaces or a tab, as long as a key keeps to one', () => {
+    for (const indent of ['  ', '   ', '    ', '     ', '\t']) {
+      const { lines, titlePage } = parse(`Contact:\n${indent}One\n${indent}Two\nNotes: N\n${indent}More\n\nAction.`);
+      expect(titlePage.map((e) => e.lines.length)).toEqual([3, 2]);
+      expect(lines[1].text).toBe('One');
+      expect(lines[1].contentStart).toBe(indent.length);
+      expect(lines[6].type).toBe('action');
+    }
+  });
+  it('lets each key choose its own indent', () => {
+    expect(parse('Contact:\n  One\nNotes:\n\tTwo').titlePage.map((e) => e.lines.length)).toEqual([2, 2]);
+  });
+  it('a value out of step with its key ends the title page', () => {
+    const { lines, titlePage } = parse('Contact:\n  One\n    Two\n\nAction.');
+    expect(titlePage[0].lines).toEqual([0, 1]);
+    expect(lines[2].type).toBe('action');
+    expect(parse('Contact:\n\tOne\n  Two').titlePage[0].lines).toEqual([0, 1]);
+  });
+  it('one space is not an indent', () => {
+    expect(parse('Contact:\n One').titlePage[0].lines).toEqual([0]);
+  });
+  it('a new value uses the indent already in use', () => {
+    expect(continueTitleField(['Contact:', '  One'], 0).lines).toEqual(['Contact:', '  ', '  One']);
+    expect(continueTitleField(['Title: T', 'Contact:', '     One', 'Notes:'], 3).lines).toEqual(['Title: T', 'Contact:', '     One', 'Notes:', '     ']);
+    expect(continueTitleField(['Notes:', 'Contact:', '\tOne'], 0).lines[1]).toBe('\t');
+  });
+  it('an indent waiting for its value is part of the field it follows', () => {
+    const parsed = parse('Contact:\n  \n\nAction.');
+    expect(parsed.lines[1].type).toBe('title');
+    expect(parsed.lines[1].titleKey).toBe('contact');
+    expect(parsed.titlePage[0].lines).toEqual([0, 1]);
+  });
+  it('splits a value into two values', () => {
+    expect(continueTitleField(['Contact:', '  OneTwo'], 1, 5)).toEqual({ lines: ['Contact:', '  One', '  Two'], cursor: { line: 2, from: 2 } });
+  });
+  it('Enter at the start of a value opens an empty value above it', () => {
+    expect(continueTitleField(['Contact:', '  One'], 1, 2)).toEqual({ lines: ['Contact:', '  ', '  One'], cursor: { line: 2, from: 2 } });
+    expect(continueTitleField(['Contact:', '  One'], 1, 0).lines).toEqual(['Contact:', '  ', '  One']);
+  });
+  it('Enter partway through a key does nothing special', () => {
+    expect(continueTitleField(['Contact:'], 0, 3)).toBeNull();
+  });
+  it('Backspace at the start of a value joins it to the line above', () => {
+    expect(joinTitleValue(['Contact:', '  One', '  Two'], 2)).toEqual({ lines: ['Contact:', '  OneTwo'], cursor: { line: 1, from: 5 } });
+    expect(joinTitleValue(['Contact:', '  One', '  '], 2)).toEqual({ lines: ['Contact:', '  One'], cursor: { line: 1, from: 5 } });
+    expect(joinTitleValue(['Contact:', '  '], 1)).toEqual({ lines: ['Contact:'], cursor: { line: 0, from: 8 } });
+  });
+  it('Backspace on a key\'s first value brings it beside the key', () => {
+    expect(joinTitleValue(['Contact:', '  One'], 1)).toEqual({ lines: ['Contact: One'], cursor: { line: 0, from: 9 } });
+  });
+  it('leaves a value on the same line as its key alone', () => {
+    expect(continueTitleField(['Title: Mine'], 0)).toBeNull();
+  });
+  it('leaves everything outside the title page alone', () => {
+    expect(continueTitleField(['Action.'], 0)).toBeNull();
+    expect(continueTitleField(['Title: A', '', '    Indented action.'], 2)).toBeNull();
+    expect(continueTitleField(['Title: A', ''], 1)).toBeNull();
+  });
+  it('an indent waiting for its value keeps the fields below on the title page', () => {
+    const { lines, titlePage } = parse('Contact:\n    \nNotes: N\n\nAction.');
+    expect(titlePage.map((e) => e.key)).toEqual(['contact', 'notes']);
+    expect(lines[1].type).toBe('title');
+    expect(lines[4].type).toBe('action');
+  });
+  it('spaces before something else still end the title page', () => {
+    const { lines, titlePage } = parse('Title: A\n    \nFADE IN:\n\nAction.');
+    expect(titlePage.map((e) => e.key)).toEqual(['title']);
+    expect(lines[1].type).toBe('blank');
+  });
+  it('an unfinished indent prints nothing extra', () => {
+    const page = (src) => layout(parse(src)).pages[0].rows.filter((r) => r.cells.some((c) => c.runs.length)).map((r) => [r.y, r.cells[0].runs.map((x) => x.text).join('')]);
+    expect(page('Title: A\nContact:\n    Me\n    \n\nAction.')).toEqual(page('Title: A\nContact:\n    Me\n\nAction.'));
+  });
+});
+
+describe('scriptTitle', () => {
+  it('reads a title beside its key', () => {
+    expect(scriptTitle(parse('Title: Mine\nAuthor: Me'))).toBe('Mine');
+  });
+  it('joins a title on several lines with separators', () => {
+    expect(scriptTitle(parse('Title:\n    One\n    Two\n    Three\nAuthor: Me'))).toBe('One · Two · Three');
+    expect(scriptTitle(parse('Title: One\n    Two'))).toBe('One · Two');
+  });
+  it('leaves out emphasis, empty values and notes', () => {
+    expect(scriptTitle(parse('Title:\n    **One** [[note]]\n    \n    Two'))).toBe('One · Two');
+  });
+  it('is empty without a title', () => {
+    expect(scriptTitle(parse('Title:'))).toBe('');
+    expect(scriptTitle(parse('Author: Me'))).toBe('');
+    expect(scriptTitle(parse('Just action.'))).toBe('');
   });
 });

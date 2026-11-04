@@ -3,7 +3,7 @@
 // Storage-agnostic on purpose: it takes text in and emits text out, so the Google
 // Drive plugin and the PWA can each supply their own persistence around it.
 
-import { parse, layout, DEFAULT_OPTIONS, PROFILES } from '@flow/core';
+import { parse, layout, scriptTitle, DEFAULT_OPTIONS, PROFILES } from '@flow/core';
 import { STYLES } from './styles.js';
 import { getTheme } from './themes.js';
 import { renderReadonly } from './readonly.js';
@@ -244,8 +244,7 @@ export class FlowScript extends HTMLElement {
   /** Builds the PDF and saves it as a download. */
   async downloadPdf(options = {}) {
     const result = await this.exportPdf(options);
-    const title = parse(this.value).titlePage.find((e) => e.key === 'title');
-    const name = title ? parse(this.value).lines[title.lines[0]].text.trim() : '';
+    const name = scriptTitle(parse(this.value));
     const link = document.createElement('a');
     link.href = URL.createObjectURL(result.blob);
     link.download = `${(options.filename ?? name ?? '').replace(/[\\/:*?"<>|]+/g, '') || 'screenplay'}.pdf`;

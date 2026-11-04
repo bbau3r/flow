@@ -232,6 +232,9 @@ ${CONTROLS_CSS}
 }
 .fl-editor-host .ProseMirror { outline: none; white-space: pre-wrap; word-wrap: break-word; caret-color: var(--flow-accent); }
 .fl-editor-host .ProseMirror ::selection { background: color-mix(in srgb, var(--flow-accent) 30%, transparent); }
+/* A title page value's indent takes up no room. It stays as text with a font size, unlike a
+   display: none marker, because on a value still empty it's all the cursor has to sit in. */
+.fl-line .fl-indent { letter-spacing: -0.6em; word-spacing: 0; tab-size: 0; opacity: 0; }
 .fl-marker { color: var(--flow-accent); opacity: 0.75; font-weight: 400; font-style: normal; text-decoration: none; }
 .fl-line:not(.fl-active) .fl-marker { display: none; }
 .fl-comment-src { display: none; }

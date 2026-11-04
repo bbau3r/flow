@@ -661,10 +661,14 @@ test('pages appear as a script grows while typing', async ({ page }) => {
   const box = await gap.boundingBox();
   expect(box.height).toBeGreaterThan(20);
   // The sheet holds the new page, rather than the text running out of it.
-  const sheet = await page.locator('flow-script .fl-sheet').boundingBox();
-  expect(sheet.height).toBeGreaterThan(1056);
-  const lastLine = await page.locator('flow-script .ProseMirror > .fl-line').last().boundingBox();
-  expect(lastLine.y + lastLine.height).toBeLessThanOrEqual(sheet.y + sheet.height);
+  // Measured in one go, since another page's gap can arrive at any moment after typing stops.
+  const { height, overflow } = await host(page).evaluate((el) => {
+    const sheetBox = el.shadowRoot.querySelector('.fl-sheet').getBoundingClientRect();
+    const lines = el.shadowRoot.querySelectorAll('.ProseMirror > .fl-line');
+    return { height: sheetBox.height, overflow: lines[lines.length - 1].getBoundingClientRect().bottom - sheetBox.bottom };
+  });
+  expect(height).toBeGreaterThan(1056);
+  expect(overflow).toBeLessThanOrEqual(0);
 });
 
 test('the bottom pills are smaller than the top ones, including what an app adds', async ({ page }) => {
@@ -2058,5 +2062,206 @@ test.describe('outline tab', () => {
       return scroll.scrollWidth - scroll.clientWidth;
     });
     expect(overflow).toBeLessThanOrEqual(0);
+  });
+});
+
+test.describe('title page values on their own lines', () => {
+  const setCursorAtEnd = async (page, text) => {
+    const line = lineWith(page, text);
+    await line.click();
+    await expect(line).toHaveClass(/fl-active/);
+    await page.keyboard.press('End');
+    await page.waitForTimeout(100); // the editor hears about the cursor just after it moves
+  };
+
+  test('Enter indents after a bare key and keeps going, until pressed twice', async ({ page }) => {
+    await open(page);
+    await setValue(page, 'Title: T\nContact:\n\nAction.');
+    await setCursorAtEnd(page, 'Contact');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('One');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Two');
+    expect(await value(page)).toBe('Title: T\nContact:\n    One\n    Two\n\nAction.');
+    await page.keyboard.press('Enter');
+    expect(await value(page)).toBe('Title: T\nContact:\n    One\n    Two\n    \n\nAction.');
+    await page.keyboard.press('Enter');
+    expect(await value(page)).toBe('Title: T\nContact:\n    One\n    Two\n\n\nAction.');
+    await page.keyboard.type('Z');
+    expect((await value(page)).split('\n')[4]).toBe('Z');
+  });
+
+  test('Enter on existing indented values continues them at their indent', async ({ page }) => {
+    await open(page);
+    await setValue(page, 'Contact:\n   One\n   Two\nNotes: N');
+    await setCursorAtEnd(page, 'One');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Mid');
+    expect(await value(page)).toBe('Contact:\n   One\n   Mid\n   Two\nNotes: N');
+  });
+
+  test('a value beside its key gets an ordinary new line', async ({ page }) => {
+    await open(page);
+    await setValue(page, 'Title: Mine\nAuthor: Me');
+    await setCursorAtEnd(page, 'Mine');
+    await page.keyboard.press('Enter');
+    expect(await value(page)).toBe('Title: Mine\n\nAuthor: Me');
+  });
+
+  test('Enter partway through a value makes two values', async ({ page }) => {
+    await open(page);
+    await setValue(page, 'Contact:\n    OneTwo');
+    await setCursorAtEnd(page, 'OneTwo');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForTimeout(100);
+    await page.keyboard.press('Enter');
+    expect(await value(page)).toBe('Contact:\n    One\n    Two');
+  });
+
+  test('the key shows from any of its values, and other fields stay as they were', async ({ page }) => {
+    await open(page);
+    await setValue(page, 'Title: T\nContact:\n  One\n  Two\nNotes:\n  Three\n\nAction.');
+    const lineHolding = (text) => page.locator('flow-script .ProseMirror .fl-line').filter({ hasText: text });
+    const keyMarker = lineHolding('Contact:').locator('.fl-marker').first();
+    await expect(keyMarker).toBeHidden();
+    await lineHolding('Two').click();
+    for (const text of ['Contact:', 'One', 'Two']) await expect(lineHolding(text)).toHaveClass(/fl-active/);
+    await expect(keyMarker).toBeVisible();
+    await expect(lineHolding('Title:')).not.toHaveClass(/fl-active/);
+    await expect(lineHolding('Notes:')).not.toHaveClass(/fl-active/);
+    await lineHolding('Action.').click();
+    await expect(keyMarker).toBeHidden();
+  });
+
+  test('values keep the formatting of their field while still empty and once typed', async ({ page }) => {
+    await page.setViewportSize({ width: 1200, height: 1000 });
+    await open(page);
+    await setValue(page, 'Title: T\nContact:\n\nAction.');
+    await setCursorAtEnd(page, 'Contact');
+    await page.keyboard.press('Enter');
+    const lines = page.locator('flow-script .ProseMirror .fl-line');
+    await expect(lines.nth(2)).toHaveClass(/fl-title-contact/);
+    await expect(lines.nth(2)).toHaveClass(/fl-active/);
+    await expect(lines.nth(1)).toHaveClass(/fl-active/);
+    await expect(lines.nth(3)).not.toHaveClass(/fl-title-contact/);
+    await expect(lines.nth(4)).toHaveClass(/fl-action/);
+    await page.keyboard.type('One');
+    await expect(lines.nth(2)).toHaveClass(/fl-title-contact/);
+    await page.keyboard.press('Enter');
+    await expect(lines.nth(3)).toHaveClass(/fl-title-contact/);
+    expect((await lines.nth(3).boundingBox()).x).toBeCloseTo((await lines.nth(2).boundingBox()).x, 0);
+  });
+
+  for (const view of ['page', 'flow']) {
+    const pace = (page) => page.waitForTimeout(100);
+    const press = async (page, ...keys) => {
+      for (const key of keys) {
+        await page.keyboard.press(key);
+        await pace(page);
+      }
+    };
+    const inView = async (page, script) => {
+      await open(page);
+      await host(page).evaluate((el, v) => el.setAttribute('view', v), view);
+      await setValue(page, script);
+    };
+
+    test(`indents take up no room in ${view} view`, async ({ page }) => {
+      await inView(page, 'Contact:\n        One\n\nAction.');
+      const textLeft = (text) => page.locator('flow-script .ProseMirror .fl-line').filter({ hasText: text }).evaluate((el) => {
+        const range = document.createRange();
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node.textContent.trim() === '') node = walker.nextNode();
+        range.setStart(node, node.textContent.search(/\S/));
+        range.setEnd(node, node.textContent.length);
+        return range.getBoundingClientRect().left;
+      });
+      await page.locator('flow-script .ProseMirror .fl-line').filter({ hasText: 'One' }).click();
+      await pace(page);
+      expect(Math.abs(await textLeft('One') - await textLeft('Contact:'))).toBeLessThan(2);
+    });
+
+    test(`Up and Down walk a key and its values in ${view} view`, async ({ page }) => {
+      await inView(page, 'Contact:\n  One\n  Two\n  Three\n\nAction.');
+      await setCursorAtEnd(page, 'Contact');
+      await press(page, 'ArrowDown');
+      await page.keyboard.type('a');
+      await pace(page);
+      await press(page, 'ArrowDown', 'ArrowDown');
+      await page.keyboard.type('b');
+      await pace(page);
+      await press(page, 'ArrowUp', 'ArrowUp', 'ArrowUp');
+      await page.keyboard.type('c');
+      expect(await value(page)).toBe('Contact:c\n  aOne\n  Two\n  Tbhree\n\nAction.'); // each move keeps the column
+    });
+
+    test(`the cursor never lands inside an indent in ${view} view`, async ({ page }) => {
+      await inView(page, 'Contact:\n    One\n\nAction.');
+      await setCursorAtEnd(page, 'One');
+      await press(page, 'Home');
+      await page.keyboard.type('Z');
+      expect(await value(page)).toBe('Contact:\n    ZOne\n\nAction.');
+      await press(page, 'Home', 'ArrowLeft');
+      await page.keyboard.type('Y');
+      expect(await value(page)).toBe('Contact:Y\n    ZOne\n\nAction.');
+    });
+
+    test(`Backspace at the start of a value joins lines in ${view} view`, async ({ page }) => {
+      await inView(page, 'Contact:\n    One\n    Two\n\nAction.');
+      await setCursorAtEnd(page, 'Two');
+      await press(page, 'Home', 'Backspace');
+      expect(await value(page)).toBe('Contact:\n    OneTwo\n\nAction.');
+      await page.keyboard.type('Z');
+      expect(await value(page)).toBe('Contact:\n    OneZTwo\n\nAction.');
+    });
+
+    test(`Enter on a new empty value leaves a regular line in ${view} view`, async ({ page }) => {
+      await inView(page, 'Title: T\nContact:\n\nAction.');
+      await setCursorAtEnd(page, 'Contact');
+      await press(page, 'Enter', 'Enter');
+      expect(await value(page)).toBe('Title: T\nContact:\n\n\nAction.');
+      await page.keyboard.type('Regular');
+      const lines = page.locator('flow-script .ProseMirror .fl-line');
+      await expect(lines.nth(2)).not.toHaveClass(/fl-title/);
+    });
+  }
+
+  test('Fountain view shows the indent and leaves the keys alone', async ({ page }) => {
+    await open(page);
+    await host(page).evaluate((el) => el.setAttribute('view', 'source'));
+    await setValue(page, 'Contact:\n    One\n    Two');
+    await lineWith(page, 'Two').click();
+    await page.waitForTimeout(100);
+    await page.keyboard.press('Home');
+    await page.waitForTimeout(100);
+    await page.keyboard.type('Z');
+    expect(await value(page)).toBe('Contact:\n    One\nZ    Two');
+  });
+
+  test('each Enter undoes on its own', async ({ page }) => {
+    await open(page);
+    await setValue(page, 'Contact:');
+    await setCursorAtEnd(page, 'Contact');
+    await page.keyboard.press('Enter');
+    expect(await value(page)).toBe('Contact:\n    ');
+    await page.keyboard.press('Control+z');
+    expect(await value(page)).toBe('Contact:');
+  });
+
+  test('the cursor sits under the value on the page, not somewhere else', async ({ page }) => {
+    await page.setViewportSize({ width: 1200, height: 1000 });
+    await open(page);
+    await setValue(page, 'Title: T\nContact:\n    One\n\nAction.');
+    await setCursorAtEnd(page, 'One');
+    const above = await lineWith(page, 'One').boundingBox();
+    await page.keyboard.press('Enter');
+    const active = page.locator('flow-script .ProseMirror .fl-line.fl-active').last();
+    await expect(active).toHaveClass(/fl-title-contact/);
+    const box = await active.boundingBox();
+    expect(Math.abs(box.x - above.x)).toBeLessThan(2);
+    expect(Math.abs(box.y - above.y)).toBeLessThan(40);
   });
 });

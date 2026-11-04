@@ -2,7 +2,7 @@
 // toggling emphasis. They return new text and cursor positions, so they're
 // testable without a browser and any future front end can reuse them.
 
-import { parse, SCENE_RE } from './parser.js';
+import { parse, SCENE_RE, TITLE_INDENT } from './parser.js';
 import { parseInline } from './inline.js';
 
 const inDialogue = (l) => !!l && (l.type === 'character' || l.type === 'parenthetical' || l.type === 'dialogue' || (l.type === 'lyrics' && l.inDialogue));
@@ -242,4 +242,53 @@ export function toggleEmphasis(raw, from, to, style, contentStart = 0, contentEn
   while (b > a && /\s/.test(raw[b - 1])) b--;
   const text = raw.slice(0, a) + delim + raw.slice(a, b) + delim + raw.slice(b);
   return { text, from: a + n, to: b + n };
+}
+
+/**
+ * Enter on a title page field with its value on the lines below. On a key with nothing beside it
+ * this starts the values. On a value it splits as usual but stays a value, and on one still empty
+ * it stops, leaving a regular line. Returns { lines, cursor }, or null for anything else, such as
+ * a value on the same line as its key, which Enter leaves as an ordinary line.
+ */
+export function continueTitleField(input, index, offset = input[index].length) {
+  const parsed = parse(input.join('\n')).lines;
+  const line = parsed[index];
+  if (line.type !== 'title') return null;
+  const indent = TITLE_INDENT.exec(line.raw)?.[0];
+  const hasValue = line.contentEnd > line.contentStart;
+  const lines = [...input];
+  if (!indent) {
+    if (hasValue || offset !== line.raw.length) return null;
+    // A new value matches its own field if it can, then the rest of the title page.
+    const indentOf = (l) => (l?.type === 'title' ? TITLE_INDENT.exec(l.raw)?.[0] : undefined);
+    const next = indentOf(parsed[index + 1]) ?? parsed.map(indentOf).find(Boolean) ?? '    ';
+    lines.splice(index + 1, 0, next);
+    return { lines, cursor: { line: index + 1, from: next.length } };
+  }
+  if (!hasValue) {
+    // A blank line would end the title page, so with more fields below, it just goes.
+    if (parsed[index + 1]?.type === 'title') lines.splice(index, 1);
+    else lines[index] = '';
+    return { lines, cursor: { line: index, from: 0 } };
+  }
+  const at = Math.max(offset, line.contentStart);
+  lines[index] = line.raw.slice(0, at).trimEnd() || indent;
+  lines.splice(index + 1, 0, indent + line.raw.slice(at));
+  return { lines, cursor: { line: index + 1, from: indent.length } };
+}
+
+/**
+ * Backspace at the start of a value, where the indent is out of sight: joins it to the line above,
+ * as if the indent weren't there. Returns { lines, cursor }.
+ */
+export function joinTitleValue(input, index) {
+  const parsed = parse(input.join('\n')).lines;
+  const line = parsed[index];
+  const above = input[index - 1];
+  const text = line.raw.slice(line.contentStart);
+  const lines = [...input];
+  const isBareKey = parsed[index - 1].contentEnd <= parsed[index - 1].contentStart && !TITLE_INDENT.test(above);
+  const joined = `${above}${isBareKey && text && !above.endsWith(' ') ? ' ' : ''}${text}`;
+  lines.splice(index - 1, 2, joined);
+  return { lines, cursor: { line: index - 1, from: above.length + (joined.length - above.length - text.length) } };
 }
