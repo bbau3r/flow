@@ -176,7 +176,7 @@ ${THEME_CSS}
 .fl-active .fl-bubble-chip { display: none; }
 .fl-comment-hidden:not(.fl-active) { display: none; }
 .fl-editor-host .fl-bubble-chip { margin: 0 0.25em; font-family: system-ui, sans-serif; font-size: 0.8em; line-height: 1.3; vertical-align: baseline; }
-.fl-editor-host .fl-bubble-boneyard { opacity: 0.7; font-style: italic; }
+.fl-boneyard { color: var(--flow-muted); opacity: 0.75; text-decoration: line-through; }
 .fl-page-gap {
   display: flex; align-items: center; justify-content: flex-end;
   height: 3em; margin: 2em calc(-1 * var(--fl-pad-right, 0em)) 2em -9em; padding: 0 1em;

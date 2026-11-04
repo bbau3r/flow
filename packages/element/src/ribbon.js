@@ -31,6 +31,7 @@ const TYPE_GROUPS = [
     { type: 'synopsis', icon: '=', label: 'Synopsis', title: 'Synopsis. Type =. Not printed.' },
   ],
   [{ type: 'note', icon: '[[', label: 'Note', title: 'Note, shown as a comment bubble. Wrap it in [[ ]].' }],
+  [{ type: 'boneyard', icon: '/*', label: 'Boneyard', title: 'Boneyard: cut text that stays in the file but never prints. Wrap it in /* */.' }],
 ];
 
 const ICON_FONT = '"Courier Prime", "Courier New", Courier, monospace';
@@ -98,7 +99,7 @@ export function createRibbon(actions) {
   for (const types of TYPE_GROUPS) {
     const group = newGroup(root);
     for (const t of types) {
-      const onClick = t.type === 'dual' ? () => actions.dual() : () => actions.setLineType(t.type);
+      const onClick = actions[t.type] ? () => actions[t.type]() : () => actions.setLineType(t.type);
       add(group, button(t.label, t.title, { icon: t.icon }), t.type, onClick);
     }
   }

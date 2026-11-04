@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { PDFDocument } from 'pdf-lib';
-import { parse, parseInline, layout, wrapRuns, applyLineType, insertPageBreak, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '../src/index.js';
+import { parse, parseInline, layout, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '../src/index.js';
 import { renderPdf } from '../src/pdf.js';
 
 const types = (src) => parse(src).lines.map((l) => l.type);
@@ -430,6 +430,48 @@ describe('ribbon line conversion', () => {
     expect(on.lines[1]).toBe('BOB ^');
     expect(toggleDual(on.lines, 1).lines[1]).toBe('BOB');
     expect(toggleDual(['action'], 0)).toBeNull();
+  });
+});
+
+describe('boneyard', () => {
+  const cut = (text, a, b, c, d) => toggleBoneyard(text.split('\n'), a, b, c, d);
+  it('cuts the selection only', () => {
+    const r = cut('keep this out', 0, 5, 0, 9);
+    expect(r.lines).toEqual(['keep /* this */ out']);
+    expect(r.cursor.from).toBe('keep /* this'.length);
+  });
+  it('cuts the whole line when nothing is selected', () => {
+    expect(cut('  a line', 0, 3, 0, 3).lines).toEqual(['  /* a line */']);
+  });
+  it('wraps one comment across several lines', () => {
+    const r = cut('one\ntwo\nthree', 0, 0, 2, 5);
+    expect(r.lines).toEqual(['/* one', 'two', 'three */']);
+    expect(parse(r.lines.join('\n')).comments.map((c) => c.type)).toEqual(['boneyard']);
+  });
+  it('restores from anywhere inside, including across lines', () => {
+    expect(cut('keep /* this */ out', 0, 10, 0, 10).lines).toEqual(['keep this out']);
+    expect(cut('/* one\ntwo\nthree */', 1, 1, 1, 1).lines).toEqual(['one', 'two', 'three']);
+  });
+  it('round trips', () => {
+    const on = cut('a b c', 0, 2, 0, 3);
+    expect(toggleBoneyard(on.lines, on.cursor.line, on.cursor.from, on.cursor.line, on.cursor.to).lines).toEqual(['a b c']);
+  });
+  it('gives an empty line somewhere to type', () => {
+    const r = cut('', 0, 0, 0, 0);
+    expect(r.lines).toEqual(['/*  */']);
+    expect(r.cursor.from).toBe(3);
+  });
+  it('leaves notes alone', () => {
+    expect(cut('a [[note]] b', 0, 3, 0, 3).lines).toEqual(['/* a [[note]] b */']);
+    expect(parse('/* a [[note]] b */').comments.map((c) => c.type)).toEqual(['boneyard']);
+  });
+  it('reports its own line type, distinct from a note', () => {
+    expect(lineTypeKey(parse('/* cut */').lines[0])).toBe('boneyard');
+    expect(lineTypeKey(parse('[[note]]').lines[0])).toBe('note');
+  });
+  it('converts to another type without keeping the delimiters', () => {
+    expect(applyLineType(['/* cut */'], 0, 0, 'note').lines).toEqual(['[[cut]]']);
+    expect(applyLineType(['[[note]]'], 0, 0, 'lyrics').lines).toEqual(['~note']);
   });
 });
 

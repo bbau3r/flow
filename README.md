@@ -72,7 +72,8 @@ The build produces two forms:
 
 Syntax markers such as `**`, `.` or `@` show only on the line you're on. Everywhere else you see just the formatted result. The ribbon writes the same Fountain syntax you could type yourself, adding blank lines or force markers only when a line needs them to parse as the chosen type.
 
-- **Comments.** `[[notes]]` appear as bubbles. In the editor, clicking one opens it for editing. In read-only mode it expands in place. `/* boneyard */` is a bubble in the editor and is left out of read-only and PDF output.
+- **Comments.** `[[notes]]` appear as bubbles. In the editor, clicking one opens it for editing. In read-only mode it expands in place.
+- **Boneyard.** `/* cut text */` is separate from comments. In the editor it stays readable in place, dimmed and struck through. It never appears in read-only pages or PDFs. The ribbon's Boneyard button cuts the selection, or the current line, and restores it when pressed again.
 - **Outlining.** `#` and `##` sections and `= synopses` are visible while editing but never appear in read-only pages or PDFs, and they take no page space. They're available through `outline` for future navigation features.
 
 ## Theming

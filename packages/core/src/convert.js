@@ -9,7 +9,7 @@ const inDialogue = (l) => !!l && (l.type === 'character' || l.type === 'parenthe
 
 export function lineTypeKey(line) {
   if (line.type === 'section') return `section-${Math.min(line.level, 3)}`;
-  if (line.type === 'comment') return 'note';
+  if (line.type === 'comment') return line.comments[0].comment.type;
   return line.type;
 }
 
@@ -23,7 +23,7 @@ function bareText(line) {
   out += line.raw.slice(pos);
   out = out.trim();
   if (line.type === 'parenthetical') out = out.replace(/^\((.*)\)$/, '$1');
-  if (line.type === 'comment') out = out.replace(/^\[\[(.*)\]\]$/, '$1').trim();
+  if (line.type === 'comment') out = out.replace(/^(?:\[\[(.*)\]\]|\/\*(.*)\*\/)$/, '$1$2').trim();
   return out;
 }
 
@@ -167,6 +167,36 @@ export function toggleDual(input, index) {
   const lines = [...input];
   lines[i] = parsed[i].dual ? lines[i].replace(/\s*\^(\s*)$/, '$1') : `${lines[i].trimEnd()} ^`;
   return { lines, cursor: { line: i, from: lines[i].length, to: lines[i].length } };
+}
+
+function cursorAt(text, offset) {
+  const before = text.slice(0, offset).split('\n');
+  const at = before[before.length - 1].length;
+  return { line: before.length - 1, from: at, to: at };
+}
+
+// Cuts text to the boneyard, or restores it if the selection touches a cut already.
+// Works on the selection rather than whole lines, and can span several lines.
+export function toggleBoneyard(input, fromLine, fromCh, toLine, toCh) {
+  const { source, lines, comments } = parse(input.join('\n'));
+  let start = lines[fromLine].start + fromCh;
+  let end = lines[toLine].start + toCh;
+  const hit = comments.find((c) => c.type === 'boneyard' && c.start <= end && start <= c.end);
+  if (hit) {
+    const inner = source.slice(hit.start + 2, hit.end - 2).replace(/^ /, '').replace(/ $/, '');
+    const text = source.slice(0, hit.start) + inner + source.slice(hit.end);
+    return { lines: text.split('\n'), cursor: cursorAt(text, hit.start + inner.length) };
+  }
+  // With nothing selected, cut the line the cursor is on.
+  if (start === end) {
+    start = lines[fromLine].start;
+    end = start + lines[fromLine].raw.length;
+  }
+  while (start < end && /\s/.test(source[start])) start++;
+  while (end > start && /\s/.test(source[end - 1])) end--;
+  const middle = source.slice(start, end);
+  const text = `${source.slice(0, start)}/* ${middle} */${source.slice(end)}`;
+  return { lines: text.split('\n'), cursor: cursorAt(text, start + 3 + middle.length) };
 }
 
 const DELIM = { bold: '**', italic: '*', underline: '_' };

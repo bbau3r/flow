@@ -109,13 +109,14 @@ test('ribbon buttons carry their fountain character, grouped as related', async 
       return icon ? `${icon} ${b.textContent.slice(icon.length)}` : b.textContent;
     })
   )));
-  expect(groups.slice(1, 7)).toEqual([
+  expect(groups.slice(1, 8)).toEqual([
     ['. Scene', '> Transition'],
     ['@ Character', '() Paren', '“ Dialogue'],
     ['^ Dual'],
     ['! Action', '>< Centered', '~ Lyrics'],
     ['# Act', '## Sequence', '= Synopsis'],
     ['[[ Note'],
+    ['/* Boneyard'],
   ]);
   const badge = page.locator('flow-script .fl-icon').first();
   await expect(badge).toHaveCSS('border-top-left-radius', '3px');
@@ -157,6 +158,59 @@ test('editor comments are bubbles that expand to the note text when opened', asy
   expect(await value(page)).toContain('[[Xa private thought]]');
   await lineWith(page, 'Other').click();
   await expect(chip).toBeVisible();
+});
+
+test('boneyard stays readable in place, unlike a comment bubble', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'Keep /* cut words */ here.\n\n/* first\nsecond */\n\nOther [[a note]] line.\n\nLast.');
+  await expect(page.locator('flow-script .fl-bubble-chip')).toHaveCount(1);
+  await expect(page.locator('flow-script .fl-bubble-chip')).toContainText('a note');
+  const cut = page.locator('flow-script .fl-boneyard', { hasText: 'cut words' }).first();
+  await expect(cut).toBeVisible();
+  await expect(cut).toHaveCSS('text-decoration-line', 'line-through');
+  await expect(page.locator('flow-script .fl-boneyard', { hasText: 'second' }).first()).toBeVisible();
+  const delimiter = page.locator('flow-script .fl-line', { hasText: 'Keep' }).locator('.fl-marker').first();
+  await expect(delimiter).toBeHidden();
+  await lineWith(page, 'Keep').click();
+  await expect(delimiter).toBeVisible();
+  await cut.click();
+  await expect(rib(page, 'Boneyard')).toHaveAttribute('aria-pressed', 'true');
+  await expect(rib(page, 'Note')).toHaveAttribute('aria-pressed', 'false');
+  await host(page).evaluate((el) => { el.readonly = true; });
+  const printed = await page.locator('flow-script .fl-pages').innerText();
+  expect(printed).toContain('Keep');
+  expect(printed).not.toContain('cut words');
+  expect(printed).not.toContain('second');
+});
+
+test('boneyard button cuts the selection and restores it', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'one two three');
+  await lineWith(page, 'one two').click();
+  await page.keyboard.press('Home');
+  await page.keyboard.press('Control+ArrowRight');
+  await page.keyboard.press('Shift+Control+ArrowRight');
+  await rib(page, 'Boneyard').click();
+  const cutValue = await value(page);
+  expect(cutValue).toMatch(/^one \/\* two ?\*\/ ?three$/);
+  await rib(page, 'Boneyard').click();
+  expect(await value(page)).toBe('one two three');
+  await page.keyboard.press('Control+z');
+  expect(await value(page)).toBe(cutValue);
+});
+
+test('each ribbon action is its own undo step', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'word');
+  await lineWith(page, 'word').click();
+  await page.keyboard.press('Control+a');
+  await rib(page, 'B').click();
+  await rib(page, 'I').click();
+  expect(await value(page)).toBe('***word***');
+  await rib(page, 'Undo').click();
+  expect(await value(page)).toBe('**word**');
+  await rib(page, 'Undo').click();
+  expect(await value(page)).toBe('word');
 });
 
 test('multi-line notes collapse to one bubble', async ({ page }) => {

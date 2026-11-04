@@ -9,7 +9,8 @@ import { UndoRedo } from '@tiptap/extensions';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { Fragment, Slice } from '@tiptap/pm/model';
-import { parse, layout, applyLineType, insertPageBreak, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '@flow/core';
+import { closeHistory } from '@tiptap/pm/history';
+import { parse, layout, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '@flow/core';
 
 const NOTE_ICON = '\u{1F4AC}︎';
 
@@ -44,12 +45,12 @@ function lineClasses(line) {
 
 function chip(comment, onOpen) {
   const dom = document.createElement('span');
-  dom.className = `fl-bubble-chip${comment.type === 'boneyard' ? ' fl-bubble-boneyard' : ''}`;
+  dom.className = 'fl-bubble-chip';
   dom.setAttribute('role', 'button');
-  dom.setAttribute('aria-label', `${comment.type === 'note' ? 'Note' : 'Boneyard'}: ${comment.text}`);
+  dom.setAttribute('aria-label', `Note: ${comment.text}`);
   dom.title = comment.text;
   const icon = document.createElement('span');
-  icon.textContent = comment.type === 'note' ? NOTE_ICON : '/*';
+  icon.textContent = NOTE_ICON;
   const preview = document.createElement('span');
   preview.className = 'fl-bubble-preview';
   preview.textContent = comment.text.split('\n')[0];
@@ -77,7 +78,8 @@ const activeKey = new PluginKey('flowActive');
 const gapsKey = new PluginKey('flowGaps');
 const GAP_DELAY_MS = 200;
 
-const isCommentTail = (line, index) => line.commentOnly && line.comments.every((c) => c.comment.lineStart !== index);
+// Later lines of a note fold into its bubble. A boneyard has no bubble, so all of it stays visible.
+const isCommentTail = (line, index) => line.commentOnly && line.comments.every((c) => c.comment.type === 'note' && c.comment.lineStart !== index);
 
 // Everything a line's decorations depend on, so unchanged lines can be left alone.
 function lineSignature(line, index) {
@@ -87,7 +89,7 @@ function lineSignature(line, index) {
 
 function openCommentAt(view, pos) {
   const { doc } = view.state;
-  // Just past the opening [[ or /*, ready to edit.
+  // Just past the opening [[, ready to edit.
   view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, Math.min(pos + 2, doc.content.size - 1))));
   view.focus();
 }
@@ -103,6 +105,12 @@ function lineDecorations(node, pos, line, index) {
     if (classes) decorations.push(Decoration.inline(at(run.start), at(run.end), { class: classes }));
   }
   for (const { comment, start, end } of line.comments) {
+    if (comment.type === 'boneyard') {
+      if (end > start) decorations.push(Decoration.inline(at(start), at(end), { class: 'fl-boneyard' }));
+      if (comment.lineStart === index) decorations.push(Decoration.inline(at(start), at(start + 2), { class: 'fl-marker' }));
+      if (comment.lineEnd === index) decorations.push(Decoration.inline(at(end - 2), at(end), { class: 'fl-marker' }));
+      continue;
+    }
     if (end > start) decorations.push(Decoration.inline(at(start), at(end), { class: 'fl-comment-src' }));
     if (comment.lineStart === index) {
       decorations.push(Decoration.widget(at(start), (view, getPos) => chip(comment, () => openCommentAt(view, getPos())), {
@@ -386,7 +394,8 @@ export class FlowEditor {
       for (let i = 0; i < cursor.line; i++) pos += tr.doc.child(i).nodeSize;
       tr.setSelection(TextSelection.create(tr.doc, pos + 1 + cursor.from, pos + 1 + (cursor.to ?? cursor.from)));
     }
-    view.dispatch(tr.scrollIntoView());
+    // Each ribbon action is its own undo step, however quickly they follow each other.
+    view.dispatch(closeHistory(tr).scrollIntoView());
     this.focus();
   }
 
@@ -399,6 +408,15 @@ export class FlowEditor {
   pageBreak() {
     const { last } = selectedLines(this.editor.state);
     const { lines, cursor } = insertPageBreak(docLines(this.editor.state.doc), last);
+    this.commit(lines, cursor);
+  }
+
+  boneyard() {
+    const { state } = this.editor;
+    const { first, last } = selectedLines(state);
+    const fromCh = Math.max(state.selection.from - (this.lineStart(first) + 1), 0);
+    const toCh = Math.min(state.selection.to - (this.lineStart(last) + 1), state.doc.child(last).content.size);
+    const { lines, cursor } = toggleBoneyard(docLines(state.doc), first, fromCh, last, toCh);
     this.commit(lines, cursor);
   }
 
@@ -433,7 +451,7 @@ export class FlowEditor {
     }
     if (first !== last) selTo = tr.mapping.map(to);
     tr.setSelection(TextSelection.create(tr.doc, selFrom, selTo));
-    view.dispatch(tr);
+    view.dispatch(closeHistory(tr));
     this.focus();
   }
 
@@ -460,8 +478,11 @@ export class FlowEditor {
     const emphasis = first === last && line.contentStart !== undefined
       ? emphasisAt(line.raw, from - start, to - start, line.contentStart, line.contentEnd)
       : { bold: false, italic: false, underline: false };
+    const selStart = line.start + Math.max(state.selection.from - start, 0);
+    const selEnd = parsed.lines[last].start + Math.max(state.selection.to - (this.lineStart(last) + 1), 0);
     this.onState({
       type: lineTypeKey(line),
+      boneyard: parsed.comments.some((c) => c.type === 'boneyard' && c.start <= selEnd && selStart <= c.end),
       dual: !!line.dual,
       ...emphasis,
       canUndo: this.editor.can().undo(),

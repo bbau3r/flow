@@ -273,6 +273,7 @@ export class FlowScript extends HTMLElement {
       emphasis: edit((e, style) => e.emphasis(style)),
       setLineType: edit((e, type) => e.setLineType(type)),
       dual: edit((e) => e.dual()),
+      boneyard: edit((e) => e.boneyard()),
       pageBreak: edit((e) => e.pageBreak()),
       undo: edit((e) => e.undo()),
       redo: edit((e) => e.redo()),
