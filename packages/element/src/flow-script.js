@@ -227,7 +227,7 @@ export class FlowScript extends HTMLElement {
       this.#editor.destroy();
       this.#editor = null;
     }
-    this.#ribbon?.root.remove();
+    this.#ribbon?.destroy();
     this.#ribbon = null;
     this.#scroll.replaceChildren(renderReadonly(this.#value, { view: this.view, options: this.#options }));
     this.dispatchEvent(new CustomEvent('flow-ready'));

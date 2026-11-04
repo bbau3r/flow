@@ -119,6 +119,12 @@ test('ribbon buttons carry their fountain character, grouped as related', async 
   ]);
   const badge = page.locator('flow-script .fl-icon').first();
   await expect(badge).toHaveCSS('border-top-left-radius', '3px');
+  await expect(badge).toHaveCSS('color', 'rgb(180, 83, 9)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'amber-dark'));
+  await expect(badge).toHaveCSS('color', 'rgb(255, 176, 0)');
+  // A period sits on the baseline, so centering its ink has to lift it.
+  const lift = await page.locator('flow-script .fl-icon-glyph').first().evaluate((g) => new DOMMatrix(getComputedStyle(g).transform).m42);
+  expect(lift).toBeLessThan(0);
   const box = await badge.boundingBox();
   expect(Math.abs(box.width - box.height)).toBeLessThan(3);
 });

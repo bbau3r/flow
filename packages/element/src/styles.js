@@ -58,11 +58,13 @@ ${THEME_CSS}
 .fl-icon {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 1.5em; height: 1.5em; padding: 0 0.2em; margin-right: 0.4em;
-  border: 1px solid var(--flow-rule); border-radius: 3px;
+  border: 1px solid var(--flow-accent); border-radius: 3px;
   background: color-mix(in srgb, var(--flow-accent) 12%, transparent);
-  font: 700 0.95em/1 "Courier Prime", "Courier New", Courier, monospace;
+  color: var(--flow-accent);
+  font-size: 0.95em; font-weight: 700; line-height: 1;
 }
-.fl-ribbon button[aria-pressed="true"] .fl-icon { border-color: currentColor; background: transparent; }
+.fl-icon-glyph { display: block; white-space: pre; }
+.fl-ribbon button[aria-pressed="true"] .fl-icon { color: inherit; border-color: currentColor; background: transparent; }
 .fl-spacer { flex: 1; }
 .fl-menu { position: relative; }
 .fl-menu-body {

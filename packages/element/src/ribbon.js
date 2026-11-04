@@ -33,6 +33,22 @@ const TYPE_GROUPS = [
   [{ type: 'note', icon: '[[', label: 'Note', title: 'Note, shown as a comment bubble. Wrap it in [[ ]].' }],
 ];
 
+const ICON_FONT = '"Courier Prime", "Courier New", Courier, monospace';
+
+// Characters like . and ^ sit far from the middle of their line, so centering the
+// text box isn't enough. This measures each glyph's ink and centers that instead.
+function centerIcons(root) {
+  const ctx = document.createElement('canvas').getContext('2d');
+  const size = 100;
+  ctx.font = `700 ${size}px ${ICON_FONT}`;
+  for (const glyph of root.querySelectorAll('.fl-icon-glyph')) {
+    const m = ctx.measureText(glyph.textContent);
+    const dx = m.width / 2 - (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2;
+    const dy = (m.fontBoundingBoxDescent - m.fontBoundingBoxAscent) / 2 - (m.actualBoundingBoxDescent - m.actualBoundingBoxAscent) / 2;
+    glyph.style.transform = `translate(${(dx / size).toFixed(3)}em, ${(dy / size).toFixed(3)}em)`;
+  }
+}
+
 function button(label, title, { cls, icon } = {}) {
   const b = document.createElement('button');
   b.type = 'button';
@@ -41,8 +57,12 @@ function button(label, title, { cls, icon } = {}) {
   if (icon) {
     const badge = document.createElement('span');
     badge.className = 'fl-icon';
-    badge.textContent = icon;
     badge.setAttribute('aria-hidden', 'true');
+    const glyph = document.createElement('span');
+    glyph.className = 'fl-icon-glyph';
+    glyph.style.fontFamily = ICON_FONT;
+    glyph.textContent = icon;
+    badge.append(glyph);
     b.append(badge);
   }
   b.append(label);
@@ -103,8 +123,18 @@ export function createRibbon(actions) {
   add(output, pageToggle, 'page-view', () => actions.toggleView());
   output.append(createPdfMenu(actions));
 
+  // Measure now, and again once the bundled font replaces any fallback.
+  const recenter = () => centerIcons(root);
+  recenter();
+  document.fonts.ready.then(recenter);
+  document.fonts.addEventListener('loadingdone', recenter);
+
   return {
     root,
+    destroy() {
+      document.fonts.removeEventListener('loadingdone', recenter);
+      root.remove();
+    },
     update(state) {
       for (const [key, b] of pressed) {
         if (key !== 'page-view') b.setAttribute('aria-pressed', String(state.type === key || state[key] === true));
