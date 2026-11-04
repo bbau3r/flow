@@ -19,7 +19,7 @@ export default defineConfig({
     {
       name: 'pwa',
       testDir: 'packages/pwa/e2e',
-      use: { baseURL: 'http://localhost:4179' },
+      use: { baseURL: 'http://localhost:4180' },
     },
   ],
   webServer: [
@@ -30,8 +30,8 @@ export default defineConfig({
       reuseExistingServer: true,
     },
     {
-      command: 'node packages/pwa/e2e/serve.mjs',
-      url: 'http://localhost:4179/flow/',
+      command: 'node packages/pwa/e2e/serve.mjs dist-e2e 4180',
+      url: 'http://localhost:4180/flow/',
       reuseExistingServer: true,
     },
   ],

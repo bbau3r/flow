@@ -152,5 +152,8 @@ vite.config.ts.timestamp-*
 test-results/
 playwright-report/
 
+# The tests' own PWA build
+dist-e2e
+
 # Google OAuth downloads hold a client secret, which Flow never uses
 client_secret*.json

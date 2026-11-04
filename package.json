@@ -9,7 +9,7 @@
     "build": "npm run build -w @flow/element",
     "build:pwa": "npm run build -w @flow/pwa",
     "test": "vitest run",
-    "test:e2e": "npm run build && npm run build:pwa && playwright test"
+    "test:e2e": "npm run build && npm run build:e2e -w @flow/pwa && playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

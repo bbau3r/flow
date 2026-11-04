@@ -1,10 +1,12 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   // Relative paths let one build work at the root of a domain or under /flow/ on GitHub Pages.
   base: './',
-  build: { target: 'es2022' },
+  // Tests get their own build with no credentials, whatever is in a developer's .env.local.
+  envDir: mode === 'e2e' ? 'e2e' : '.',
+  build: { target: 'es2022', outDir: mode === 'e2e' ? 'dist-e2e' : 'dist' },
   plugins: [
     VitePWA({
       registerType: 'prompt',
@@ -34,4 +36,4 @@ export default defineConfig({
       },
     }),
   ],
-});
+}));

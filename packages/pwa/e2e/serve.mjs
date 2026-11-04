@@ -1,12 +1,13 @@
-// Serves the production build under /flow/, the same path it has on GitHub Pages, so
-// the tests catch anything that assumes it lives at the root of a domain.
+// Serves a build under /flow/, the same path it has on GitHub Pages, so the tests catch
+// anything that assumes it lives at the root of a domain. Takes a build folder and port.
 
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = fileURLToPath(new URL('../dist', import.meta.url));
+const [folder = 'dist', port = '4179'] = process.argv.slice(2);
+const ROOT = fileURLToPath(new URL(`../${folder}`, import.meta.url));
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -29,4 +30,4 @@ createServer(async (req, res) => {
   } catch {
     res.writeHead(404).end('Not found');
   }
-}).listen(4179, 'localhost');
+}).listen(Number(port), 'localhost');
