@@ -115,15 +115,21 @@ test.describe('new scripts', () => {
     await expect(page.locator('.doc-name')).toHaveText('My Film');
   });
 
-  test('use Courier Prime throughout the app', async ({ page }) => {
+  test('use Roboto for the interface and Courier only for the script and icons', async ({ page }) => {
     await newScript(page);
-    const family = /^"Courier Prime"/;
-    await expect(page.locator('.doc-name')).toHaveCSS('font-family', family);
-    await expect(page.locator('#save')).toHaveCSS('font-family', family);
-    await expect(page.locator('flow-script .fl-ribbon')).toHaveCSS('font-family', family);
+    const roboto = /^Roboto/;
+    const courier = /^"Courier Prime"/;
+    await expect(page.locator('.doc-name')).toHaveCSS('font-family', roboto);
+    await expect(page.locator('#save')).toHaveCSS('font-family', roboto);
+    const ribbon = page.locator('flow-script .fl-ribbon');
+    await expect(ribbon.getByRole('button', { name: 'Scene', exact: true })).toHaveCSS('font-family', roboto);
+    for (const name of ['B', 'I', 'U']) await expect(ribbon.getByRole('button', { name, exact: true })).toHaveCSS('font-family', roboto);
+    await expect(page.locator('flow-script .fl-icon-glyph').first()).toHaveCSS('font-family', courier);
+    await expect(lineWith(page, 'Written by')).toHaveCSS('font-family', courier);
     await page.goBack();
-    await expect(page.locator('h1')).toHaveCSS('font-family', family);
-    await page.waitForFunction(() => [...document.fonts].some((f) => f.family.includes('Courier Prime') && f.status === 'loaded'));
+    await expect(page.locator('h1')).toHaveCSS('font-family', roboto);
+    await expect(page.locator('.brand')).toHaveCSS('font-family', roboto);
+    await page.waitForFunction(() => [...document.fonts].filter((f) => f.family.includes('Roboto') && f.status === 'loaded').length === 3);
   });
 
   test('open as pages on a big screen and continuous text on a phone', async ({ page }) => {

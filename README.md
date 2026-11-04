@@ -98,7 +98,7 @@ registerTheme('sepia', { paper: '#f4ecd8', ink: '#3b2f1e' });
 <flow-script theme="sepia"></flow-script>
 ```
 
-Colors: `desk`, `paper`, `ink`, `muted`, `accent`, `accent-ink`, `rule`, `ribbon-bg`, `ribbon-ink`, `bubble-bg`, `bubble-ink`, `shadow`. Use `--flow-font` to change the script typeface; anything but a 0.6em-wide monospace font will throw off page alignment. PDFs are always black on white.
+Colors: `desk`, `paper`, `ink`, `muted`, `accent`, `accent-ink`, `rule`, `ribbon-bg`, `ribbon-ink`, `bubble-bg`, `bubble-ink`, `shadow`. Use `--flow-font` to change the script typeface; anything but a 0.6em-wide monospace font will throw off page alignment. Use `--flow-ui-font` to change the interface font, which defaults to the bundled Roboto. PDFs are always black on white.
 
 ## Architecture
 
