@@ -22,7 +22,9 @@ ${THEME_CSS}
 * { box-sizing: border-box; }
 
 .fl-scroll { flex: 1; min-height: 0; overflow: auto; container-type: inline-size; }
-.fl-script { font-family: var(--fl-script-font); font-variant-ligatures: none; line-height: 1; }
+/* geometricPrecision keeps character widths fractional. Without it, Linux browsers at
+   standard density round 9.6px up to 10px, which breaks every column on the page. */
+.fl-script { font-family: var(--fl-script-font); font-variant-ligatures: none; line-height: 1; text-rendering: geometricPrecision; }
 :host([view="page"]) .fl-script, :host(:not([view])) .fl-script { font-size: min(16px, calc(100cqw / 52.5)); }
 
 /* Ribbon */
