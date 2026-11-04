@@ -1,0 +1,24 @@
+{
+  "name": "@flow/element",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/flow-script.js",
+  "exports": {
+    ".": "./dist/flow-script.js",
+    "./bundle": "./dist/flow-script.bundle.js"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && vite build --mode bundle"
+  },
+  "dependencies": {
+    "@flow/core": "*",
+    "@fontsource/courier-prime": "^5.3.0",
+    "@tiptap/core": "^3.32.2",
+    "@tiptap/extension-document": "^3.32.2",
+    "@tiptap/extension-text": "^3.32.2",
+    "@tiptap/extensions": "^3.32.2",
+    "@tiptap/pm": "^3.32.2"
+  }
+}
