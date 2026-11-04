@@ -12,8 +12,11 @@ const titleOf = (value) => {
   return entry ? lines[entry.lines[0]].text.trim() : '';
 };
 
-// Asks where a script that isn't a file yet should go.
+// Asks where a script that isn't a file yet should go. With only one place available
+// there's nothing to ask, so the browser's own save dialog comes up straight away.
 function chooseProvider() {
+  const usable = providers.filter((provider) => provider.status().ok);
+  if (usable.length === 1) return Promise.resolve(usable[0]);
   return new Promise((resolve) => {
     const dialog = h('dialog', { class: 'save-dialog', 'aria-labelledby': 'save-heading' });
     const finish = (provider) => {
@@ -70,7 +73,9 @@ export function renderEditor(root, doc) {
     Object.assign(doc, { name: result.name, ref: result.ref, provider: provider.id, savedValue: doc.value });
     await persist();
     refreshHeader();
-    toast(result.ref.downloaded ? `Downloaded ${result.name}` : `Saved ${result.name}`);
+    toast(result.ref.downloaded
+      ? `Downloaded ${result.name}. This browser can\u2019t ask where to save, but Chrome and Edge can.`
+      : `Saved ${result.name}`);
   };
 
   // A file changed elsewhere is only overwritten if the writer says so.

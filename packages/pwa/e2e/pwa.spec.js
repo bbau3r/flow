@@ -245,14 +245,12 @@ test.describe('local files with direct saving', () => {
     expect(await page.evaluate(() => window.readFile('existing.fountain'))).not.toContain('Z');
   });
 
-  test('save as first asks which provider, then opens the same dialog', async ({ page }) => {
+  test('save as also goes straight to the OS dialog', async ({ page }) => {
     await page.goto(HOME);
     await providerCard(page, 'local').click();
     await expect(editor(page)).toBeVisible();
     await page.locator('#save-as').click();
-    const dialog = page.locator('dialog');
-    await expect(dialog).toContainText('Choose the folder and file name.');
-    await dialog.getByRole('button', { name: /This device/ }).click();
+    await expect(page.locator('dialog')).toHaveCount(0);
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     const save = (await page.evaluate(() => window.pickerCalls)).find((c) => c.kind === 'save');
     expect(save).toEqual({ kind: 'save', suggestedName: 'existing.fountain', startInName: 'existing.fountain' });
@@ -261,7 +259,6 @@ test.describe('local files with direct saving', () => {
   test('a first save asks where, and suggests a name from the title', async ({ page }) => {
     await newScript(page);
     await page.locator('#save').click();
-    await page.locator('dialog').getByRole('button', { name: /This device/ }).click();
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     const save = (await page.evaluate(() => window.pickerCalls)).find((c) => c.kind === 'save');
     expect(save).toEqual({ kind: 'save', id: 'flow-scripts', suggestedName: 'Untitled Screenplay.fountain' });
@@ -303,12 +300,10 @@ test.describe('local files with direct saving', () => {
     expect(await page.evaluate(() => window.readFile('existing.fountain'))).toContain('Y');
   });
 
-  test('a new script chooses where to go, then keeps saving there', async ({ page }) => {
+  test('a new script goes straight to the OS dialog, then keeps saving there', async ({ page }) => {
     await newScript(page);
     await page.locator('#save').click();
-    const dialog = page.locator('dialog');
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: /This device/ }).click();
+    await expect(page.locator('dialog')).toHaveCount(0);
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     await expect(page.locator('.doc-name')).toHaveText('Untitled Screenplay.fountain');
     expect(await page.evaluate(() => window.readFile('Untitled Screenplay.fountain'))).toContain('Title: Untitled Screenplay');
@@ -322,9 +317,13 @@ test.describe('local files with direct saving', () => {
     expect(await page.evaluate(() => window.readFile('Untitled Screenplay.fountain'))).toContain('More.');
   });
 
-  test('cancelling the save choice changes nothing', async ({ page }) => {
+  test('with a second place to save, Flow asks which, and cancelling changes nothing', async ({ page }) => {
+    await page.addInitScript(() => {
+      globalThis.FLOW_CONFIG = { googleClientId: 'client', googleApiKey: 'key', googleAppId: '123' };
+    });
     await newScript(page);
     await page.locator('#save').click();
+    await expect(page.locator('dialog')).toContainText('Choose the folder and file name.');
     await page.locator('dialog').getByRole('button', { name: 'Cancel' }).click();
     await expect(page.locator('dialog')).toHaveCount(0);
     await expect(page.locator('.doc-state')).toHaveText('On this device only');
@@ -360,12 +359,28 @@ test.describe('local files with direct saving', () => {
   });
 });
 
-test('without folder access, the save dialog says a copy will be downloaded', async ({ page }) => {
+test('without folder access, Flow explains why it downloaded', async ({ page }) => {
   await page.addInitScript(() => {
     delete window.showOpenFilePicker;
     delete window.showSaveFilePicker;
     delete Window.prototype.showOpenFilePicker;
     delete Window.prototype.showSaveFilePicker;
+  });
+  await newScript(page);
+  const download = page.waitForEvent('download');
+  await page.locator('#save').click();
+  await download;
+  await expect(page.locator('dialog')).toHaveCount(0);
+  await expect(page.locator('#toast')).toContainText('can\u2019t ask where to save');
+});
+
+test('without folder access, a choice of places says a copy will be downloaded', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete window.showOpenFilePicker;
+    delete window.showSaveFilePicker;
+    delete Window.prototype.showOpenFilePicker;
+    delete Window.prototype.showSaveFilePicker;
+    globalThis.FLOW_CONFIG = { googleClientId: 'client', googleApiKey: 'key', googleAppId: '123' };
   });
   await newScript(page);
   await page.locator('#save').click();
