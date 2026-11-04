@@ -62,7 +62,7 @@ The build produces two forms:
 | `exportPdf(options)` | Resolves to `{ blob, bytes, pageCount, unsupported }` |
 | `downloadPdf(options)` | Same, and saves the file |
 | `scrollToLine(line)` | Jumps to a source line |
-| `exportActions` | The app's own actions, shown before PDF as `{ label, title, icon, attrs, onClick }`. They appear as labeled buttons, then icons alone, then in a vertical ... menu as space runs short. |
+| `exportActions` | The app's own actions, shown before PDF as `{ label, title, icon, attrs, onClick }`. They appear as icon buttons, or in a vertical ... menu when space runs short. |
 
 ### Events
 
@@ -75,12 +75,12 @@ The build produces two forms:
 
 ### Slots
 
-The editor has a top row, a formatting row and a row of pills along the bottom, all floating over the script. Apps add their own controls to them with named slots, and read-only mode shows none of them.
+The editor has a top row, formatting controls that join it when there is room, and a row of pills along the bottom, all floating over the script. Apps add their own controls to them with named slots, and read-only mode shows none of them.
 
 | Slot | Where it goes |
 | --- | --- |
 | `document` | Top row, left |
-| `tabs` | Top row, after `document` |
+| `tabs` | Top row, after `document`. Hidden in preview. |
 | `status-end` | Right end of the bottom row |
 
 ### Shared controls
@@ -128,9 +128,9 @@ Each component also has its own tokens, which default to those colors. Set them 
 | Component | Tokens |
 | --- | --- |
 | Pills | `pill-bg`, `pill-ink`, `pill-border`, `pill-radius`, `pill-shadow`, `float-shadow`, `pill-tint-bg`, `pill-tint-border` |
-| Buttons | `button-radius`, `button-hover-bg`, `button-active-bg`, `button-active-ink`, `focus` |
-| Tabs | `tabs-bg`, `tabs-ink`, `tab-selected-bg`, `tab-selected-ink` |
-| Menus | `menu-bg`, `menu-ink`, `menu-border`, `menu-radius` |
+| Buttons | `button-radius`, `button-hover-bg`, `button-active-bg`, `button-active-ink`, `focus`, `scrollbar` |
+| Tabs | `tabs-bg`, `tabs-border`, `tabs-ink`, `tab-selected-bg`, `tab-selected-ink` |
+| Menus | `menu-bg`, `menu-ink`, `menu-border`, `menu-radius`, `menu-heading-bg`, `menu-heading-ink` |
 | Modals | `dialog-bg`, `dialog-ink`, `dialog-radius` |
 
  Use `--flow-font` to change the script typeface; anything but a 0.6em-wide monospace font will throw off page alignment. Use `--flow-ui-font` to change the interface font, which defaults to the bundled Roboto. PDFs are always black on white.

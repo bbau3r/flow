@@ -517,6 +517,47 @@ test('every theme can be chosen from the menu and fits the screen', async ({ pag
   }
 });
 
+test('the theme menu headings are bold on a contrasting background', async ({ page }) => {
+  await page.goto(HOME);
+  await page.locator('.theme .fl-menu-trigger').click();
+  const headings = page.locator('.theme .fl-menu-heading');
+  await expect(headings).toHaveText(['Theme', 'Mode']);
+  for (const heading of await headings.all()) {
+    await expect(heading).toHaveCSS('font-weight', '700');
+    await expect(heading).toHaveCSS('background-color', 'rgb(180, 83, 9)');
+    await expect(heading).toHaveCSS('color', 'rgb(255, 250, 240)');
+  }
+});
+
+test('on a small screen the theme shows only its palette icon', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 700 });
+  await newScript(page);
+  const trigger = page.locator('.theme .fl-menu-trigger');
+  const name = trigger.locator('.fl-compact-hide');
+  const palette = trigger.locator('.fl-svg').first();
+  await expect(name).toHaveText('Amber');
+  await expect(name).toBeVisible();
+  await expect(palette).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 700 });
+  await expect(name).toBeHidden();
+  await expect(palette).toBeVisible();
+  await expect(trigger.locator('.fl-swatch')).toHaveCount(0);
+  // The name stays available to screen readers and the tooltip.
+  await expect(trigger).toHaveAttribute('aria-label', /Amber/);
+  await expect(trigger).toHaveAttribute('title', /Amber/);
+
+  // The menu still lists every name, and the home page does the same.
+  await trigger.click();
+  await expect(themeItem(page, 'Tulip')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.locator('.home-link').click();
+  await expect(page.locator('#new-script')).toBeVisible();
+  await expect(page.locator('.theme .fl-compact-hide')).toBeHidden();
+  await page.setViewportSize({ width: 1280, height: 700 });
+  await expect(page.locator('.theme .fl-compact-hide')).toBeVisible();
+});
+
 test('a theme saved by an older version still loads', async ({ page }) => {
   await page.goto(HOME);
   await page.evaluate(() => localStorage.setItem('flow-theme', 'auto'));
@@ -528,21 +569,48 @@ test('a theme saved by an older version still loads', async ({ page }) => {
 });
 
 test.describe('editor bars', () => {
-  test('the top row runs document, tabs, then export, above the formatting pills', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
+  test('on one row, everything runs document, tabs, formatting, then export', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await newScript(page);
+    const box = (locator) => locator.boundingBox();
+    const doc = await box(page.locator('.doc-pill'));
+    const tabs = await box(page.getByRole('tablist', { name: 'Workspace' }));
+    const format = await box(page.locator('flow-script .fl-ribbon'));
+    const exportPill = await box(page.locator('flow-script .fl-export'));
+    expect(doc.x + doc.width).toBeLessThanOrEqual(tabs.x);
+    expect(tabs.x + tabs.width).toBeLessThanOrEqual(format.x);
+    expect(format.x + format.width).toBeLessThanOrEqual(exportPill.x);
+    expect(exportPill.x + exportPill.width).toBeCloseTo(1268, 0);
+    const middle = doc.y + doc.height / 2;
+    for (const other of [tabs, format, exportPill]) expect(Math.abs(other.y + other.height / 2 - middle)).toBeLessThan(2);
+  });
+
+  test('a very long title gives way before the row breaks', async ({ page }) => {
+    await page.setViewportSize({ width: 1000, height: 700 });
+    await newScript(page);
+    await page.keyboard.type('A very long title indeed '.repeat(8));
+    await expect(page.locator('.doc-name')).toContainText('A very long');
+    const doc = await page.locator('.doc-pill').boundingBox();
+    const tabs = await page.getByRole('tablist', { name: 'Workspace' }).boundingBox();
+    const exportPill = await page.locator('flow-script .fl-export').boundingBox();
+    expect(doc.x + doc.width).toBeLessThanOrEqual(tabs.x);
+    expect(exportPill.x + exportPill.width).toBeLessThanOrEqual(1000);
+    expect(Math.abs(tabs.y - exportPill.y)).toBeLessThan(8);
+    const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(sideways).toBeLessThanOrEqual(0);
+  });
+
+  test('on two rows, formatting leans left beneath the document and tabs', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 700 });
     await newScript(page);
     const doc = await page.locator('.doc-pill').boundingBox();
     const tabs = await page.getByRole('tablist', { name: 'Workspace' }).boundingBox();
     const save = await page.locator('#save').boundingBox();
-    const pdf = await page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true }).boundingBox();
-    const ribbon = await page.locator('flow-script .fl-ribbon').boundingBox();
+    const bold = await page.locator('flow-script .fl-ribbon').getByRole('button', { name: 'Bold', exact: true }).boundingBox();
     expect(doc.x + doc.width).toBeLessThanOrEqual(tabs.x);
     expect(tabs.x + tabs.width).toBeLessThanOrEqual(save.x);
-    expect(save.x).toBeLessThan(pdf.x);
-    expect(Math.abs((doc.y + doc.height / 2) - (save.y + save.height / 2))).toBeLessThan(2);
-    expect(ribbon.y).toBeGreaterThanOrEqual(doc.y + doc.height - 1);
-    // The tabs stay in the true center, however long the title or wide the export pill.
-    expect(Math.abs(tabs.x + tabs.width / 2 - 640)).toBeLessThan(1);
+    expect(bold.y).toBeGreaterThanOrEqual(doc.y + doc.height - 1);
+    expect(bold.x).toBeLessThan(25);
   });
 
   test('the theme menu matches the small bottom pills beside it', async ({ page }) => {
@@ -585,6 +653,84 @@ test.describe('editor bars', () => {
     await expect(page.locator('.home-link')).toBeInViewport();
     await page.locator('.home-link').click();
     await expect(page.locator('#new-script')).toBeVisible();
+  });
+
+  for (const width of [1280, 900, 390]) {
+    test(`the document and tabs pills match in height and padding at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 700 });
+      await newScript(page);
+      const doc = page.locator('.doc-pill');
+      const tabs = width > 600 ? page.getByRole('tablist', { name: 'Workspace' }) : page.locator('.fl-compact-only .fl-tabs');
+      const docBox = await doc.boundingBox();
+      const tabsBox = await tabs.boundingBox();
+      expect(tabsBox.height).toBeCloseTo(docBox.height, 0);
+      expect(tabsBox.y).toBeCloseTo(docBox.y, 0);
+      const paddings = (locator) => locator.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return [style.paddingTop, style.paddingBottom, style.paddingLeft];
+      });
+      expect(await paddings(tabs)).toEqual(await paddings(doc));
+      // What's inside fills the pill, so the padding looks the same on screen too.
+      const inner = width > 600 ? page.getByRole('tab', { name: 'Write' }) : page.getByRole('button', { name: 'Workspace: Write' });
+      const innerBox = await inner.boundingBox();
+      expect(innerBox.y - tabsBox.y).toBeCloseTo(4, 0);
+      expect(tabsBox.y + tabsBox.height - (innerBox.y + innerBox.height)).toBeCloseTo(4, 0);
+    });
+  }
+
+  test('the small-screen tab dropdown is bold in the same font as the tabs, with no background', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await newScript(page);
+    const font = await page.getByRole('tab', { name: 'Write' }).evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { family: style.fontFamily, size: style.fontSize, weight: style.fontWeight };
+    });
+    await page.setViewportSize({ width: 390, height: 700 });
+    const dropdown = page.getByRole('button', { name: 'Workspace: Write' });
+    await expect(dropdown).toHaveCSS('font-family', font.family);
+    await expect(dropdown).toHaveCSS('font-size', font.size);
+    await expect(dropdown).toHaveCSS('font-weight', font.weight);
+    await page.mouse.move(0, 0);
+    await expect(dropdown).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  });
+
+  test('the document and tabs are separate secondary pills, leaning left', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 700 });
+    await newScript(page);
+    const accent = 'rgb(180, 83, 9)';
+    const doc = page.locator('.doc-pill');
+    const tabs = page.getByRole('tablist', { name: 'Workspace' });
+    const docBox = await doc.boundingBox();
+    const tabsBox = await tabs.boundingBox();
+
+    // Side by side at the left, with a gap between, even with room left over.
+    expect(tabsBox.x).toBeGreaterThan(docBox.x + docBox.width);
+    expect(tabsBox.x - (docBox.x + docBox.width)).toBeLessThan(12);
+    expect(tabsBox.x + tabsBox.width).toBeLessThan(450);
+
+    // Both are the same lighter tint, with the current tab in primary.
+    const background = (locator) => locator.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const tint = await background(doc);
+    expect(tint).not.toBe(accent);
+    expect(await background(tabs)).toBe(tint);
+    await expect(page.getByRole('tab', { name: 'Write' })).toHaveCSS('background-color', accent);
+    const shadow = (locator) => locator.evaluate((el) => getComputedStyle(el).boxShadow);
+    expect(await shadow(tabs)).toBe(await shadow(doc));
+    expect(await shadow(tabs)).not.toBe('none');
+
+    // The small-screen dropdown keeps the same pill.
+    await page.setViewportSize({ width: 390, height: 700 });
+    const small = page.getByRole('button', { name: 'Workspace: Write' });
+    await expect(small).toBeVisible();
+    expect(await small.evaluate((el) => getComputedStyle(el.closest('.fl-pill')).backgroundColor)).toBe(tint);
+
+    // Preview hides the tabs, leaving the document.
+    await page.setViewportSize({ width: 1280, height: 700 });
+    const bar = page.locator('flow-script .fl-statusbar');
+    await bar.locator('.fl-menu-trigger').click();
+    await bar.getByRole('menuitemradio', { name: 'Preview', exact: true }).click();
+    await expect(tabs).toBeHidden();
+    await expect(doc).toBeVisible();
   });
 
   test('the document pill shows title, date and source, and leads home', async ({ page }) => {
@@ -663,30 +809,21 @@ test.describe('editor bars', () => {
     });
   }
 
-  test('export buttons go from labels to icons to a menu as the screen narrows', async ({ page }) => {
+  test('export buttons are icons, then a menu as the screen narrows', async ({ page }) => {
     const exportPill = page.locator('flow-script .fl-export');
     const holder = page.locator('flow-script .fl-export-holder');
     const more = holder.getByRole('button', { name: 'Export', exact: true });
     await page.setViewportSize({ width: 1280, height: 700 });
     await newScript(page);
-    for (const name of ['Save', 'Save as', 'PDF']) {
-      await expect(exportPill.getByRole('button', { name, exact: true })).toHaveText(name);
-    }
     await expect(more).toBeHidden();
 
-    // Just wide enough for labels, the tabs still have the true center.
-    await page.setViewportSize({ width: 901, height: 700 });
-    await expect(exportPill.getByRole('button', { name: 'Save as', exact: true }).locator('.fl-label')).toBeVisible();
-    const fullBox = await page.getByRole('tablist', { name: 'Workspace' }).boundingBox();
-    expect(Math.abs(fullBox.x + fullBox.width / 2 - 901 / 2)).toBeLessThan(1);
-    expect((await exportPill.boundingBox()).x).toBeGreaterThanOrEqual(fullBox.x + fullBox.width);
-
-    for (const width of [900, 700, 601]) {
+    for (const width of [1280, 900, 700, 601]) {
       await page.setViewportSize({ width, height: 700 });
       for (const name of ['Save', 'Save as', 'PDF']) {
         const b = exportPill.getByRole('button', { name, exact: true });
         await expect(b.locator('.fl-svg')).toBeVisible();
-        await expect(b.locator('.fl-label')).toBeHidden();
+        await expect(b.locator('.fl-label')).toHaveCount(0);
+        await expect(b).toHaveAttribute('title', /./);
         await expect(b).toBeInViewport({ ratio: 1 });
       }
       await expect(more).toBeHidden();

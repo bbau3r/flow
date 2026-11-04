@@ -57,6 +57,7 @@ button:focus-visible, select:focus-visible, a:focus-visible {
 .home { min-height: 100%; }
 
 .home-top {
+  container-type: inline-size;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -152,7 +153,7 @@ h2 {
 /* Editor */
 .editor { display: flex; flex-direction: column; height: 100dvh; }
 
-.doc-pill { flex: 0 1 auto; max-width: 100%; padding-right: 16px; }
+.doc-pill { flex: 0 1 auto; padding-right: 16px; }
 
 .doc { display: flex; flex-direction: column; min-width: 0; padding-left: 4px; line-height: 1.25; }
 

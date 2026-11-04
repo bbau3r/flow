@@ -21,6 +21,7 @@ const ICONS = {
   plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
+  'chevron-left': '<path d="m15 6-6 6 6 6"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   more: '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
   'page-break': '<path d="M6 8V4a1 1 0 0 1 1-1h7l4 4v1"/><path d="M6 16v4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-4"/><path d="M3 12h2"/><path d="M8 12h2"/><path d="M14 12h2"/><path d="M19 12h2"/>',
@@ -97,8 +98,8 @@ const graphicFor = ({ icon: iconName, glyph }) => {
 
 /**
  * A button, or a link when given an `href`. `text` shows in place of an icon, such as
- * the B of bold. `collapse` hides the label when space runs short, or sooner if it's
- * 'early', and `iconOnly` always does; either way `label` stays the accessible name.
+ * the B of bold. `collapse` hides the label when space runs short and `iconOnly` always
+ * does; either way `label` stays the accessible name.
  */
 export function button({ label, title = label, icon: iconName, glyph, text, iconOnly, collapse, toggle, href, cls, attrs, onClick }) {
   const node = document.createElement(href ? 'a' : 'button');
@@ -114,8 +115,7 @@ export function button({ label, title = label, icon: iconName, glyph, text, icon
   if (text) node.append(text);
   else if (!iconOnly) {
     const span = document.createElement('span');
-    const collapsing = { true: ' fl-collapse', early: ' fl-collapse-early' }[collapse] ?? '';
-    span.className = `fl-label${collapsing}`;
+    span.className = collapse ? 'fl-label fl-collapse' : 'fl-label';
     span.textContent = label;
     node.append(span);
   }
@@ -178,14 +178,14 @@ export function tabs({ label, attrs }, items) {
 }
 
 /**
- * Actions, as a pill of labeled buttons, then icons alone as space runs short, then a
- * vertical ... menu. Groups are lists of { label, title, icon, attrs, onClick }, and are
- * kept apart in every form.
+ * Actions, as a pill of icon buttons or, when space runs short, a vertical ... menu with
+ * their names. Groups are lists of { label, title, icon, attrs, onClick }, and are kept apart
+ * in both forms.
  */
 export function actionPill({ label, cls, attrs }, groups) {
   const wide = pill({ cls, label }, ...groups.flatMap((group, i) => [
     ...(i ? [pillSep()] : []),
-    ...group.map((action) => button({ ...action, collapse: 'early' })),
+    ...group.map((action) => button({ ...action, iconOnly: true })),
   ]));
   const actions = new Map(groups.flat().map((action) => [action.label, action]));
   const menu = new Menu({
@@ -333,7 +333,17 @@ export class Menu {
   #keepOnScreen() {
     const { popup } = this;
     popup.style.left = '';
+    popup.style.top = '';
     popup.style.maxHeight = '';
+    // Anchored to something further out than its menu, it has to be placed by hand.
+    let startLeft = 0;
+    if (getComputedStyle(this.root).position === 'static') {
+      const parent = popup.offsetParent.getBoundingClientRect();
+      const trigger = this.button.getBoundingClientRect();
+      startLeft = trigger.left - parent.left;
+      popup.style.left = `${startLeft}px`;
+      popup.style.top = `${trigger.bottom - parent.top + 6}px`;
+    }
     const rect = popup.getBoundingClientRect();
     const area = scrollAreaOf(popup);
     const origin = area?.getBoundingClientRect() ?? { left: 0, top: 0 };
@@ -345,7 +355,7 @@ export class Menu {
     if (rect.left + shift < minLeft) shift = minLeft - rect.left;
     // Chrome lets a transformed menu's original position widen what can scroll, so this moves
     // it with left instead.
-    if (shift) popup.style.left = `${shift}px`;
+    if (shift) popup.style.left = `${startLeft + shift}px`;
     const room = this.#up ? rect.bottom - origin.top - MENU_MARGIN : maxBottom - rect.top;
     if (rect.height > room) popup.style.maxHeight = `${Math.max(room, 120)}px`;
   }
@@ -380,25 +390,30 @@ const CONTROL_TOKENS = {
   'pill-border': 'var(--flow-rule)',
   'pill-radius': '999px',
   'pill-shadow': '0 2px 6px var(--flow-shadow)',
-  'float-shadow': '0 1px 3px var(--flow-shadow), 0 2px 6px var(--flow-shadow), 0 8px 22px var(--flow-shadow)',
+  // Kept tighter than the gap between pills, so that each shows as its own shape.
+  'float-shadow': '0 1px 2px var(--flow-shadow), 0 2px 4px var(--flow-shadow), 0 3px 7px var(--flow-shadow)',
   'pill-tint-bg': 'color-mix(in srgb, var(--flow-accent) 18%, var(--flow-ribbon-bg))',
   'pill-tint-border': 'color-mix(in srgb, var(--flow-accent) 35%, var(--flow-rule))',
   'button-radius': '999px',
   'button-hover-bg': 'color-mix(in srgb, var(--flow-accent) 15%, transparent)',
   'button-active-bg': 'var(--flow-accent)',
   'button-active-ink': 'var(--flow-accent-ink)',
-  'tabs-bg': 'var(--flow-accent)',
-  'tabs-ink': 'var(--flow-accent-ink)',
-  'tab-selected-bg': 'var(--flow-accent-ink)',
-  'tab-selected-ink': 'var(--flow-accent)',
+  'tabs-bg': 'var(--flow-pill-tint-bg, color-mix(in srgb, var(--flow-accent) 18%, var(--flow-ribbon-bg)))',
+  'tabs-border': 'var(--flow-pill-tint-border, color-mix(in srgb, var(--flow-accent) 35%, var(--flow-rule)))',
+  'tabs-ink': 'var(--flow-ribbon-ink)',
+  'tab-selected-bg': 'var(--flow-accent)',
+  'tab-selected-ink': 'var(--flow-accent-ink)',
   'menu-bg': 'var(--flow-ribbon-bg)',
   'menu-ink': 'var(--flow-ribbon-ink)',
   'menu-border': 'var(--flow-rule)',
   'menu-radius': '10px',
+  'menu-heading-bg': 'var(--flow-accent)',
+  'menu-heading-ink': 'var(--flow-accent-ink)',
   'dialog-bg': 'var(--flow-desk)',
   'dialog-ink': 'var(--flow-ink)',
   'dialog-radius': '12px',
   focus: 'var(--flow-accent)',
+  scrollbar: 'var(--flow-accent)',
 };
 
 /** The token's value, falling back to its default when nobody has set it. */
@@ -448,10 +463,13 @@ export const CONTROLS_CSS = `
   background: ${token('button-active-bg')}; color: ${token('button-active-ink')};
 }
 .fl-btn[aria-pressed="true"] .fl-icon { color: inherit; border-color: currentColor; background: transparent; }
+/* A quieter pressed look: the secondary color behind, with only the icon in primary. */
+.fl-btn-soft[aria-pressed="true"], .fl-btn-soft[aria-pressed="true"]:hover:not(:disabled) { background: ${token('pill-tint-bg')}; color: inherit; }
+.fl-btn-soft[aria-pressed="true"] .fl-icon { background: ${token('button-active-bg')}; border-color: ${token('button-active-bg')}; color: ${token('button-active-ink')}; }
 .fl-btn:disabled { opacity: 0.4; cursor: default; }
 .fl-btn-outline { border: 1px solid ${token('pill-border')}; }
 
-.fl-tabs { background: ${token('tabs-bg')}; border-color: ${token('tabs-bg')}; color: ${token('tabs-ink')}; }
+.fl-tabs { align-items: stretch; background: ${token('tabs-bg')}; border-color: ${token('tabs-border')}; color: ${token('tabs-ink')}; }
 .fl-tab {
   appearance: none; min-height: 30px; padding: 3px 16px;
   background: transparent; color: inherit;
@@ -461,6 +479,8 @@ export const CONTROLS_CSS = `
 .fl-tab:focus-visible { outline-color: ${token('tabs-ink')}; }
 .fl-tab[aria-selected="true"] { background: ${token('tab-selected-bg')}; color: ${token('tab-selected-ink')}; }
 .fl-tab:disabled { opacity: 0.8; cursor: default; }
+/* On small screens a dropdown names the current tab, in the same type as the tabs. */
+.fl-tabs .fl-menu-trigger { font-weight: 600; }
 
 .fl-menu { position: relative; display: inline-flex; }
 .fl-menu-trigger > .fl-svg:not(:only-child):last-child { width: 1em; height: 1em; }
@@ -475,7 +495,12 @@ export const CONTROLS_CSS = `
 }
 .fl-menu-popup[hidden] { display: none; }
 .fl-menu-up { top: auto; bottom: calc(100% + 6px); }
-.fl-menu-heading { padding: 6px 8px 2px; color: var(--flow-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.fl-menu-heading {
+  flex: none; padding: 3px 8px; border-radius: 6px;
+  background: ${token('menu-heading-bg')}; color: ${token('menu-heading-ink')};
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.fl-menu-item + .fl-menu-heading { margin-top: 5px; }
 .fl-menu-rule { flex: none; height: 1px; margin: 4px 2px; background: ${token('menu-border')}; }
 .fl-menu-item {
   appearance: none; display: flex; align-items: center; gap: 8px; flex: none; width: 100%; min-height: 30px; padding: 3px 8px;
@@ -493,14 +518,11 @@ export const CONTROLS_CSS = `
 /* Space runs short in stages, measured from the bar the control sits in. */
 .fl-responsive, .fl-wide-only { display: contents; }
 .fl-compact-only { display: none; }
-@container (max-width: 900px) {
-  .fl-collapse-early { display: none; }
-}
 @container (max-width: 760px) {
   .fl-collapse { display: none; }
 }
 @container (max-width: 600px) {
-  .fl-wide-only { display: none; }
+  .fl-wide-only, .fl-compact-hide { display: none; }
   .fl-compact-only { display: contents; }
 }
 
