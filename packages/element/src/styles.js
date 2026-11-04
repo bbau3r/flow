@@ -12,7 +12,7 @@ ${THEME_CSS}
   min-height: 0;
   background: var(--flow-desk);
   color: var(--flow-ink);
-  font-family: var(--flow-ui-font, system-ui, sans-serif);
+  font-family: var(--flow-ui-font, Roboto, system-ui, sans-serif);
   --fl-script-font: var(--flow-font, "Courier Prime", "Courier New", Courier, monospace);
   --fl-page-w: 51em;
   --fl-page-h: 66em;
@@ -50,7 +50,7 @@ ${THEME_CSS}
 .fl-ribbon button[aria-pressed="true"] { background: var(--flow-accent); color: var(--flow-accent-ink); }
 .fl-ribbon button:disabled { opacity: 0.4; cursor: default; }
 .fl-ribbon .fl-b { font-weight: 700; }
-.fl-ribbon .fl-i { font-style: italic; font-family: Georgia, serif; }
+.fl-ribbon .fl-i { font-style: italic; }
 .fl-ribbon .fl-u { text-decoration: underline; }
 .fl-group { display: flex; align-items: center; gap: 2px; padding: 0 6px; }
 .fl-group { border-right: 1px solid var(--flow-rule); }
@@ -101,7 +101,7 @@ ${THEME_CSS}
 /* Comment bubbles. The summary keeps its place and size whether open or closed, and
    the note opens as an overlay behind it, so together they read as one pill and
    nothing around them moves. */
-.fl-bubble { position: relative; isolation: isolate; font-family: var(--flow-ui-font, system-ui, sans-serif); font-size: 0.8em; line-height: 1.3; }
+.fl-bubble { position: relative; isolation: isolate; font-family: var(--flow-ui-font, Roboto, system-ui, sans-serif); font-size: 0.8em; line-height: 1.3; }
 .fl-bubble[open] { z-index: 6; }
 .fl-bubble summary {
   position: relative; z-index: 1;
@@ -148,7 +148,7 @@ ${THEME_CSS}
 .fl-line .fl-u { text-decoration: underline; }
 .fl-scene-number { color: var(--flow-muted); }
 .fl-line.fl-section, .fl-line.fl-synopsis {
-  font-family: var(--flow-ui-font, system-ui, sans-serif); color: var(--flow-muted); text-transform: none;
+  font-family: var(--flow-ui-font, Roboto, system-ui, sans-serif); color: var(--flow-muted); text-transform: none;
 }
 .fl-line.fl-section { font-weight: 600; }
 .fl-line.fl-section-1 { font-size: 1.15em; }
@@ -210,13 +210,13 @@ ${THEME_CSS}
 .fl-active .fl-comment-src { display: inline; color: var(--flow-bubble-ink); background: var(--flow-bubble-bg); font-style: normal; font-weight: 400; }
 .fl-active .fl-bubble-chip { display: none; }
 .fl-comment-hidden:not(.fl-active) { display: none; }
-.fl-editor-host .fl-bubble-chip { margin: 0 0.25em; font-family: var(--flow-ui-font, system-ui, sans-serif); font-size: 0.8em; line-height: 1.3; vertical-align: baseline; }
+.fl-editor-host .fl-bubble-chip { margin: 0 0.25em; font-family: var(--flow-ui-font, Roboto, system-ui, sans-serif); font-size: 0.8em; line-height: 1.3; vertical-align: baseline; }
 .fl-boneyard { color: var(--flow-muted); opacity: 0.75; text-decoration: line-through; }
 .fl-page-gap {
   display: flex; align-items: center; justify-content: flex-end;
   height: 3em; margin: 2em calc(-1 * var(--fl-pad-right, 0em)) 2em -9em; padding: 0 1em;
   background: var(--flow-desk); color: var(--flow-muted);
-  font-family: var(--flow-ui-font, system-ui, sans-serif);
+  font-family: var(--flow-ui-font, Roboto, system-ui, sans-serif);
   box-shadow: inset 0 3px 4px -3px var(--flow-shadow), inset 0 -3px 4px -3px var(--flow-shadow);
   user-select: none;
 }

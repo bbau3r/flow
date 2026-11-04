@@ -1,5 +1,5 @@
 :root {
-  --font: "Courier Prime", "Courier New", Courier, monospace;
+  --font: Roboto, system-ui, sans-serif;
   --desk: #efe4cb;
   --paper: #fffaf0;
   --ink: #2a1f0e;
@@ -215,7 +215,7 @@ h2 {
 
 .doc-status { color: var(--muted); font-size: 12px; }
 
-.editor flow-script { flex: 1; min-height: 0; --flow-ui-font: var(--font); }
+.editor flow-script { flex: 1; min-height: 0; }
 
 .save-dialog {
   width: min(460px, calc(100vw - 32px));

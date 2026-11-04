@@ -16,6 +16,7 @@
   "dependencies": {
     "@flow/core": "*",
     "@fontsource/courier-prime": "^5.3.0",
+    "@fontsource/roboto": "^5.2.0",
     "@tiptap/core": "^3.32.2",
     "@tiptap/extension-document": "^3.32.2",
     "@tiptap/extension-text": "^3.32.2",
