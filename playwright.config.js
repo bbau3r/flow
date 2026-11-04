@@ -7,6 +7,8 @@ export default defineConfig({
   timeout: 30000,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
+  // On CI, failures also appear as annotations on the run, readable without opening logs.
+  reporter: process.env.CI ? [['github'], ['line']] : 'list',
   use: { channel, acceptDownloads: true },
   projects: [
     {
