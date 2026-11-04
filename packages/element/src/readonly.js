@@ -86,7 +86,7 @@ function renderPages(parsed, options) {
   return root;
 }
 
-const FLOW_HIDDEN = new Set(['section', 'synopsis', 'page-break', 'comment', 'title']);
+const FLOW_HIDDEN = new Set(['section', 'synopsis', 'comment']);
 
 function flowLine(line) {
   const div = el('div', `fl-line fl-${line.type}`);
@@ -116,13 +116,18 @@ function renderFlow(parsed) {
         root.append(div);
       }
     }
-    root.append(el('div', 'fl-line'));
+    root.append(el('div', 'fl-break-rule'));
   }
   let lastWasHidden = true;
   let lastBlock = null;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.type === 'title') continue;
+    if (line.type === 'page-break') {
+      root.append(el('div', 'fl-break-rule'));
+      lastWasHidden = true;
+      continue;
+    }
     if (FLOW_HIDDEN.has(line.type)) {
       for (const c of line.comments) {
         if (c.comment.type === 'note' && c.comment.lineStart === i) root.append(bubble(c.comment));

@@ -358,9 +358,9 @@ export function layout(parsed, options = {}) {
     rows.forEach((r, y) => { r.y = r.pinY ?? y; });
     pages.push({ kind: 'script', number: n + 1, showNumber: opts.pageNumbers && n > 0, rows });
   });
-  // Where each page after the first begins, for the editor's break markers.
+  // Where each page after the very first begins, for the editor's break markers.
   const pageStarts = pages
-    .filter((p) => p.kind === 'script' && p.number > 1 && p.rows.length)
+    .filter((p, i) => p.kind === 'script' && i > 0 && p.rows.length)
     .map((p) => ({ number: p.number, line: pageAnchor(parsed.lines, p.rows[0].line), continued: p.rows[0].type === 'continued' }));
   return { profile, options: opts, pages, pageStarts };
 }

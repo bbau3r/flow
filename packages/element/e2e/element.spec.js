@@ -109,10 +109,9 @@ test('ribbon buttons carry their fountain character, grouped as related', async 
       return icon ? `${icon} ${b.textContent.slice(icon.length)}` : b.textContent;
     })
   )));
-  expect(groups.slice(1, 8)).toEqual([
+  expect(groups.slice(1, 7)).toEqual([
     ['. Scene', '> Transition'],
-    ['@ Character', '() Paren', '“ Dialogue'],
-    ['^ Dual'],
+    ['@ Character', '() Paren', '“ Dialogue', '^ Dual'],
     ['! Action', '>< Centered', '~ Lyrics'],
     ['# Act', '## Sequence', '= Synopsis'],
     ['[[ Note'],
@@ -147,13 +146,14 @@ test('the PDF menu stays on screen wherever the ribbon puts its button', async (
   await open(page);
   const toggle = page.locator('flow-script .fl-menu summary');
   const menu = page.locator('flow-script .fl-menu-body');
-  const expectOnScreen = async (label) => {
+  // The browser fires toggle just after opening, so give the position a moment to settle.
+  const expectOnScreen = (label) => expect(async () => {
     const viewport = page.viewportSize();
     const box = await menu.boundingBox();
     expect(box.x, label).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width, label).toBeLessThanOrEqual(viewport.width);
     expect(box.y + box.height, label).toBeLessThanOrEqual(viewport.height);
-  };
+  }).toPass({ timeout: 2000 });
   for (const width of [1300, 900, 600, 390, 280]) {
     for (const buttonOnLeft of [false, true]) {
       await page.setViewportSize({ width, height: 800 });
@@ -516,6 +516,27 @@ test('headings after a page break appear on the new page in the editor', async (
   const gapBox = await page.locator('flow-script .fl-page-gap').boundingBox();
   const headingBox = await lineWith(page, 'Act Two').boundingBox();
   expect(headingBox.y).toBeGreaterThan(gapBox.y + gapBox.height);
+});
+
+test('the title page gets a break in every view', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'Title: BIG\n\n# Act One\n\nOne.\n\n===\n\nTwo.');
+  const gap = page.locator('flow-script .fl-title-gap');
+  await expect(gap).toBeVisible();
+  await expect(gap).toHaveText('');
+  const paged = await gap.boundingBox();
+  expect(paged.height).toBeGreaterThan(20);
+  const order = await page.locator('flow-script .ProseMirror > *').evaluateAll((els) => els.map((e) => (e.classList.contains('fl-title-gap') ? 'GAP' : e.textContent)).filter(Boolean));
+  expect(order.slice(0, 3)).toEqual(['Title: BIG', 'GAP', '# Act One']);
+
+  await rib(page, 'Page view').click();
+  await expect(gap).toBeVisible();
+  await expect(gap).toHaveCSS('border-top-style', 'dashed');
+  expect((await gap.boundingBox()).height).toBeLessThan(5);
+
+  await host(page).evaluate((el) => { el.readonly = true; });
+  await expect(page.locator('flow-script .fl-flow .fl-break-rule')).toHaveCount(2);
+  await expect(page.locator('flow-script .fl-flow')).not.toContainText('===');
 });
 
 test('paste becomes plain fountain lines', async ({ page }) => {

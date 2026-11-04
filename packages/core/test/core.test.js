@@ -373,6 +373,12 @@ describe('layout', () => {
       expect(parse(source).lines[startOf(source)].type).toBe('dialogue');
     });
   });
+  it('reports the start of page 1 only when a title page comes before it', () => {
+    const titled = 'Title: BIG\n\n# Act One\n\nINT. A - DAY\n\nAction.';
+    expect(layout(parse(titled)).pageStarts).toEqual([{ number: 1, line: 2, continued: false }]);
+    expect(layout(parse(titled), { titlePage: false }).pageStarts).toEqual([]);
+    expect(layout(parse('INT. A - DAY\n\nAction.')).pageStarts).toEqual([]);
+  });
   it('handles an empty script', () => {
     const { pages } = layout(parse(''));
     expect(pages).toHaveLength(1);

@@ -65,10 +65,11 @@ function chip(comment, onOpen) {
 
 function pageGap(number, continued) {
   const dom = document.createElement('div');
-  dom.className = 'fl-page-gap';
+  // Page 1 only gets a break when a title page sits before it. It prints unnumbered.
+  dom.className = number === 1 ? 'fl-page-gap fl-title-gap' : 'fl-page-gap';
   dom.setAttribute('aria-hidden', 'true');
   const label = document.createElement('span');
-  label.textContent = continued ? `(CONTINUED)  ${number}.` : `${number}.`;
+  if (number > 1) label.textContent = continued ? `(CONTINUED)  ${number}.` : `${number}.`;
   dom.append(label);
   return dom;
 }

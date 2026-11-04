@@ -203,6 +203,12 @@ ${THEME_CSS}
   user-select: none;
 }
 .fl-flow .fl-page-gap { display: none; }
+/* Without pages to separate them, breaks in flow view are drawn as a dashed line. */
+.fl-break-rule, .fl-flow .fl-page-gap.fl-title-gap {
+  display: block; height: 0; margin: 1em 0; padding: 0;
+  background: none; box-shadow: none;
+  border-top: 2px dashed var(--flow-rule);
+}
 
 @media print {
   :host { background: none; }
