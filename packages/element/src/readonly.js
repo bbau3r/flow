@@ -171,6 +171,7 @@ function renderFlow(parsed) {
 }
 
 export function renderReadonly(source, { view, options }) {
+  if (view === 'source') return el('pre', 'fl-script fl-source', source);
   const parsed = parse(source);
   return view === 'flow' ? renderFlow(parsed) : renderPages(parsed, options);
 }

@@ -8,6 +8,8 @@ import { STYLES } from './styles.js';
 import { getTheme } from './themes.js';
 import { renderReadonly } from './readonly.js';
 import { createRibbon } from './ribbon.js';
+import { createStatusbar, SCALE_MAX, SCALE_MIN } from './statusbar.js';
+import { openExportDialog } from './export-dialog.js';
 
 let fontsRequested = false;
 
@@ -19,13 +21,17 @@ export function loadFonts() {
 }
 
 export class FlowScript extends HTMLElement {
-  static observedAttributes = ['readonly', 'view', 'theme', 'paper'];
+  static observedAttributes = ['readonly', 'view', 'theme', 'paper', 'scale'];
 
   #value = '';
   #valueSet = false;
   #options = { ...DEFAULT_OPTIONS };
   #editor = null;
   #ribbon = null;
+  #statusbar = null;
+  #preview = null;
+  #exportActions = [];
+  #barObserver = null;
   #scroll = null;
   #surface = null;
   #loading = null;
@@ -46,7 +52,7 @@ export class FlowScript extends HTMLElement {
     if (this.#started) return;
     // Properties set before this element was defined sit on the instance and would
     // shadow the accessors, so reapply them through the class.
-    for (const prop of ['value', 'readonly', 'view', 'printOptions']) {
+    for (const prop of ['value', 'readonly', 'view', 'printOptions', 'exportActions']) {
       if (Object.hasOwn(this, prop)) {
         const pending = this[prop];
         delete this[prop];
@@ -61,6 +67,7 @@ export class FlowScript extends HTMLElement {
     loadFonts();
     this.applyTheme();
     this.#applyPaper();
+    this.#applyScale();
     this.#render();
   }
 
@@ -80,6 +87,7 @@ export class FlowScript extends HTMLElement {
   attributeChangedCallback(name, oldValue, newValue) {
     if (oldValue === newValue || !this.#started) return;
     if (name === 'theme') this.applyTheme();
+    if (name === 'scale') this.#applyScale();
     if (name === 'paper') {
       this.#options.paper = PROFILES[newValue] ? newValue : 'letter';
       this.#applyPaper();
@@ -103,8 +111,10 @@ export class FlowScript extends HTMLElement {
   set value(text) {
     this.#valueSet = true;
     this.#value = parse(text).source;
-    if (this.#editor) this.#editor.value = this.#value;
-    else if (this.#started && !this.#loading) this.#render();
+    if (this.#editor) {
+      this.#editor.value = this.#value;
+      this.#showPreview();
+    } else if (this.#started && !this.#loading) this.#render();
   }
 
   get readonly() {
@@ -115,13 +125,41 @@ export class FlowScript extends HTMLElement {
     this.toggleAttribute('readonly', !!on);
   }
 
-  /** 'page' (standard script pages, the default) or 'flow' (continuous, no pages). */
+  /**
+   * 'page' (standard script pages, the default), 'flow' (continuous, no pages),
+   * 'preview' (the pages as they print, with editing off) or 'source' (the Fountain
+   * text itself, with nothing hidden or formatted).
+   */
   get view() {
-    return this.getAttribute('view') === 'flow' ? 'flow' : 'page';
+    const view = this.getAttribute('view');
+    return view === 'flow' || view === 'preview' || view === 'source' ? view : 'page';
   }
 
   set view(v) {
     this.setAttribute('view', v);
+  }
+
+  /** How large the script is shown, as a percentage. */
+  get scale() {
+    const scale = Number(this.getAttribute('scale') ?? 100);
+    return Math.min(SCALE_MAX, Math.max(SCALE_MIN, Number.isFinite(scale) ? scale : 100));
+  }
+
+  set scale(percent) {
+    this.setAttribute('scale', percent);
+  }
+
+  /**
+   * The app's own export actions, shown before PDF: { label, title, icon, attrs, onClick }.
+   * They appear as labeled buttons, then icons alone, then in a menu as space runs short.
+   */
+  get exportActions() {
+    return this.#exportActions;
+  }
+
+  set exportActions(actions) {
+    this.#exportActions = actions;
+    this.#ribbon?.setExportActions(actions);
   }
 
   /** Section, scene and synopsis tree. Sections are never printed but always present here. */
@@ -146,8 +184,10 @@ export class FlowScript extends HTMLElement {
       if (this.getAttribute('paper') !== options.paper) this.setAttribute('paper', options.paper);
       this.#applyPaper();
     }
-    if (this.#editor) this.#editor.relayout();
-    else if (this.#started && !this.#loading) this.#render();
+    if (this.#editor) {
+      this.#editor.relayout();
+      this.#showPreview();
+    } else if (this.#started && !this.#loading) this.#render();
   }
 
   focus() {
@@ -214,19 +254,42 @@ export class FlowScript extends HTMLElement {
     this.style.setProperty('--fl-action-w', `${profile.actionWidth * 0.6}em`);
   }
 
+  #applyScale() {
+    const { scale } = this;
+    this.style.setProperty('--fl-scale', scale / 100);
+    this.#statusbar?.setScale(scale);
+  }
+
   #render() {
     if (this.readonly) this.#renderReadonly();
     else this.#renderEditor();
   }
 
   #restyleEditor() {
+    const previewing = this.view === 'preview';
+    const wasPreviewing = this.#surface.hidden;
     this.#surface.className = this.#surfaceClass();
+    this.#surface.hidden = previewing;
     this.#ribbon.setView(this.view);
+    this.#statusbar.setView(this.view);
     this.#editor.relayout();
+    this.#showPreview();
+    if (wasPreviewing && !previewing) this.#editor.focus();
+  }
+
+  // Preview sits beside the hidden editor rather than replacing it, which is what
+  // keeps undo history and the cursor when returning to edit.
+  #showPreview() {
+    this.#preview?.remove();
+    this.#preview = null;
+    if (this.view !== 'preview') return;
+    this.#preview = renderReadonly(this.#editor.value, { view: 'page', options: this.#options });
+    this.#statusbar.root.before(this.#preview);
   }
 
   #surfaceClass() {
-    return `fl-script fl-editor-host ${this.view === 'flow' ? 'fl-flow' : 'fl-sheet'}`;
+    const shape = { flow: 'fl-flow', source: 'fl-source' }[this.view] ?? 'fl-sheet';
+    return `fl-script fl-editor-host ${shape}`;
   }
 
   #renderReadonly() {
@@ -236,8 +299,8 @@ export class FlowScript extends HTMLElement {
       this.#editor.destroy();
       this.#editor = null;
     }
-    this.#ribbon?.destroy();
-    this.#ribbon = null;
+    this.#destroyBars();
+    this.#preview = null;
     this.#scroll.replaceChildren(renderReadonly(this.#value, { view: this.view, options: this.#options }));
     this.dispatchEvent(new CustomEvent('flow-ready'));
   }
@@ -248,32 +311,85 @@ export class FlowScript extends HTMLElement {
       this.#editor.destroy();
       this.#editor = null;
     }
+    // The bars don't need the editor code, so they appear without waiting for it.
+    this.#createBars();
     const token = (this.#loading = {});
     const { FlowEditor } = await import('./editor.js');
     if (this.#loading !== token || this.readonly) return;
     this.#loading = null;
 
-    if (!this.#ribbon) {
-      this.#ribbon = this.#buildRibbon();
-      this.shadowRoot.insertBefore(this.#ribbon.root, this.#scroll);
-    }
-    this.#ribbon.setView(this.view);
     this.#surface = document.createElement('div');
     this.#surface.className = this.#surfaceClass();
-    this.#scroll.replaceChildren(this.#surface);
+    this.#surface.hidden = this.view === 'preview';
+    this.#scroll.replaceChildren(this.#ribbon.root, this.#surface, this.#statusbar.root);
+    this.#preview = null;
     this.#editor = new FlowEditor(this.#surface, {
       value: this.#value,
       getLayoutOptions: () => this.#options,
+      showSource: () => this.view === 'source',
       onChange: (value, outline) => {
         this.#value = value;
         this.dispatchEvent(new CustomEvent('flow-change', { detail: { value, outline } }));
       },
       onState: (state) => {
         this.#ribbon?.update(state);
+        this.#statusbar?.update(state);
         this.dispatchEvent(new CustomEvent('flow-selection', { detail: state }));
       },
     });
+    this.#applyInsets();
+    this.#showPreview();
     this.dispatchEvent(new CustomEvent('flow-ready'));
+  }
+
+  #createBars() {
+    if (this.#ribbon) return;
+    this.#ribbon = this.#buildRibbon();
+    this.#statusbar = this.#buildStatusbar();
+    this.#scroll.classList.add('fl-has-bars');
+    this.#scroll.prepend(this.#ribbon.root);
+    this.#scroll.append(this.#statusbar.root);
+    // The pills wrap to more or fewer lines, and what they cover depends on their height.
+    this.#barObserver = new ResizeObserver(() => this.#applyInsets());
+    this.#barObserver.observe(this.#ribbon.root);
+    this.#barObserver.observe(this.#statusbar.root);
+    this.#ribbon.setExportActions(this.#exportActions);
+    this.#ribbon.setView(this.view);
+    this.#statusbar.setView(this.view);
+    this.#statusbar.setScale(this.scale);
+  }
+
+  #applyInsets() {
+    if (!this.#ribbon) return;
+    const top = this.#ribbon.root.offsetHeight;
+    const bottom = this.#statusbar.root.offsetHeight;
+    this.style.setProperty('--fl-inset-top', `${top}px`);
+    this.style.setProperty('--fl-inset-bottom', `${bottom}px`);
+    this.#editor?.setInsets(top, bottom);
+  }
+
+  #destroyBars() {
+    this.#barObserver?.disconnect();
+    this.#barObserver = null;
+    this.#scroll.classList.remove('fl-has-bars');
+    this.style.removeProperty('--fl-inset-top');
+    this.style.removeProperty('--fl-inset-bottom');
+    this.#ribbon?.destroy();
+    this.#statusbar?.destroy();
+    this.#ribbon = null;
+    this.#statusbar = null;
+  }
+
+  #buildStatusbar() {
+    return createStatusbar({
+      undo: () => this.#editor?.undo(),
+      redo: () => this.#editor?.redo(),
+      setView: (view) => { this.view = view; },
+      setScale: (percent) => {
+        this.scale = percent;
+        this.dispatchEvent(new CustomEvent('flow-scale', { detail: { scale: this.scale } }));
+      },
+    });
   }
 
   #buildRibbon() {
@@ -284,23 +400,26 @@ export class FlowScript extends HTMLElement {
       dual: edit((e) => e.dual()),
       boneyard: edit((e) => e.boneyard()),
       pageBreak: edit((e) => e.pageBreak()),
-      undo: edit((e) => e.undo()),
-      redo: edit((e) => e.redo()),
-      toggleView: () => { this.view = this.view === 'flow' ? 'page' : 'flow'; },
-      getOptions: () => this.#options,
-      setOption: (key, value) => { this.printOptions = { [key]: value }; },
-      exportPdf: async () => {
-        this.#ribbon.setStatus('Building PDF…');
-        try {
-          const { pageCount, unsupported } = await this.downloadPdf();
-          this.#ribbon.setStatus(unsupported.length
-            ? `Exported, but "${unsupported.slice(0, 8).join('')}" can't be drawn and show as "?"`
-            : `Exported ${pageCount} page${pageCount === 1 ? '' : 's'}`);
-        } catch (err) {
-          this.#ribbon.setStatus(`PDF export failed: ${err.message}`);
-        }
-      },
+      openExport: () => openExportDialog(this.shadowRoot, {
+        getOptions: () => this.#options,
+        setOption: (key, value) => { this.printOptions = { [key]: value }; },
+        exportPdf: () => this.#exportFromDialog(),
+        onClose: () => this.focus(),
+      }),
     });
+  }
+
+  async #exportFromDialog() {
+    const setStatus = (text) => this.#statusbar?.setStatus(text);
+    setStatus('Building PDF…');
+    try {
+      const { pageCount, unsupported } = await this.downloadPdf();
+      setStatus(unsupported.length
+        ? `Exported, but "${unsupported.slice(0, 8).join('')}" can't be drawn and show as "?"`
+        : `Exported ${pageCount} page${pageCount === 1 ? '' : 's'}`);
+    } catch (err) {
+      setStatus(`PDF export failed: ${err.message}`);
+    }
   }
 }
 

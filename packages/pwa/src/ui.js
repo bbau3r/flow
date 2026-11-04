@@ -1,5 +1,7 @@
 // Small DOM helpers shared by the views.
 
+import { icon, Menu, PALETTES } from '@flow/element/source';
+
 export function h(tag, props = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(props)) {
@@ -30,31 +32,57 @@ export function timeAgo(when) {
   return new Date(when).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-const THEMES = [['auto', 'Auto'], ['amber-light', 'Light'], ['amber-dark', 'Dark']];
+const MODES = [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']];
 const THEME_KEY = 'flow-theme';
+const DEFAULT_THEME = { palette: 'amber', mode: 'auto' };
 
-export function currentTheme() {
+// Stored as a theme name such as ocean-dark. Older versions also stored plain "auto".
+function readTheme() {
+  let stored = null;
   try {
-    return localStorage.getItem(THEME_KEY) ?? 'auto';
+    stored = localStorage.getItem(THEME_KEY);
   } catch {
-    return 'auto';
+    // Private browsing can refuse storage, which just means the default.
   }
+  const [palette, mode] = (stored ?? '').split('-');
+  return PALETTES[palette] && MODES.some(([value]) => value === mode) ? { palette, mode } : DEFAULT_THEME;
 }
 
-export function themePicker(onChange) {
-  const select = h('select', {
-    'aria-label': 'Theme',
-    class: 'theme',
-    onchange: () => {
+const themeName = ({ palette, mode }) => `${palette}-${mode}`;
+
+export const currentTheme = () => themeName(readTheme());
+
+/** Chooses the palette and light or dark. `up` opens it upward, for a bottom bar. */
+export function themePicker({ onChange, up } = {}) {
+  let theme = readTheme();
+  const paletteValue = (name) => `palette:${name}`;
+  const modeValue = (name) => `mode:${name}`;
+  const menu = new Menu({
+    up,
+    cls: 'theme',
+    sections: [
+      { label: 'Theme', items: Object.entries(PALETTES).map(([name, { label }]) => ({ value: paletteValue(name), label })) },
+      { label: 'Mode', items: MODES.map(([name, label]) => ({ value: modeValue(name), label })) },
+    ],
+    isChecked: (value) => value === paletteValue(theme.palette) || value === modeValue(theme.mode),
+    trigger: () => {
+      const { label } = PALETTES[theme.palette];
+      const mode = MODES.find(([value]) => value === theme.mode)[1];
+      return { label: `Theme: ${label}, ${mode}`, content: [icon('palette'), h('span', {}, label)] };
+    },
+    onSelect: (value) => {
+      const [kind, name] = value.split(':');
+      theme = { ...theme, [kind]: name };
+      const chosen = themeName(theme);
       try {
-        localStorage.setItem(THEME_KEY, select.value);
+        localStorage.setItem(THEME_KEY, chosen);
       } catch {
         // Private browsing can refuse storage; the theme still applies for this visit.
       }
-      document.documentElement.dataset.theme = select.value;
-      onChange?.(select.value);
+      document.documentElement.dataset.theme = chosen;
+      menu.refresh();
+      onChange?.(chosen);
     },
   });
-  for (const [value, label] of THEMES) select.add(new Option(label, value, false, value === currentTheme()));
-  return select;
+  return menu.root;
 }
