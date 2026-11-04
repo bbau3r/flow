@@ -1160,6 +1160,9 @@ describe('scriptTitle', () => {
     expect(scriptTitle(parse('Title:\n    One\n    Two\n    Three\nAuthor: Me'))).toBe('One · Two · Three');
     expect(scriptTitle(parse('Title: One\n    Two'))).toBe('One · Two');
   });
+  it('can join them with another separator', () => {
+    expect(scriptTitle(parse('Title:\n    One\n    Two'), ' - ')).toBe('One - Two');
+  });
   it('leaves out emphasis, empty values and notes', () => {
     expect(scriptTitle(parse('Title:\n    **One** [[note]]\n    \n    Two'))).toBe('One · Two');
   });

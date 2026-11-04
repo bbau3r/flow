@@ -908,6 +908,7 @@ test('preview shows the printed pages with editing off, then returns intact', as
   await expect(editor(page)).toBeVisible();
   await expect(page.locator('flow-script .fl-pages')).toHaveCount(0);
   await expect(rib(page, 'Bold')).toBeVisible();
+  await expect(editor(page)).toBeFocused(); // which follows on the next animation frame
   await page.keyboard.type('Z');
   expect(await value(page)).toContain('Z');
 });
@@ -1619,6 +1620,15 @@ test('PDF exports from the modal as a real file', async ({ page }) => {
   await expect(dialog).toHaveCount(0);
 });
 
+test('a title on several lines is joined with dashes in the PDF file name', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'Title:\n    The Long\n    Way Home\n\nAction.');
+  const dialog = await openExport(page);
+  const download = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: /export|download|pdf/i }).first().click();
+  expect((await download).suggestedFilename()).toBe('The Long - Way Home.pdf');
+});
+
 test('PDF export embeds Courier Prime, matching the screen', async ({ page }) => {
   await open(page);
   const size = await host(page).evaluate(async (el) => (await el.exportPdf()).blob.size);
@@ -2155,7 +2165,7 @@ test.describe('title page values on their own lines', () => {
   });
 
   for (const view of ['page', 'flow']) {
-    const pace = (page) => page.waitForTimeout(100);
+    const pace = (page) => page.waitForTimeout(300);
     const press = async (page, ...keys) => {
       for (const key of keys) {
         await page.keyboard.press(key);

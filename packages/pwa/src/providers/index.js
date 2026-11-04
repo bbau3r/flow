@@ -22,7 +22,9 @@ export class ConflictError extends Error {
   name = 'ConflictError';
 }
 
-export function fileNameFor(name) {
+export function fileNameFor(rawName) {
+  // The separators between a title's lines read better as dashes in a file name.
+  const name = rawName.replace(/\s*\u00b7\s*/g, ' - ');
   const clean = (name || 'Untitled Screenplay').replace(/[\\/:*?"<>|]+/g, '').trim() || 'Untitled Screenplay';
   return /\.(fountain|spmd|txt)$/i.test(clean) ? clean : `${clean}.fountain`;
 }
