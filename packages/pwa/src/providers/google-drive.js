@@ -20,23 +20,34 @@ const config = () => {
   };
 };
 
+const scripts = new Map();
+
 function loadScript(src, isReady) {
   if (isReady()) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = src;
-    script.onload = resolve;
-    script.onerror = () => reject(new Error('Could not reach Google. Check your connection.'));
-    document.head.append(script);
-  });
+  if (!scripts.has(src)) {
+    scripts.set(src, new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = resolve;
+      script.onerror = () => {
+        scripts.delete(src);
+        reject(new Error('Could not reach Google. Check your connection.'));
+      };
+      document.head.append(script);
+    }));
+  }
+  return scripts.get(src);
 }
+
+const loadSignIn = () => loadScript('https://accounts.google.com/gsi/client', () => globalThis.google?.accounts?.oauth2);
+const loadPicker = () => loadScript('https://apis.google.com/js/api.js', () => globalThis.gapi);
 
 let token = null;
 let tokenExpires = 0;
 
 async function getToken() {
   if (token && Date.now() < tokenExpires) return token;
-  await loadScript('https://accounts.google.com/gsi/client', () => globalThis.google?.accounts?.oauth2);
+  await loadSignIn();
   return new Promise((resolve, reject) => {
     const client = globalThis.google.accounts.oauth2.initTokenClient({
       client_id: config().clientId,
@@ -70,28 +81,44 @@ async function request(url, options = {}, retry = true) {
   return response;
 }
 
-const readMeta = async (fileId) => (await request(`${API}/${fileId}?fields=name,modifiedTime`)).json();
+const ANY_DRIVE = 'supportsAllDrives=true';
 
-async function pickFile() {
+const readMeta = async (fileId) => (await request(`${API}/${fileId}?fields=name,modifiedTime&${ANY_DRIVE}`)).json();
+
+// Shows Google's picker, and resolves to what was chosen, or null if it was cancelled.
+async function pick(title, makeView) {
   const accessToken = await getToken();
-  await loadScript('https://apis.google.com/js/api.js', () => globalThis.gapi);
+  await loadPicker();
   await new Promise((resolve) => globalThis.gapi.load('picker', resolve));
   const { picker } = globalThis.google;
   const { apiKey, appId } = config();
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     new picker.PickerBuilder()
-      .addView(new picker.DocsView(picker.ViewId.DOCS).setMode(picker.DocsViewMode.LIST))
+      .setTitle(title)
+      .addView(makeView(picker))
+      .enableFeature(picker.Feature.SUPPORT_DRIVES)
       .setOAuthToken(accessToken)
       .setDeveloperKey(apiKey)
       .setAppId(appId)
       .setCallback((data) => {
         if (data.action === picker.Action.PICKED) resolve(data.docs[0].id);
         if (data.action === picker.Action.CANCEL) resolve(null);
+        if (data.action === 'error') reject(new Error('Google Drive\u2019s picker couldn\u2019t open.'));
       })
       .build()
       .setVisible(true);
   });
 }
+
+const pickFile = () => pick('Open a script', (picker) => new picker.DocsView(picker.ViewId.DOCS)
+  .setIncludeFolders(true)
+  .setMode(picker.DocsViewMode.LIST));
+
+const pickFolder = () => pick('Choose a folder', (picker) => new picker.DocsView(picker.ViewId.FOLDERS)
+  .setIncludeFolders(true)
+  .setSelectFolderEnabled(true)
+  .setMimeTypes('application/vnd.google-apps.folder')
+  .setMode(picker.DocsViewMode.LIST));
 
 export const googleDriveProvider = {
   id: 'google-drive',
@@ -105,7 +132,14 @@ export const googleDriveProvider = {
     return { ok: true };
   },
 
-  saveHint: () => 'Saves to the top level of your Drive.',
+  // Browsers only allow the sign-in popup right after a click, so Google's scripts need
+  // to be here before then rather than loading in response to it.
+  prepare() {
+    loadSignIn().catch(() => {});
+    loadPicker().catch(() => {});
+  },
+
+  saveHint: () => 'Choose a folder in your Drive.',
 
   location: () => 'Google Drive',
 
@@ -113,7 +147,7 @@ export const googleDriveProvider = {
     const fileId = await pickFile();
     if (!fileId) return null;
     const meta = await readMeta(fileId);
-    const text = await (await request(`${API}/${fileId}?alt=media`)).text();
+    const text = await (await request(`${API}/${fileId}?alt=media&${ANY_DRIVE}`)).text();
     return { name: meta.name, text, ref: { fileId, modifiedTime: meta.modifiedTime } };
   },
 
@@ -123,7 +157,7 @@ export const googleDriveProvider = {
     if (!force && current.modifiedTime !== modifiedTime) {
       throw new ConflictError(`${doc.name} changed in Google Drive since it was last opened or saved.`);
     }
-    const response = await request(`${UPLOAD}/${fileId}?uploadType=media&fields=name,modifiedTime`, {
+    const response = await request(`${UPLOAD}/${fileId}?uploadType=media&fields=name,modifiedTime&${ANY_DRIVE}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'text/plain; charset=UTF-8' },
       body: doc.value,
@@ -133,13 +167,15 @@ export const googleDriveProvider = {
   },
 
   async saveAs(doc) {
+    const folderId = await pickFolder();
+    if (!folderId) return null;
     const name = fileNameFor(doc.name);
     const boundary = `flow-${crypto.randomUUID()}`;
     const body = [
       `--${boundary}`,
       'Content-Type: application/json; charset=UTF-8',
       '',
-      JSON.stringify({ name, mimeType: 'text/plain' }),
+      JSON.stringify({ name, mimeType: 'text/plain', parents: [folderId] }),
       `--${boundary}`,
       'Content-Type: text/plain; charset=UTF-8',
       '',
@@ -147,7 +183,7 @@ export const googleDriveProvider = {
       `--${boundary}--`,
       '',
     ].join('\r\n');
-    const response = await request(`${UPLOAD}?uploadType=multipart&fields=id,name,modifiedTime`, {
+    const response = await request(`${UPLOAD}?uploadType=multipart&fields=id,name,modifiedTime&${ANY_DRIVE}`, {
       method: 'POST',
       headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
       body,

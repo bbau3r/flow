@@ -2,6 +2,7 @@
 //
 //   id, label, description
 //   status()            { ok } or { ok: false, reason } if it can't be used right now
+//   prepare()           optional: loads ahead of time what opening or saving will need
 //   open()              { name, text, ref }, or null if the user cancelled
 //   save(doc, options)  { name, ref } after writing to the doc's file, or null if the user
 //                       cancelled. Throws ConflictError if the file changed, unless

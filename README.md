@@ -122,7 +122,7 @@ Storage options live in `packages/pwa/src/providers/`. To add one, write an obje
 | --- | --- | --- |
 | This device, Chromium browsers | File picker | OS save dialog, opened in the file's folder with its name filled in |
 | This device, other browsers, including iOS | File picker | Downloads a copy, because these browsers can't choose a folder |
-| Google Drive | Google's picker | Directly back to the file |
+| Google Drive | Signs in, then Google's picker | Directly back to the file. New files choose a folder in Google's picker |
 
 ### Deploying to GitHub Pages
 

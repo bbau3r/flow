@@ -23,6 +23,7 @@ async function openFrom(provider) {
 
 function providerCard(provider) {
   const status = provider.status();
+  if (status.ok) provider.prepare?.();
   return h('button', {
     type: 'button',
     class: 'card',

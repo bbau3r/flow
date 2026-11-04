@@ -443,14 +443,22 @@ test.describe('Google Drive', () => {
   const fakeGoogle = () => {
     globalThis.FLOW_CONFIG = { googleClientId: 'client', googleApiKey: 'key', googleAppId: '123' };
     window.tokensIssued = 0;
+    window.pickerViews = [];
+    window.pickerTitles = [];
+    window.pickerFeatures = [];
     const builder = {
-      addView() { return this; },
+      addView(view) { window.pickerViews.push(view.id); return this; },
+      setTitle(title) { window.pickerTitles.push(title); return this; },
+      enableFeature(feature) { window.pickerFeatures.push(feature); return this; },
       setOAuthToken() { return this; },
       setDeveloperKey() { return this; },
       setAppId() { return this; },
       setCallback(cb) { this.cb = cb; return this; },
       build() { return this; },
-      setVisible() { setTimeout(() => this.cb(window.pickerResult ?? { action: 'picked', docs: [{ id: 'file-1' }] }), 0); },
+      setVisible() {
+        const id = window.pickerViews.at(-1) === 'folders' ? 'folder-1' : 'file-1';
+        setTimeout(() => this.cb(window.pickerResult ?? { action: 'picked', docs: [{ id }] }), 0);
+      },
     };
     globalThis.google = {
       accounts: {
@@ -465,8 +473,12 @@ test.describe('Google Drive', () => {
       },
       picker: {
         PickerBuilder: function PickerBuilder() { return builder; },
-        DocsView: function DocsView() { this.setMode = () => this; },
-        ViewId: { DOCS: 'docs' },
+        DocsView: function DocsView(id) {
+          this.id = id;
+          for (const method of ['setMode', 'setIncludeFolders', 'setSelectFolderEnabled', 'setMimeTypes']) this[method] = () => this;
+        },
+        ViewId: { DOCS: 'docs', FOLDERS: 'folders' },
+        Feature: { SUPPORT_DRIVES: 'drives' },
         DocsViewMode: { LIST: 'list' },
         Action: { PICKED: 'picked', CANCEL: 'cancel' },
       },
@@ -530,6 +542,8 @@ test.describe('Google Drive', () => {
     const post = drive.requests.find((r) => r.method === 'POST');
     expect(post.url).toContain('uploadType=multipart');
     expect(post.body).toContain('"name":"Untitled Screenplay.fountain"');
+    expect(post.body).toContain('"parents":["folder-1"]');
+    expect(await page.evaluate(() => window.pickerViews)).toEqual(['folders']);
     expect(post.body).toContain('Title: Untitled Screenplay');
 
     await editorFocused(page);
@@ -538,6 +552,36 @@ test.describe('Google Drive', () => {
     await page.locator('#save').click();
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     expect(drive.requests.find((r) => r.method === 'PATCH').url).toContain('/files/new-file?');
+  });
+
+  test('signs in first, then shows the picker, including shared drives', async ({ page }) => {
+    fakeDrive(page);
+    await page.goto(HOME);
+    expect(await page.evaluate(() => window.tokensIssued)).toBe(0);
+    await providerCard(page, 'google-drive').click();
+    await expect(editor(page)).toBeVisible();
+    expect(await page.evaluate(() => window.tokensIssued)).toBe(1);
+    expect(await page.evaluate(() => window.pickerViews)).toEqual(['docs']);
+    expect(await page.evaluate(() => window.pickerFeatures)).toEqual(['drives']);
+  });
+
+  test('cancelling the folder choice saves nothing', async ({ page }) => {
+    const drive = fakeDrive(page);
+    await newScript(page);
+    await page.evaluate(() => { window.pickerResult = { action: 'cancel' }; });
+    await page.locator('#save').click();
+    await page.locator('dialog').getByRole('button', { name: /Google Drive/ }).click();
+    await expect(page.locator('dialog')).toHaveCount(0);
+    await expect(page.locator('.doc-state')).toHaveText('On this device only');
+    expect(drive.requests.filter((r) => r.method === 'POST')).toEqual([]);
+  });
+
+  test('a picker that fails to open says so', async ({ page }) => {
+    fakeDrive(page);
+    await page.goto(HOME);
+    await page.evaluate(() => { window.pickerResult = { action: 'error' }; });
+    await providerCard(page, 'google-drive').click();
+    await expect(page.locator('#toast')).toContainText('couldn’t open');
   });
 
   test('an expired token signs in again and retries', async ({ page }) => {
@@ -588,6 +632,23 @@ test.describe('Google Drive', () => {
     await expect(page.locator('#new-script')).toBeVisible();
     await expect(page.locator('#toast')).toBeHidden();
   });
+});
+
+test('Google scripts load ahead of the click, but never without credentials', async ({ page }) => {
+  const google = [];
+  await page.route(/accounts\.google\.com|apis\.google\.com/, (route) => {
+    google.push(new URL(route.request().url()).hostname);
+    return route.fulfill({ contentType: 'text/javascript', body: '' });
+  });
+  await page.goto(HOME);
+  await expect(page.locator('#new-script')).toBeVisible();
+  expect(google).toEqual([]);
+
+  await page.addInitScript(() => {
+    globalThis.FLOW_CONFIG = { googleClientId: 'client', googleApiKey: 'key', googleAppId: '123' };
+  });
+  await page.reload();
+  await expect.poll(() => [...google].sort()).toEqual(['accounts.google.com', 'apis.google.com']);
 });
 
 test.describe('installable and offline', () => {
