@@ -6,6 +6,8 @@
 //   save(doc, options)  { name, ref } after writing to the existing file. Throws
 //                       ConflictError if the file changed, unless options.force is set.
 //   saveAs(doc)         { name, ref } for a new file, or null if the user cancelled
+//   saveHint()          what choosing this provider in the save dialog will do
+//   location(doc)       where a doc saved here lives, in words
 //
 // Adding a storage option means writing one of these and listing it here.
 

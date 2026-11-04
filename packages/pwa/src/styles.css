@@ -212,7 +212,7 @@ h2 {
 
 .doc-name { max-width: 40vw; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 
-.doc-state { color: var(--muted); font-size: 12px; }
+.doc-status { color: var(--muted); font-size: 12px; }
 
 .editor flow-script { flex: 1; min-height: 0; }
 

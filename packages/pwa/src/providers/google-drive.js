@@ -105,6 +105,10 @@ export const googleDriveProvider = {
     return { ok: true };
   },
 
+  saveHint: () => 'Saves to the top level of your Drive.',
+
+  location: () => 'Google Drive',
+
   async open() {
     const fileId = await pickFile();
     if (!fileId) return null;
