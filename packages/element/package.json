@@ -6,7 +6,8 @@
   "main": "./dist/flow-script.js",
   "exports": {
     ".": "./dist/flow-script.js",
-    "./bundle": "./dist/flow-script.bundle.js"
+    "./bundle": "./dist/flow-script.bundle.js",
+    "./source": "./src/index.js"
   },
   "scripts": {
     "dev": "vite",

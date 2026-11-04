@@ -5,9 +5,11 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "dev": "npm run dev -w @flow/element",
+    "dev:pwa": "npm run dev -w @flow/pwa",
     "build": "npm run build -w @flow/element",
+    "build:pwa": "npm run build -w @flow/pwa",
     "test": "vitest run",
-    "test:e2e": "npm run build && playwright test"
+    "test:e2e": "npm run build && npm run build:pwa && playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
