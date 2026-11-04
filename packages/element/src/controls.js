@@ -20,6 +20,12 @@ const ICONS = {
   palette: '<path d="M12 22a10 10 0 1 1 10-10c0 2.5-2 4-4.5 4H15a2 2 0 0 0-1.5 3.3c.6.8 0 2.7-1.5 2.7z"/><circle cx="7.5" cy="10.5" r=".5"/><circle cx="12" cy="7.5" r=".5"/><circle cx="16.5" cy="10.5" r=".5"/>',
   plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
+  close: '<path d="M6 6l12 12"/><path d="M18 6 6 18"/>',
+  grip: '<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>',
+  act: '<path d="M6 3h12v18l-6-4-6 4z"/>',
+  sequence: '<path d="M5 4v7a4 4 0 0 0 4 4h11"/><path d="m15 10 5 5-5 5"/>',
+  synopsis: '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/>',
+  scene: '<path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 4"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
   'chevron-left': '<path d="m15 6-6 6 6 6"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
@@ -148,10 +154,20 @@ function responsive(attrs, wide, compact) {
 
 /**
  * Tabs, as a pill of tabs or, when space runs short, a dropdown naming the current one.
- * Items are { label, selected, disabled, title }.
+ * Items are { label, selected, disabled, title }, and `onSelect` gets the label of a tab
+ * the writer switches to.
  */
-export function tabs({ label, attrs }, items) {
-  const wide = pill({ cls: 'fl-tabs', label }, ...items.map((item) => {
+export function tabs({ label, attrs, onSelect }, items) {
+  let current = items.find((item) => item.selected);
+  let menu = null;
+  const select = (item) => {
+    if (item === current) return;
+    current = item;
+    for (const [other, tab] of nodes) tab.setAttribute('aria-selected', String(other === item));
+    menu.refresh();
+    onSelect?.(item.label);
+  };
+  const nodes = new Map(items.map((item) => {
     const tab = document.createElement('button');
     tab.type = 'button';
     tab.className = 'fl-tab';
@@ -160,12 +176,13 @@ export function tabs({ label, attrs }, items) {
     if (item.title) tab.title = item.title;
     setAttrs(tab, { role: 'tab', 'aria-selected': String(!!item.selected) });
     tab.addEventListener('mousedown', (e) => e.preventDefault());
-    return tab;
+    tab.addEventListener('click', () => select(item));
+    return [item, tab];
   }));
+  const wide = pill({ cls: 'fl-tabs', label }, ...nodes.values());
   wide.setAttribute('role', 'tablist');
 
-  const current = items.find((item) => item.selected);
-  const menu = new Menu({
+  menu = new Menu({
     sections: [{ items: items.map((item) => ({ ...item, value: item.label })) }],
     isChecked: (value) => value === current.label,
     trigger: () => {
@@ -173,6 +190,7 @@ export function tabs({ label, attrs }, items) {
       name.textContent = current.label;
       return { label: `${label}: ${current.label}`, content: [name] };
     },
+    onSelect: (value) => select(items.find((item) => item.label === value)),
   });
   return responsive(attrs, wide, pill({ cls: 'fl-tabs', label }, menu.root));
 }

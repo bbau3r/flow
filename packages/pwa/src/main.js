@@ -12,7 +12,7 @@ let leaveView = null;
 async function route() {
   leaveView?.();
   leaveView = null;
-  const id = /^#\/edit\/(.+)$/.exec(location.hash)?.[1];
+  const id = /^#\/edit\/([^?]+)/.exec(location.hash)?.[1];
   const doc = id && (await getDoc(id));
   if (doc) leaveView = renderEditor(app, doc);
   else await renderHome(app);

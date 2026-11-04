@@ -178,9 +178,12 @@ export function parse(input) {
     while (j >= 0 && lines[j].commentOnly) j--;
     return j < 0 || lines[j].blank;
   };
+  // A synopsis never prints, so like a comment it can't stop a scene heading or transition
+  // from standing alone.
+  const isSynopsisText = (line) => line.visible.trim()[0] === '=' && !/^={3,}$/.test(line.visible.trim());
   const nextBlank = (i) => {
     let j = i + 1;
-    while (j < lines.length && lines[j].commentOnly) j++;
+    while (j < lines.length && (lines[j].commentOnly || isSynopsisText(lines[j]))) j++;
     return j >= lines.length || lines[j].blank;
   };
 

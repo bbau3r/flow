@@ -1662,3 +1662,401 @@ test('screenshots for visual review', async ({ page }) => {
   await expect(editor(page)).toBeVisible();
   await page.screenshot({ path: `${out}/edit-phone.png` });
 });
+
+test.describe('outline tab', () => {
+  const addHeader = (page) => page.locator('flow-script .fl-outline-plus');
+  const fields = (page) => page.locator('flow-script .fl-outline-field');
+  const setWorkspace = (page, workspace) => host(page).evaluate((el, w) => el.setAttribute('workspace', w), workspace);
+  const openOutline = async (page, script = '') => {
+    await open(page);
+    await setValue(page, script);
+    await setWorkspace(page, 'outline');
+    await expect(addHeader(page)).toBeVisible();
+  };
+
+  test('the main + writes an act, and the card buttons a synopsis and sequence', async ({ page }) => {
+    await openOutline(page);
+    await expect(page.locator('flow-script .fl-outline-hint')).toBeVisible();
+    await addHeader(page).click();
+    await expect(page.locator('flow-script .fl-outline-hint')).toBeHidden();
+    await page.keyboard.type('Act One');
+    await page.getByRole('button', { name: 'Add synopsis' }).click();
+    await page.keyboard.type('The setup');
+    await page.getByRole('button', { name: 'Add sequence' }).last().click();
+    await page.keyboard.type('Morning');
+    expect(await value(page)).toBe('# Act One\n= The setup\n\n## Morning');
+    await expect(page.locator('flow-script .fl-outline-card .fl-outline-card')).toHaveCount(1);
+  });
+
+  test('sequences offer a synopsis but no deeper level', async ({ page }) => {
+    await openOutline(page, '# A\n\n## B\n\n# C');
+    const inner = page.locator('flow-script .fl-outline-card .fl-outline-card');
+    await expect(inner.getByRole('button', { name: 'Add synopsis' })).toBeVisible();
+    await expect(inner.getByRole('button', { name: 'Add sequence' })).toHaveCount(0);
+    await expect(inner.getByRole('button', { name: 'Add act after this one' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Add act after this one' })).toHaveCount(1);
+  });
+
+  test('every act but the last offers a new act after it, and each has one set of buttons', async ({ page }) => {
+    await openOutline(page, '# A\n= a\n\nINT. X - DAY\n\nINT. Y - DAY\n\n# B');
+    const acts = page.locator('flow-script .fl-outline-list > .fl-outline-card');
+    await expect(acts.first().locator('.fl-outline-actions')).toHaveCount(1);
+    await expect(acts.first().locator('.fl-outline-actions').getByRole('button')).toHaveText(['Synopsis', 'Sequence', 'Act']);
+    await expect(acts.last().locator('.fl-outline-actions').getByRole('button')).toHaveText(['Synopsis', 'Sequence']);
+    await acts.first().getByRole('button', { name: 'Add act after this one' }).click();
+    await page.keyboard.type('New');
+    expect(await value(page)).toBe('# A\n= a\n\nINT. X - DAY\n\nINT. Y - DAY\n\n# New\n\n# B');
+    await expect(acts).toHaveCount(3);
+  });
+
+  test('a synopsis added from the buttons goes with those at the top of the card', async ({ page }) => {
+    await openOutline(page, '# A\n= a\n\nINT. X - DAY');
+    await page.getByRole('button', { name: 'Add synopsis' }).click();
+    await page.keyboard.type('b');
+    expect(await value(page)).toBe('# A\n= a\n= b\n\nINT. X - DAY');
+  });
+
+  test('typing keeps the cursor in its card, including across spaces', async ({ page }) => {
+    await openOutline(page, '# A\n\nAction.');
+    await fields(page).first().click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('ct one is here');
+    await expect(fields(page).first()).toBeFocused();
+    expect(await value(page)).toBe('# Act one is here\n\nAction.');
+  });
+
+  test('removing an act leaves the script, and its synopsis returns under a retyped #', async ({ page }) => {
+    await openOutline(page, '# Keep\n\n# Gone\n= Survives\n\nINT. HOUSE - DAY\n\nAction.');
+    await fields(page).nth(1).hover();
+    await page.getByRole('button', { name: 'Remove act' }).nth(1).click();
+    expect(await value(page)).toBe('# Keep\n\n= Survives\n\nINT. HOUSE - DAY\n\nAction.');
+    await expect(fields(page)).toHaveCount(1);
+    await expect(fields(page).first()).toHaveValue('Keep');
+    await expect(addHeader(page)).toBeFocused();
+
+    await setWorkspace(page, 'write');
+    await lineWith(page, 'Survives').click();
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.type('# Back');
+    await setWorkspace(page, 'outline');
+    await expect(fields(page)).toHaveCount(3);
+    await expect(fields(page).nth(1)).toHaveValue('Back');
+    await expect(fields(page).nth(2)).toHaveValue('Survives');
+  });
+
+  test('undo and redo work across both tabs, from the keyboard and the footer', async ({ page }) => {
+    await openOutline(page, '# A');
+    await fields(page).first().hover();
+    await page.getByRole('button', { name: 'Remove act' }).click();
+    expect(await value(page)).toBe('');
+    await page.keyboard.press('Control+z');
+    expect(await value(page)).toBe('# A');
+    await expect(fields(page).first()).toHaveValue('A');
+    await historyButton(page, 'Redo').click();
+    expect(await value(page)).toBe('');
+    await historyButton(page, 'Undo').click();
+    await fields(page).first().click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('bc');
+    await expect(fields(page).first()).toHaveValue('Abc');
+    await page.keyboard.press('Control+z');
+    await expect(fields(page).first()).toHaveValue('A');
+    await expect(fields(page).first()).toBeFocused();
+  });
+
+  test('Enter moves on, and pasted line breaks stay on one line', async ({ page }) => {
+    await openOutline(page, '# A\n= s');
+    await fields(page).first().click();
+    await page.keyboard.press('Enter');
+    await expect(fields(page).nth(1)).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(addHeader(page)).toBeFocused();
+    await fields(page).nth(1).evaluate((el) => {
+      el.value = 'one\ntwo';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(await value(page)).toBe('# A\n= one two');
+  });
+
+  test('a long synopsis grows its card instead of scrolling inside it', async ({ page }) => {
+    await openOutline(page, '# A\n= s');
+    const field = fields(page).nth(1);
+    const before = (await field.boundingBox()).height;
+    await field.fill('word '.repeat(80));
+    expect((await field.boundingBox()).height).toBeGreaterThan(before * 2);
+    const [content, box] = await field.evaluate((el) => [el.scrollHeight, el.clientHeight]);
+    expect(content).toBeLessThanOrEqual(box + 1);
+  });
+
+  test('formatting and view controls step aside, and come back with the script', async ({ page }) => {
+    await open(page);
+    await setWorkspace(page, 'outline');
+    await expect(page.locator('flow-script .fl-ribbon')).toBeHidden();
+    await expect(viewButton(page)).toBeHidden();
+    await expect(editor(page)).toBeHidden();
+    await expect(historyButton(page, 'Undo')).toBeVisible();
+    await setWorkspace(page, 'write');
+    await expect(page.locator('flow-script .fl-ribbon')).toBeVisible();
+    await expect(viewButton(page)).toBeVisible();
+    await expect(editor(page)).toBeVisible();
+    await expect(page.locator('flow-script .fl-outline')).toBeHidden();
+  });
+
+  test('stays in step when the script is replaced from outside', async ({ page }) => {
+    await openOutline(page, '# A');
+    await setValue(page, '# B\n\n# C');
+    await expect(fields(page)).toHaveCount(2);
+    await expect(fields(page).first()).toHaveValue('B');
+  });
+
+  const block = (page, text) => page.locator('flow-script .fl-outline-block', { hasText: text });
+  const dragHandle = async (page, handle, target, edge = 'top') => {
+    const from = await handle.boundingBox();
+    const to = await target.boundingBox();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + 8);
+    await page.mouse.move(to.x + 40, edge === 'top' ? to.y - 2 : to.y + to.height + 2, { steps: 6 });
+    return { drop: () => page.mouse.up() };
+  };
+
+  test('shows scenes and transitions in order, without editing or removing them', async ({ page }) => {
+    await openOutline(page, 'INT. ONE - DAY\n\nCUT TO:\n\n# A\n\nINT. TWO - DAY\n\n> FADE OUT.');
+    await expect(page.locator('flow-script .fl-outline-line')).toHaveCount(4);
+    await expect(page.locator('flow-script .fl-outline-list > .fl-outline-block').first()).toContainText('INT. ONE - DAY');
+    await expect(page.locator('flow-script .fl-outline-card .fl-outline-transition')).toContainText('FADE OUT.');
+    await expect(page.locator('flow-script .fl-outline-block .fl-outline-field')).toHaveCount(0);
+    await expect(page.locator('flow-script .fl-outline-block .fl-outline-remove')).toHaveCount(0);
+    await expect(block(page, 'INT. ONE - DAY').getByRole('button', { name: 'Move scene' })).toBeVisible();
+  });
+
+  test('a scene and its transition are one card with one handle, and move together', async ({ page }) => {
+    await openOutline(page, 'INT. ONE - DAY\n\nCUT TO:\n\nINT. TWO - DAY\n\nINT. THREE - DAY\n\n# A\n\nINT. FOUR - DAY');
+    const cards = page.locator('flow-script .fl-outline-block');
+    await expect(cards).toHaveCount(4);
+    await expect(cards.nth(0).locator('.fl-outline-line')).toHaveCount(2);
+    await expect(cards.nth(0).getByRole('button')).toHaveCount(1);
+    await expect(cards.nth(1).locator('.fl-outline-line')).toHaveCount(1);
+    await expect(page.locator('flow-script .fl-outline-card .fl-outline-block')).toContainText('INT. FOUR - DAY');
+
+    await cards.nth(0).getByRole('button', { name: 'Move scene' }).focus();
+    await page.keyboard.press('ArrowDown');
+    expect(await value(page)).toContain('INT. TWO - DAY\n\nINT. ONE - DAY\n\nCUT TO:\n\nINT. THREE - DAY');
+    await expect(cards.nth(1)).toContainText('CUT TO:');
+  });
+
+  test('a scene number shows at the right of its card, and can be edited there', async ({ page }) => {
+    await openOutline(page, '> FADE IN:\n\nINT. ONE - DAY #4#\n\nINT. TWO - DAY');
+    const numbers = page.getByRole('textbox', { name: 'Scene number' });
+    await expect(numbers).toHaveCount(2);
+    await expect(numbers.first()).toHaveValue('4');
+    await expect(numbers.nth(1)).toHaveValue('');
+    await expect(numbers.nth(1)).toHaveAttribute('placeholder', '12A');
+    await expect(numbers.nth(1)).toHaveCSS('border-top-style', 'solid');
+    const [content, box] = await numbers.first().evaluate((el) => [el.scrollHeight, el.clientHeight]);
+    expect(content).toBeLessThanOrEqual(box);
+    await expect(block(page, 'INT. ONE')).not.toContainText('#');
+
+    const row = await page.locator('flow-script .fl-outline-scene').first().boundingBox();
+    const number = await numbers.first().boundingBox();
+    expect(Math.abs((number.x + number.width) - (row.x + row.width))).toBeLessThan(2);
+
+    await numbers.first().click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('A!');
+    await expect(numbers.first()).toBeFocused();
+    await expect(numbers.first()).toHaveValue('4A');
+    await numbers.nth(1).click();
+    await page.keyboard.type('5');
+    expect(await value(page)).toBe('> FADE IN:\n\nINT. ONE - DAY #4A#\n\nINT. TWO - DAY #5#');
+    await page.waitForTimeout(600); // quick edits to one spot undo together
+    await numbers.nth(1).fill('');
+    expect(await value(page)).toBe('> FADE IN:\n\nINT. ONE - DAY #4A#\n\nINT. TWO - DAY');
+    await page.keyboard.press('Control+z');
+    await expect(numbers.nth(1)).toHaveValue('5');
+    await expect(page.locator('flow-script .fl-outline-transition textarea')).toHaveCount(0);
+  });
+
+  test('a card has one icon with its lines beside it, and its handle at the top', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openOutline(page, '> FADE IN:\n\nINT. ONE - DAY\n\nCUT TO:');
+    const card = page.locator('flow-script .fl-outline-block').first();
+    await expect(card.locator('.fl-outline-kind')).toHaveCount(1);
+    await expect(page.locator('flow-script .fl-outline-block')).toHaveCount(2);
+    const top = (await card.boundingBox()).y;
+    const grip = await card.getByRole('button', { name: 'Move scene' }).boundingBox();
+    expect(grip.y - top).toBeLessThan(10);
+    const icon = await card.locator('.fl-outline-kind').boundingBox();
+    const [transition, scene] = await card.locator('.fl-outline-line').evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().x));
+    expect(transition).toBe(scene);
+    expect(transition).toBeGreaterThan(icon.x + icon.width - 1);
+  });
+
+  test('the add buttons read Synopsis and Sequence, with a soft border', async ({ page }) => {
+    await openOutline(page, '# A');
+    const synopsis = page.getByRole('button', { name: 'Add synopsis' }).last();
+    const sequence = page.getByRole('button', { name: 'Add sequence' }).last();
+    await expect(synopsis).toHaveText('Synopsis');
+    await expect(sequence).toHaveText('Sequence');
+    await expect(synopsis).toHaveCSS('border-top-style', 'solid');
+    await expect(sequence).toHaveCSS('border-top-style', 'solid');
+  });
+
+  test('a scene card can move above a synopsis, and a synopsis can move on its own', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openOutline(page, '# A\n= Plan\n\nINT. X - DAY\n\nText.\n\nINT. Y - DAY');
+    const synopsisRow = page.locator('flow-script .fl-outline-synopsis');
+    const first = await dragHandle(page, block(page, 'INT. X').getByRole('button', { name: 'Move scene' }), synopsisRow);
+    await first.drop();
+    expect(await value(page)).toBe('# A\n\nINT. X - DAY\n\nText.\n= Plan\n\nINT. Y - DAY');
+    await expect(page.locator('flow-script .fl-outline-children > :not(.fl-outline-actions)').nth(1)).toHaveClass(/fl-outline-synopsis/);
+    await expect(block(page, 'INT. X')).toContainText('INT. X - DAY');
+
+    const handle = synopsisRow.getByRole('button', { name: 'Move synopsis', exact: true });
+    const second = await dragHandle(page, handle, block(page, 'INT. Y'), 'bottom');
+    await second.drop();
+    expect(await value(page)).toBe('# A\n\nINT. X - DAY\n\nText.\n\nINT. Y - DAY\n= Plan');
+    await expect(fields(page).first()).toHaveValue('A');
+    await expect(fields(page).nth(1)).toHaveValue('Plan');
+
+    await handle.focus();
+    await page.keyboard.press('ArrowUp');
+    expect(await value(page)).toBe('# A\n\nINT. X - DAY\n\nText.\n= Plan\n\nINT. Y - DAY');
+    await expect(handle).toBeFocused();
+  });
+
+  test('a line joins each act card to the next', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openOutline(page, '# A\n\n## S\n\n# B\n\n# C');
+    const line = (nth) => page.locator('flow-script .fl-outline-list > .fl-outline-card').nth(nth).evaluate((el) => {
+      const style = getComputedStyle(el, '::before');
+      return { content: style.content, height: parseFloat(style.height) };
+    });
+    expect((await line(0)).content).toBe('none');
+    for (const nth of [1, 2]) {
+      expect((await line(nth)).content).not.toBe('none');
+      expect((await line(nth)).height).toBeGreaterThan(10);
+    }
+    await expect(page.locator('flow-script .fl-outline-card .fl-outline-card')).toHaveCSS('position', 'static');
+  });
+
+  test('cards use icons rather than # and =', async ({ page }) => {
+    await openOutline(page, '# A\n= s\n\n## B');
+    await expect(page.locator('flow-script .fl-outline-card').first().locator('.fl-outline-kind .fl-svg').first()).toBeVisible();
+    const text = await page.locator('flow-script .fl-outline-list').evaluate((el) => el.textContent);
+    expect(text).not.toMatch(/[#=]/);
+  });
+
+  test('the remove button shows only for the card pointed at or being edited', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openOutline(page, '# A\n= s\n\n## B\n\n# C');
+    await page.mouse.move(2, 400);
+    const removes = page.locator('flow-script .fl-outline-remove');
+    const opacities = () => removes.evaluateAll((all) => all.map((el) => getComputedStyle(el).opacity));
+    expect(await opacities()).toEqual(['0', '0', '0', '0']);
+
+    const outer = page.locator('flow-script .fl-outline-card').first();
+    await outer.locator('.fl-outline-field').first().hover();
+    // A's header and synopsis, then B and C.
+    expect(await opacities()).toEqual(['1', '1', '0', '0']);
+
+    await page.locator('flow-script .fl-outline-card .fl-outline-card .fl-outline-field').hover();
+    expect(await opacities()).toEqual(['0', '0', '1', '0']);
+
+    await fields(page).last().click();
+    await page.mouse.move(2, 400);
+    expect(await opacities()).toEqual(['0', '0', '0', '1']);
+    await expect(removes.first()).toHaveCSS('pointer-events', 'none');
+  });
+
+  test('dragging a scene moves it with its dialogue', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openOutline(page, '# A\n\nINT. ONE - DAY\n\nBOB\nHi.\n\nINT. TWO - DAY\n\nTwo.');
+    const { drop } = await dragHandle(page, block(page, 'INT. ONE').getByRole('button', { name: 'Move scene' }), block(page, 'INT. TWO'), 'bottom');
+    await expect(page.locator('flow-script .fl-outline-drop')).toBeVisible();
+    await expect(page.locator('flow-script .fl-outline-ghost')).toContainText('INT. ONE - DAY');
+    await drop();
+    expect(await value(page)).toBe('# A\n\nINT. TWO - DAY\n\nTwo.\n\nINT. ONE - DAY\n\nBOB\nHi.');
+    await expect(page.locator('flow-script .fl-outline-drop')).toBeHidden();
+    await expect(page.locator('flow-script .fl-outline-ghost')).toBeHidden();
+    await historyButton(page, 'Undo').click();
+    expect(await value(page)).toBe('# A\n\nINT. ONE - DAY\n\nBOB\nHi.\n\nINT. TWO - DAY\n\nTwo.');
+  });
+
+  test('dragging a card carries what it holds, and Escape cancels', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const script = '# A\n= a\n\nINT. X - DAY\n\n# B\n= b';
+    await openOutline(page, script);
+    const handle = page.getByRole('button', { name: 'Move act', exact: true }).nth(1);
+    const firstCard = page.locator('flow-script .fl-outline-list > .fl-outline-card').first();
+
+    const first = await dragHandle(page, handle, firstCard);
+    await page.keyboard.press('Escape');
+    await first.drop();
+    expect(await value(page)).toBe(script);
+
+    const second = await dragHandle(page, handle, firstCard);
+    await second.drop();
+    expect(await value(page)).toBe('# B\n= b\n\n# A\n= a\n\nINT. X - DAY');
+    await expect(fields(page).first()).toHaveValue('B');
+    await expect(fields(page).nth(1)).toHaveValue('b');
+  });
+
+  test('a scene cannot land after a sequence without joining it', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openOutline(page, '# A\n\nINT. X - DAY\n\n## S\n\n# B');
+    const inner = page.locator('flow-script .fl-outline-card .fl-outline-card');
+    const { drop } = await dragHandle(page, block(page, 'INT. X').getByRole('button', { name: 'Move scene' }), inner, 'bottom');
+    await drop();
+    await expect(inner.locator('.fl-outline-block')).toContainText('INT. X - DAY');
+    expect(await value(page)).toBe('# A\n\n## S\n\nINT. X - DAY\n\n# B');
+  });
+
+  test('the arrow keys move a card and keep hold of it', async ({ page }) => {
+    const start = 'INT. ONE - DAY\n\nCUT TO:\n\nINT. TWO - DAY\n\nINT. THREE - DAY';
+    await openOutline(page, start);
+    const handle = block(page, 'INT. ONE').getByRole('button', { name: 'Move scene' });
+    await handle.focus();
+    await page.keyboard.press('ArrowDown');
+    expect(await value(page)).toBe('INT. TWO - DAY\n\nINT. ONE - DAY\n\nCUT TO:\n\nINT. THREE - DAY');
+    await expect(handle).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    const atEnd = 'INT. TWO - DAY\n\nINT. THREE - DAY\n\nINT. ONE - DAY\n\nCUT TO:';
+    expect(await value(page)).toBe(atEnd);
+    await page.keyboard.press('ArrowDown');
+    expect(await value(page)).toBe(atEnd);
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('ArrowUp');
+    expect(await value(page)).toBe(start);
+    await page.keyboard.press('Control+z');
+    expect(await value(page)).toBe('INT. TWO - DAY\n\nINT. ONE - DAY\n\nCUT TO:\n\nINT. THREE - DAY');
+  });
+
+  test('dragging works by touch', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 760 }, hasTouch: true, baseURL: 'http://localhost:4178' });
+    const page = await context.newPage();
+    await openOutline(page, 'INT. ONE - DAY\n\nINT. TWO - DAY');
+    const handle = block(page, 'INT. TWO').getByRole('button', { name: 'Move scene' });
+    await expect(handle).toHaveCSS('touch-action', 'none');
+    const box = await handle.boundingBox();
+    const target = await block(page, 'INT. ONE').boundingBox();
+    const cdp = await context.newCDPSession(page);
+    const point = (y) => [{ x: box.x + box.width / 2, y }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point(box.y + box.height / 2) });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(box.y - 8) });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(target.y - 4) });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect.poll(() => value(page)).toBe('INT. TWO - DAY\n\nINT. ONE - DAY');
+    await context.close();
+  });
+
+  test('cards fit a phone without sideways scrolling', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 640 });
+    await openOutline(page, '# A long act that has to wrap on a small screen\n= With a synopsis\n\n## And a sequence');
+    const overflow = await host(page).evaluate((el) => {
+      const scroll = el.shadowRoot.querySelector('.fl-scroll');
+      return scroll.scrollWidth - scroll.clientWidth;
+    });
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+});

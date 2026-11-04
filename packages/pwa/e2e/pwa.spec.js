@@ -743,10 +743,50 @@ test.describe('editor bars', () => {
     await expect(page.locator('#new-script')).toBeVisible();
   });
 
-  test('Write is the current tab and Overview waits for its feature', async ({ page }) => {
+  test('Write is the current tab, and Outline switches to the cards and back', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 700 });
     await newScript(page);
     await expect(page.getByRole('tab', { name: 'Write' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('tab', { name: 'Overview' })).toBeDisabled();
+    await page.getByRole('tab', { name: 'Outline' }).click();
+    await expect(page.getByRole('tab', { name: 'Outline' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('flow-script .ProseMirror')).toBeHidden();
+    await page.getByRole('button', { name: 'Add act', exact: true }).click();
+    await page.keyboard.type('Act One');
+    await page.getByRole('tab', { name: 'Write' }).click();
+    await expect(page.locator('flow-script .fl-line', { hasText: 'Act One' })).toBeVisible();
+    await expect(page.locator('.doc-state')).toHaveText('On this device only');
+  });
+
+  test('Write comes first, and the address remembers the tab through a reload', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await newScript(page);
+    await expect(page.getByRole('tab')).toHaveText(['Write', 'Outline']);
+    expect(page.url()).not.toContain('tab=');
+
+    await page.getByRole('tab', { name: 'Outline' }).click();
+    expect(page.url()).toMatch(/#\/edit\/[^?]+\?tab=outline$/);
+    await page.reload();
+    await expect(page.getByRole('tab', { name: 'Outline' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('button', { name: 'Add act', exact: true })).toBeVisible();
+    await expect(page.locator('flow-script .ProseMirror')).toBeHidden();
+
+    await page.getByRole('tab', { name: 'Write' }).click();
+    expect(page.url()).not.toContain('tab=');
+    await expect(page.locator('flow-script .ProseMirror')).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('tab', { name: 'Write' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('switching tabs keeps the script open with its unsaved work', async ({ page }) => {
+    await newScript(page);
+    await page.getByRole('tab', { name: 'Outline' }).click();
+    await page.getByRole('button', { name: 'Add act', exact: true }).click();
+    await page.keyboard.type('Kept');
+    await page.goBack();
+    await expect(page.locator('#new-script')).toBeVisible();
+    await page.goForward();
+    await expect(page.getByRole('tab', { name: 'Outline' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('flow-script .fl-outline-field').first()).toHaveValue('Kept');
   });
 
   test('preview hides the formatting controls and tabs, and only those', async ({ page }) => {
@@ -854,8 +894,9 @@ test.describe('editor bars', () => {
 
     await tabMenu.click();
     await expect(page.getByRole('menuitemradio', { name: 'Write' })).toHaveAttribute('aria-checked', 'true');
-    await expect(page.getByRole('menuitemradio', { name: 'Overview' })).toBeDisabled();
-    await page.keyboard.press('Escape');
+    await page.getByRole('menuitemradio', { name: 'Outline' }).click();
+    await expect(page.getByRole('button', { name: 'Workspace: Outline' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Add act', exact: true })).toBeVisible();
 
     await exportMenu.click();
     const holder = page.locator('flow-script .fl-export-holder');

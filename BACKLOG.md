@@ -43,10 +43,6 @@ Let people open and save scripts in OneDrive, like Google Drive: sign in, then c
 
 Labels such as `Copyright:` stay hidden until the cursor is on the line, so a new script shows values with no hint of which field is which. The owner wants to decide this later, probably alongside the UI work below.
 
-### Build the Overview tab
-
-The editor's Overview tab is a disabled placeholder. The owner will describe the feature; a pencil sketch of it, for planning a script through headers, sub-headers and synopses, is in their design notes.
-
 ### Refine the UI from mockups
 
 Build a design document with the owner and refine the UI against it. Open Pencil is preferred if its files can live in this repository without needing Git LFS, so check the file format and sizes first. Figma is the alternative.

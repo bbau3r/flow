@@ -436,8 +436,8 @@ export class FlowEditor {
   }
 
   // Replaces the whole-document line list with the smallest node-range change.
-  commit(lines, cursor) {
-    const { state, view } = this.editor;
+  linesTransaction(lines) {
+    const { state } = this.editor;
     const before = docLines(state.doc);
     let head = 0;
     while (head < before.length && head < lines.length && before[head] === lines[head]) head++;
@@ -446,15 +446,26 @@ export class FlowEditor {
     const from = this.lineStart(head);
     const to = this.lineStart(before.length - tail);
     const nodes = lines.slice(head, lines.length - tail).map((t) => state.schema.nodeFromJSON(lineToJson(t)));
-    const tr = state.tr.replace(from, to, new Slice(Fragment.from(nodes), 0, 0));
+    return state.tr.replace(from, to, new Slice(Fragment.from(nodes), 0, 0));
+  }
+
+  commit(lines, cursor) {
+    const tr = this.linesTransaction(lines);
     if (cursor) {
       let pos = 0;
       for (let i = 0; i < cursor.line; i++) pos += tr.doc.child(i).nodeSize;
       tr.setSelection(TextSelection.create(tr.doc, pos + 1 + cursor.from, pos + 1 + (cursor.to ?? cursor.from)));
     }
     // Each ribbon action is its own undo step, however quickly they follow each other.
-    view.dispatch(closeHistory(tr).scrollIntoView());
+    this.editor.view.dispatch(closeHistory(tr).scrollIntoView());
     this.focus();
+  }
+
+  // Edits from the Outline tab, where the script is hidden and keeps its place. Typing
+  // joins the undo step before it, and anything else is a step of its own.
+  commitFromOutline(lines, { typing = false } = {}) {
+    const tr = this.linesTransaction(lines);
+    this.editor.view.dispatch(typing ? tr : closeHistory(tr));
   }
 
   setLineType(type) {
@@ -522,8 +533,15 @@ export class FlowEditor {
     view.dispatch(state.tr.replaceSelection(slice).scrollIntoView());
   }
 
-  undo() { this.editor.commands.undo(); this.focus(); }
-  redo() { this.editor.commands.redo(); this.focus(); }
+  undo({ focus = true } = {}) {
+    this.editor.commands.undo();
+    if (focus) this.focus();
+  }
+
+  redo({ focus = true } = {}) {
+    this.editor.commands.redo();
+    if (focus) this.focus();
+  }
 
   emitState() {
     const { state } = this.editor;
