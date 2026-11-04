@@ -120,8 +120,8 @@ Storage options live in `packages/pwa/src/providers/`. To add one, write an obje
 
 | Provider | Opening | Saving |
 | --- | --- | --- |
-| This device, Chromium browsers | File picker | Directly back to the file |
-| This device, other browsers, including iOS | File picker | Downloads a copy |
+| This device, Chromium browsers | File picker | Directly back to the opened file. New files and Save as ask where, starting beside the original |
+| This device, other browsers, including iOS | File picker | Downloads a copy, because these browsers can't choose a folder |
 | Google Drive | Google's picker | Directly back to the file |
 
 ### Deploying to GitHub Pages

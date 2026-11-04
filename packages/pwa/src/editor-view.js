@@ -27,6 +27,7 @@ function chooseProvider() {
         const status = provider.status();
         return h('button', { type: 'button', class: 'card', disabled: !status.ok, onclick: () => finish(provider) },
           h('span', { class: 'card-title' }, provider.label),
+          h('span', { class: 'card-text' }, provider.saveHint()),
           status.ok ? null : h('span', { class: 'badge' }, status.reason));
       })),
       h('button', { type: 'button', class: 'plain', onclick: () => finish(null) }, 'Cancel'),
@@ -46,10 +47,13 @@ export function renderEditor(root, doc) {
 
   const name = h('span', { class: 'doc-name' });
   const state = h('span', { class: 'doc-state', role: 'status' });
+  const where = h('span', { class: 'doc-where' });
   let saving = false;
 
   const refreshHeader = () => {
     name.textContent = doc.name;
+    const location = getProvider(doc.provider)?.location(doc);
+    where.textContent = location ? ` \u00B7 ${location}` : '';
     if (doc.value === doc.savedValue) state.textContent = 'Saved';
     else if (doc.savedValue === null) state.textContent = 'On this device only';
     else state.textContent = 'Unsaved changes';
@@ -141,7 +145,7 @@ export function renderEditor(root, doc) {
   root.replaceChildren(h('div', { class: 'editor' },
     h('header', { class: 'editor-top' },
       h('a', { class: 'plain home-link', href: '#/' }, '← Home'),
-      h('span', { class: 'doc' }, name, state),
+      h('span', { class: 'doc' }, name, h('span', { class: 'doc-status' }, state, where)),
       h('span', { class: 'spacer' }),
       themePicker((theme) => script.setAttribute('theme', theme)),
       h('button', { type: 'button', class: 'plain', id: 'save-as', onclick: saveAs }, 'Save as'),

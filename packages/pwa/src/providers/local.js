@@ -6,6 +6,8 @@ import { ConflictError, fileNameFor } from './index.js';
 
 const EXTENSIONS = ['.fountain', '.spmd', '.txt'];
 const TYPES = [{ description: 'Fountain screenplay', accept: { 'text/plain': EXTENSIONS } }];
+// Pickers with the same id reopen in the folder last used with it.
+const PICKER_ID = 'flow-scripts';
 
 const canWriteFiles = () => 'showOpenFilePicker' in window && 'showSaveFilePicker' in window;
 const isCancel = (err) => err?.name === 'AbortError';
@@ -45,13 +47,20 @@ export const localProvider = {
 
   status: () => ({ ok: true }),
 
+  saveHint: () => (canWriteFiles()
+    ? 'Choose the folder and file name.'
+    : 'Downloads a copy. This browser can\u2019t choose a folder.'),
+
+  // Browsers never reveal a file's folder path, only that they can write back to it.
+  location: (doc) => (doc.ref?.handle ? 'Original file on this device' : 'Downloaded copy'),
+
   async open() {
     if (!canWriteFiles()) {
       const file = await pickWithInput();
       return file && { name: file.name, text: await file.text(), ref: { downloaded: true } };
     }
     try {
-      const [handle] = await window.showOpenFilePicker({ types: TYPES });
+      const [handle] = await window.showOpenFilePicker({ id: PICKER_ID, types: TYPES });
       const file = await handle.getFile();
       return { name: file.name, text: await file.text(), ref: { handle, lastModified: file.lastModified } };
     } catch (err) {
@@ -62,7 +71,8 @@ export const localProvider = {
 
   async save(doc, { force = false } = {}) {
     const { handle, lastModified } = doc.ref ?? {};
-    if (!handle) return download(doc);
+    // Without a file to return to, a browser that can ask where to save should ask.
+    if (!handle) return canWriteFiles() ? this.saveAs(doc) : download(doc);
     // The browser forgets write permission between sessions, so ask again if needed.
     if ((await handle.queryPermission({ mode: 'readwrite' })) !== 'granted'
       && (await handle.requestPermission({ mode: 'readwrite' })) !== 'granted') {
@@ -78,7 +88,12 @@ export const localProvider = {
   async saveAs(doc) {
     if (!canWriteFiles()) return download(doc);
     try {
-      const handle = await window.showSaveFilePicker({ suggestedName: fileNameFor(doc.name), types: TYPES });
+      // Start next to the original when there is one, so a copy lands beside it.
+      const handle = await window.showSaveFilePicker({
+        suggestedName: fileNameFor(doc.name),
+        types: TYPES,
+        ...(doc.ref?.handle ? { startIn: doc.ref.handle } : { id: PICKER_ID }),
+      });
       return { name: handle.name, ref: { handle, lastModified: await writeTo(handle, doc.value) } };
     } catch (err) {
       if (isCancel(err)) return null;

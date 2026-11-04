@@ -34,8 +34,20 @@ const fakePickers = () => {
     await new Promise((resolve) => { setTimeout(resolve, 20); });
     await write(name, text);
   };
-  window.showOpenFilePicker = async () => [await write('existing.fountain', 'INT. ROOM - DAY\r\n\r\nFrom disk.')];
-  window.showSaveFilePicker = async () => write('picked.fountain', '');
+  window.pickerCalls = [];
+  window.showOpenFilePicker = async (options) => {
+    window.pickerCalls.push({ kind: 'open', id: options.id });
+    return [await write('existing.fountain', 'INT. ROOM - DAY\r\n\r\nFrom disk.')];
+  };
+  window.showSaveFilePicker = async (options) => {
+    window.pickerCalls.push({
+      kind: 'save',
+      id: options.id,
+      suggestedName: options.suggestedName,
+      startInName: options.startIn?.name,
+    });
+    return write('picked.fountain', '');
+  };
 };
 
 test.describe('home page', () => {
@@ -188,6 +200,62 @@ test.describe('local files with direct saving', () => {
     expect(await page.evaluate(() => window.readFile('existing.fountain'))).toBe('INT. ROOM - DAY\n\nFrom disk. Edited.');
   });
 
+  test('saving a file that was opened goes straight back to it, without asking', async ({ page }) => {
+    await page.goto(HOME);
+    await providerCard(page, 'local').click();
+    await expect(editor(page)).toBeVisible();
+    await expect(page.locator('.doc-where')).toContainText('Original file on this device');
+    await lineWith(page, 'From disk').click();
+    await page.keyboard.type('Z');
+    await page.locator('#save').click();
+    await expect(page.locator('.doc-state')).toHaveText('Saved');
+    await expect(page.locator('dialog')).toHaveCount(0);
+    expect((await page.evaluate(() => window.pickerCalls)).filter((c) => c.kind === 'save')).toEqual([]);
+  });
+
+  test('save as asks where, starting beside the original', async ({ page }) => {
+    await page.goto(HOME);
+    await providerCard(page, 'local').click();
+    await expect(editor(page)).toBeVisible();
+    await page.locator('#save-as').click();
+    const dialog = page.locator('dialog');
+    await expect(dialog).toContainText('Choose the folder and file name.');
+    await dialog.getByRole('button', { name: /This device/ }).click();
+    await expect(page.locator('.doc-name')).toHaveText('picked.fountain');
+    const save = (await page.evaluate(() => window.pickerCalls)).find((c) => c.kind === 'save');
+    expect(save).toEqual({ kind: 'save', suggestedName: 'existing.fountain', startInName: 'existing.fountain' });
+  });
+
+  test('a first save asks where, and suggests a name from the title', async ({ page }) => {
+    await newScript(page);
+    await page.locator('#save').click();
+    await page.locator('dialog').getByRole('button', { name: /This device/ }).click();
+    await expect(page.locator('.doc-state')).toHaveText('Saved');
+    const save = (await page.evaluate(() => window.pickerCalls)).find((c) => c.kind === 'save');
+    expect(save).toEqual({ kind: 'save', id: 'flow-scripts', suggestedName: 'Untitled Screenplay.fountain' });
+  });
+
+  test('a script with no file to return to asks where instead of downloading', async ({ page }) => {
+    await newScript(page);
+    await page.locator('.home-link').click();
+    await page.evaluate(() => new Promise((resolve) => {
+      const open = indexedDB.open('flow', 1);
+      open.onsuccess = () => {
+        const store = open.result.transaction('docs', 'readwrite').objectStore('docs');
+        store.getAll().onsuccess = (event) => {
+          const [doc] = event.target.result;
+          store.put({ ...doc, provider: 'local', ref: { downloaded: true }, savedValue: 'older' }).onsuccess = resolve;
+        };
+      };
+    }));
+    await page.reload();
+    await page.locator('.recent-open').first().click();
+    await expect(editor(page)).toBeVisible();
+    await page.locator('#save').click();
+    await expect(page.locator('.doc-name')).toHaveText('picked.fountain');
+    expect((await page.evaluate(() => window.pickerCalls)).filter((c) => c.kind === 'save')).toHaveLength(1);
+  });
+
   test('a file reopened from the recent list still saves back to it', async ({ page }) => {
     await page.goto(HOME);
     await providerCard(page, 'local').click();
@@ -260,6 +328,18 @@ test.describe('local files with direct saving', () => {
   });
 });
 
+test('without folder access, the save dialog says a copy will be downloaded', async ({ page }) => {
+  await page.addInitScript(() => {
+    delete window.showOpenFilePicker;
+    delete window.showSaveFilePicker;
+    delete Window.prototype.showOpenFilePicker;
+    delete Window.prototype.showSaveFilePicker;
+  });
+  await newScript(page);
+  await page.locator('#save').click();
+  await expect(page.locator('dialog')).toContainText('Downloads a copy');
+});
+
 test.describe('local files without direct saving, as on iOS', () => {
   test.beforeEach(({ page }) => page.addInitScript(() => {
     delete window.showOpenFilePicker;
@@ -276,6 +356,7 @@ test.describe('local files without direct saving, as on iOS', () => {
     await expect(editor(page)).toBeVisible();
     expect(await value(page)).toBe('From a phone.');
 
+    await expect(page.locator('.doc-where')).toContainText('Downloaded copy');
     await lineWith(page, 'From a phone').click();
     await page.keyboard.type('X');
     const download = page.waitForEvent('download');
