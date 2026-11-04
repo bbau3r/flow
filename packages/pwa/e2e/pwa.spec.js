@@ -6,10 +6,15 @@ const value = (page) => page.locator('flow-script').evaluate((el) => el.value);
 const providerCard = (page, id) => page.locator(`[data-provider="${id}"]`);
 const lineWith = (page, text) => page.locator('flow-script .fl-line', { hasText: text }).first();
 
+// The editor takes focus a frame after appearing or saving, and only a focused editor
+// marks the active line, so this is the signal that it's safe to type.
+const editorFocused = (page) => expect(page.locator('flow-script .fl-active').first()).toBeAttached();
+
 async function newScript(page) {
   await page.goto(HOME);
   await page.locator('#new-script').click();
   await expect(editor(page)).toBeVisible();
+  await editorFocused(page);
 }
 
 // Real file pickers can't run headless, so these return real file handles from the
@@ -68,9 +73,14 @@ test.describe('new scripts', () => {
     await expect(lineWith(page, 'Written by')).toHaveClass(/fl-title/);
 
     // Removing a field is just deleting its line.
-    await lineWith(page, 'Based on the novel').click();
-    await page.keyboard.press('Home');
-    await page.keyboard.press('Shift+End');
+    const source = lineWith(page, 'Based on the novel');
+    await source.click();
+    // Home can only reach the "Source:" label once clicking has revealed it.
+    await expect(source).toHaveClass(/fl-active/);
+    // The editor learns about selection changes asynchronously, so go at a human pace.
+    await page.keyboard.press('Home', { delay: 30 });
+    await page.keyboard.press('Shift+End', { delay: 30 });
+    await page.waitForTimeout(100);
     await page.keyboard.press('Delete');
     await page.keyboard.press('Backspace');
     const edited = await value(page);
@@ -203,7 +213,9 @@ test.describe('local files with direct saving', () => {
     await expect(page.locator('.doc-name')).toHaveText('picked.fountain');
     expect(await page.evaluate(() => window.readFile('picked.fountain'))).toContain('Title: Untitled Screenplay');
 
+    await editorFocused(page);
     await page.keyboard.type('More.');
+    await expect(page.locator('.doc-state')).toHaveText('Unsaved changes');
     await page.locator('#save').click();
     await expect(page.locator('dialog')).toHaveCount(0);
     await expect(page.locator('.doc-state')).toHaveText('Saved');
@@ -370,7 +382,9 @@ test.describe('Google Drive', () => {
     expect(post.body).toContain('"name":"Untitled Screenplay.fountain"');
     expect(post.body).toContain('Title: Untitled Screenplay');
 
+    await editorFocused(page);
     await page.keyboard.type('More.');
+    await expect(page.locator('.doc-state')).toHaveText('Unsaved changes');
     await page.locator('#save').click();
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     expect(drive.requests.find((r) => r.method === 'PATCH').url).toContain('/files/new-file?');
@@ -468,6 +482,7 @@ test.describe('installable and offline', () => {
 
     await page.locator('#new-script').click();
     await expect(editor(page)).toBeVisible();
+    await editorFocused(page);
     await page.keyboard.type('Written offline.');
     const fonts = await page.evaluate(async () => {
       await document.fonts.ready;
