@@ -232,12 +232,13 @@ export function createRibbon(actions) {
       }
       additions.hidden = !DUAL_TOPICS.has(state.type);
     },
-    // Preview is only for reading, so nothing that edits or changes tab stays on show.
-    setView(view) {
-      const previewing = view === 'preview';
-      row.hidden = previewing;
+    // Preview is only for reading, so nothing that edits or changes tab stays on show. The
+    // Outline tab has its own controls, and the formatting ones act on the script's cursor.
+    setView(view, outlining = false) {
+      const previewing = view === 'preview' && !outlining;
+      row.hidden = previewing || outlining;
       topBar.tabsCell.hidden = previewing;
-      if (previewing) topics.close();
+      if (row.hidden) topics.close();
     },
   };
 }

@@ -263,9 +263,111 @@ ${CONTROLS_CSS}
   border-top: 2px dashed var(--flow-rule);
 }
 
+/* The Outline tab: a single column of cards, sized by the page scale like the script. */
+.fl-outline {
+  position: relative; width: 100%; max-width: 44em; margin: 0 auto; padding: 1em 1em 2em;
+  font-size: calc(16px * var(--fl-scale, 1)); line-height: 1.35;
+}
+.fl-outline[hidden] { display: none; }
+.fl-outline-list, .fl-outline-children { display: flex; flex-direction: column; min-width: 0; }
+.fl-outline-list { gap: 1.25em; }
+.fl-outline-list:empty { display: none; }
+.fl-outline-children { gap: 0.5em; }
+.fl-outline-children:not(:empty) { margin-top: 0.35em; }
+.fl-outline-card {
+  display: flex; flex-direction: column; gap: 0.35em; min-width: 0; padding: 0.75em 0.75em 0.5em 0.5em;
+  background: var(--flow-paper); color: var(--flow-ink);
+  border: 1px solid var(--flow-rule); border-radius: 12px;
+  box-shadow: 0 1px 6px var(--flow-shadow);
+}
+.fl-outline-card .fl-outline-card {
+  padding: 0.5em 0.5em 0.35em 0.35em;
+  background: var(--flow-desk); box-shadow: none;
+}
+/* A connector through the gap between acts, like the one down to the main +. */
+.fl-outline-list > .fl-outline-card { position: relative; }
+.fl-outline-list > .fl-outline-card + .fl-outline-card::before {
+  content: ""; position: absolute; left: 50%; bottom: 100%; width: 1px; height: calc(1.25em + 1px);
+  background: var(--flow-rule); pointer-events: none;
+}
+.fl-outline-row { display: flex; align-items: flex-start; gap: 0.5em; min-width: 0; }
+.fl-outline-kind { flex: none; display: inline-flex; height: 1.35em; align-items: center; color: var(--flow-accent); }
+.fl-outline-kind .fl-svg { width: 1em; height: 1em; }
+.fl-outline-field {
+  appearance: none; flex: 1; display: block; min-width: 0; padding: 0; overflow: hidden; resize: none;
+  background: transparent; color: inherit; border: 0; border-radius: 3px; outline: none;
+  font: inherit;
+}
+.fl-outline-field:focus-visible, .fl-outline-number:focus-visible { outline: 2px solid ${token('focus')}; outline-offset: 2px; }
+.fl-outline-field::placeholder { color: var(--flow-muted); opacity: 1; font-weight: 400; }
+.fl-outline-heading { font-size: 1.25em; font-weight: 600; }
+.fl-outline-card .fl-outline-card .fl-outline-heading { font-size: 1.05em; }
+.fl-outline-synopsis { color: var(--flow-muted); font-style: italic; }
+.fl-outline-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px; font-size: 13px; line-height: 1.25; color: var(--flow-muted); }
+.fl-outline-grip {
+  --fl-control-size: 1.5em; --fl-control-pad: 0;
+  flex: none; height: 1.35em; min-height: 0; padding: 0; color: var(--flow-muted); font-size: 1em; cursor: grab; touch-action: none;
+}
+.fl-outline-grip .fl-svg { width: 1em; height: 1em; }
+/* The remove button stays out of the way until its card is pointed at or being edited. A
+   pointer over a card inside this one counts for that card alone. */
+.fl-outline-remove {
+  --fl-control-size: 1.6em; --fl-control-pad: 0;
+  flex: none; color: var(--flow-muted); font-size: 13px; font-style: normal;
+  opacity: 0; pointer-events: none;
+}
+.fl-outline-card:hover:not(:has(.fl-outline-card:hover)) > .fl-outline-row > .fl-outline-remove,
+.fl-outline-card:hover:not(:has(.fl-outline-card:hover)) > .fl-outline-children > .fl-outline-row > .fl-outline-remove,
+.fl-outline-card:has(> .fl-outline-row :focus, > .fl-outline-children > .fl-outline-row :focus) > .fl-outline-row > .fl-outline-remove,
+.fl-outline-card:has(> .fl-outline-row :focus, > .fl-outline-children > .fl-outline-row :focus) > .fl-outline-children > .fl-outline-row > .fl-outline-remove,
+.fl-outline-remove:focus-visible { opacity: 1; pointer-events: auto; }
+/* Scenes and transitions can be moved here but only changed in the script. */
+.fl-outline-block {
+  display: flex; align-items: flex-start; gap: 0.5em; min-width: 0; padding: 0.35em 0.75em 0.35em 0.35em;
+  background: var(--flow-paper); color: var(--flow-ink);
+  border: 1px solid var(--flow-rule); border-radius: 8px;
+  font-family: var(--fl-script-font); font-size: 0.9em;
+}
+.fl-outline-lines { flex: 1; display: flex; flex-direction: column; gap: 0.3em; min-width: 0; }
+.fl-outline-line { display: flex; align-items: flex-start; gap: 0.5em; min-width: 0; }
+.fl-outline-block-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.fl-outline-block-text:not(.fl-outline-forced) { text-transform: uppercase; }
+.fl-outline-transition .fl-outline-block-text { text-transform: uppercase; color: var(--flow-muted); }
+/* The one thing on a scene card that can be changed, so it's outlined like a field. */
+.fl-outline-number {
+  appearance: none; flex: none; display: block; width: calc(5ch + 0.8em + 2px); padding: 0 0.4em; overflow: hidden; resize: none;
+  background: transparent; color: var(--flow-ink);
+  border: 1px solid var(--flow-rule); border-radius: 4px; outline: none;
+  font: inherit; text-align: right;
+}
+.fl-outline-number:hover { border-color: var(--flow-accent); }
+.fl-outline-number::placeholder { color: var(--flow-muted); opacity: 0.75; }
+.fl-outline-dragging { opacity: 0.45; }
+.fl-outline-drop { position: absolute; z-index: 5; height: 3px; margin-top: -1.5px; border-radius: 3px; background: var(--flow-accent); pointer-events: none; }
+.fl-outline-drop[hidden] { display: none; }
+.fl-outline-ghost {
+  position: absolute; z-index: 6; left: 1em; right: 1em; display: flex; align-items: center; gap: 0.5em; padding: 0.4em 0.75em; overflow: hidden;
+  background: var(--flow-paper); color: var(--flow-ink);
+  border: 1px solid var(--flow-accent); border-radius: 8px;
+  box-shadow: 0 6px 20px var(--flow-shadow);
+  white-space: nowrap; pointer-events: none;
+}
+.fl-outline-ghost[hidden] { display: none; }
+.fl-outline-ghost .fl-svg { width: 1em; height: 1em; color: var(--flow-accent); }
+.fl-outline-add { display: flex; flex-direction: column; align-items: center; }
+.fl-outline-list:not(:empty) + .fl-outline-add::before { content: ""; width: 1px; height: 1.25em; background: var(--flow-rule); }
+.fl-outline-plus, .fl-outline-plus:hover:not(:disabled) {
+  --fl-control-size: 40px; --fl-control-pad: 0;
+  background: var(--flow-paper); color: var(--flow-accent);
+  border: 1px solid var(--flow-accent);
+  box-shadow: 0 1px 6px var(--flow-shadow);
+}
+.fl-outline-hint { max-width: 26em; margin: 3em auto 1em; color: var(--flow-muted); text-align: center; }
+.fl-outline-hint[hidden] { display: none; }
+
 @media print {
   :host { background: none; }
-  .fl-chrome, .fl-footer { display: none; }
+  .fl-chrome, .fl-footer, .fl-outline { display: none; }
   .fl-scroll { display: block; overflow: visible; container-type: normal; }
   .fl-script { font-size: 12pt !important; }
   .fl-pages { display: block; padding: 0; }

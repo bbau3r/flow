@@ -9,6 +9,7 @@ import { getTheme } from './themes.js';
 import { renderReadonly } from './readonly.js';
 import { createRibbon } from './ribbon.js';
 import { createStatusbar, SCALE_MAX, SCALE_MIN } from './statusbar.js';
+import { createOutline } from './outline.js';
 import { openExportDialog } from './export-dialog.js';
 
 let fontsRequested = false;
@@ -21,7 +22,7 @@ export function loadFonts() {
 }
 
 export class FlowScript extends HTMLElement {
-  static observedAttributes = ['readonly', 'view', 'theme', 'paper', 'scale'];
+  static observedAttributes = ['readonly', 'view', 'workspace', 'theme', 'paper', 'scale'];
 
   #value = '';
   #valueSet = false;
@@ -30,6 +31,7 @@ export class FlowScript extends HTMLElement {
   #ribbon = null;
   #statusbar = null;
   #preview = null;
+  #outline = null;
   #exportActions = [];
   #barObserver = null;
   #scroll = null;
@@ -57,7 +59,7 @@ export class FlowScript extends HTMLElement {
     if (this.#started) return;
     // Properties set before this element was defined sit on the instance and would
     // shadow the accessors, so reapply them through the class.
-    for (const prop of ['value', 'readonly', 'view', 'printOptions', 'exportActions']) {
+    for (const prop of ['value', 'readonly', 'view', 'workspace', 'printOptions', 'exportActions']) {
       if (Object.hasOwn(this, prop)) {
         const pending = this[prop];
         delete this[prop];
@@ -83,6 +85,8 @@ export class FlowScript extends HTMLElement {
         if (this.#editor) this.#value = this.#editor.value;
         this.#editor?.destroy();
         this.#editor = null;
+        this.#outline?.destroy();
+        this.#outline = null;
         this.#started = false;
         this.#valueSet = true;
       }
@@ -99,9 +103,10 @@ export class FlowScript extends HTMLElement {
     }
     if (name === 'readonly') {
       this.#render();
-    } else if (name === 'view' || name === 'paper') {
+    } else if (name === 'view' || name === 'workspace' || name === 'paper') {
       // A live editor only needs restyling, which keeps its undo history and cursor.
       if (this.#editor) this.#restyleEditor();
+      else if (this.#loading) this.#syncBars();
       else this.#render();
     }
   }
@@ -119,6 +124,7 @@ export class FlowScript extends HTMLElement {
     if (this.#editor) {
       this.#editor.value = this.#value;
       this.#showPreview();
+      this.#showOutline();
     } else if (this.#started && !this.#loading) this.#render();
   }
 
@@ -142,6 +148,18 @@ export class FlowScript extends HTMLElement {
 
   set view(v) {
     this.setAttribute('view', v);
+  }
+
+  /**
+   * 'write' (the script itself, the default) or 'outline' (its acts, sequences, scenes and
+   * transitions as cards and blocks, which edit the same text). Takes the place of the view while it's showing.
+   */
+  get workspace() {
+    return this.getAttribute('workspace') === 'outline' ? 'outline' : 'write';
+  }
+
+  set workspace(w) {
+    this.setAttribute('workspace', w);
   }
 
   /** How large the script is shown, as a percentage. */
@@ -196,7 +214,8 @@ export class FlowScript extends HTMLElement {
   }
 
   focus() {
-    this.#editor?.focus();
+    if (this.workspace === 'outline') this.#outline?.focus();
+    else this.#editor?.focus();
   }
 
   scrollToLine(line) {
@@ -270,16 +289,25 @@ export class FlowScript extends HTMLElement {
     else this.#renderEditor();
   }
 
+  #syncBars() {
+    const outlining = this.workspace === 'outline';
+    this.#ribbon?.setView(this.view, outlining);
+    this.#statusbar?.setView(this.view, outlining);
+  }
+
+  #scriptHidden() {
+    return this.view === 'preview' || this.workspace === 'outline';
+  }
+
   #restyleEditor() {
-    const previewing = this.view === 'preview';
-    const wasPreviewing = this.#surface.hidden;
+    const wasHidden = this.#surface.hidden;
     this.#surface.className = this.#surfaceClass();
-    this.#surface.hidden = previewing;
-    this.#ribbon.setView(this.view);
-    this.#statusbar.setView(this.view);
+    this.#surface.hidden = this.#scriptHidden();
+    this.#syncBars();
     this.#editor.relayout();
     this.#showPreview();
-    if (wasPreviewing && !previewing) this.#editor.focus();
+    this.#showOutline();
+    if (wasHidden && !this.#surface.hidden) this.#editor.focus();
   }
 
   // Preview sits beside the hidden editor rather than replacing it, which is what
@@ -287,9 +315,18 @@ export class FlowScript extends HTMLElement {
   #showPreview() {
     this.#preview?.remove();
     this.#preview = null;
-    if (this.view !== 'preview') return;
+    if (this.view !== 'preview' || this.workspace === 'outline') return;
     this.#preview = renderReadonly(this.#editor.value, { view: 'page', options: this.#options });
     this.#statusbar.root.before(this.#preview);
+  }
+
+  // The outline sits there too, and its edits go through the editor to share its history.
+  #showOutline() {
+    if (!this.#outline) return;
+    const outlining = this.workspace === 'outline';
+    if (outlining && this.#outline.root.hidden) this.#scroll.scrollTop = 0;
+    this.#outline.root.hidden = !outlining;
+    if (outlining) this.#outline.render(this.#editor.value);
   }
 
   #surfaceClass() {
@@ -304,6 +341,8 @@ export class FlowScript extends HTMLElement {
       this.#editor.destroy();
       this.#editor = null;
     }
+    this.#outline?.destroy();
+    this.#outline = null;
     this.#destroyBars();
     this.#preview = null;
     this.#scroll.replaceChildren(renderReadonly(this.#value, { view: this.view, options: this.#options }));
@@ -316,6 +355,8 @@ export class FlowScript extends HTMLElement {
       this.#editor.destroy();
       this.#editor = null;
     }
+    this.#outline?.destroy();
+    this.#outline = null;
     // The bars don't need the editor code, so they appear without waiting for it.
     this.#createBars();
     const token = (this.#loading = {});
@@ -325,8 +366,13 @@ export class FlowScript extends HTMLElement {
 
     this.#surface = document.createElement('div');
     this.#surface.className = this.#surfaceClass();
-    this.#surface.hidden = this.view === 'preview';
-    this.#scroll.replaceChildren(this.#ribbon.root, this.#surface, this.#statusbar.root);
+    this.#surface.hidden = this.#scriptHidden();
+    this.#outline = createOutline({
+      edit: (lines, options) => this.#editor.commitFromOutline(lines, options),
+      undo: () => this.#editor.undo({ focus: false }),
+      redo: () => this.#editor.redo({ focus: false }),
+    });
+    this.#scroll.replaceChildren(this.#ribbon.root, this.#surface, this.#outline.root, this.#statusbar.root);
     this.#preview = null;
     this.#editor = new FlowEditor(this.#surface, {
       value: this.#value,
@@ -334,6 +380,7 @@ export class FlowScript extends HTMLElement {
       showSource: () => this.view === 'source',
       onChange: (value, outline) => {
         this.#value = value;
+        if (this.workspace === 'outline') this.#outline?.render(value);
         this.dispatchEvent(new CustomEvent('flow-change', { detail: { value, outline } }));
       },
       onState: (state) => {
@@ -344,6 +391,7 @@ export class FlowScript extends HTMLElement {
     });
     this.#applyInsets();
     this.#showPreview();
+    this.#showOutline();
     this.dispatchEvent(new CustomEvent('flow-ready'));
   }
 
@@ -359,8 +407,7 @@ export class FlowScript extends HTMLElement {
     this.#barObserver.observe(this.#ribbon.root);
     this.#barObserver.observe(this.#statusbar.root);
     this.#ribbon.setExportActions(this.#exportActions);
-    this.#ribbon.setView(this.view);
-    this.#statusbar.setView(this.view);
+    this.#syncBars();
     this.#statusbar.setScale(this.scale);
   }
 
@@ -387,8 +434,8 @@ export class FlowScript extends HTMLElement {
 
   #buildStatusbar() {
     return createStatusbar({
-      undo: () => this.#editor?.undo(),
-      redo: () => this.#editor?.redo(),
+      undo: () => this.#editor?.undo({ focus: this.workspace !== 'outline' }),
+      redo: () => this.#editor?.redo({ focus: this.workspace !== 'outline' }),
       setView: (view) => { this.view = view; },
       setScale: (percent) => {
         this.scale = percent;

@@ -64,8 +64,9 @@ export function createStatusbar(actions) {
 
   const bar = document.createElement('div');
   bar.className = 'fl-statusbar';
+  const viewPill = pill({ label: 'View' }, viewMenu.root);
   bar.append(
-    pill({ label: 'View' }, viewMenu.root),
+    viewPill,
     pill({ label: 'Page scale' }, percent, pillSep(), bigger, smaller),
     statusPill,
     spacer,
@@ -87,10 +88,13 @@ export function createStatusbar(actions) {
       undo.disabled = !state.canUndo;
       redo.disabled = !state.canRedo;
     },
-    setView(next) {
+    // The views are ways of showing the script's pages, which the Outline tab doesn't.
+    setView(next, outlining = false) {
       view = next;
       viewMenu.refresh();
-      history.hidden = view === 'preview';
+      if (outlining) viewMenu.close();
+      viewPill.hidden = outlining;
+      history.hidden = view === 'preview' && !outlining;
     },
     setScale(next) {
       scale = next;

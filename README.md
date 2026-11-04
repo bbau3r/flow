@@ -47,6 +47,7 @@ The build produces two forms:
 | --- | --- | --- |
 | `readonly` | present or absent. Renders without Tiptap. | absent |
 | `view` | `page` (standard script pages), `flow` (continuous), `preview` (the pages as they print, with editing off and the formatting row and tabs hidden) or `source` (the Fountain text itself, with nothing hidden or formatted, and still editable) | `page` |
+| `workspace` | `write` (the script) or `outline` (its acts, sequences, scenes and transitions as cards and blocks, which edit the same text) | `write` |
 | `scale` | How large the script is shown, as a percentage from 50 to 200 | `100` |
 | `theme` | `amber`, `ocean`, `volcano`, `forest` or `tulip` followed by `-light`, `-dark` or `-auto`; plain `auto`, which means `amber-auto`; or a registered name | `amber-light` |
 | `paper` | `letter` or `a4` | `letter` |
@@ -98,6 +99,7 @@ Syntax markers such as `**`, `.` or `@` show only on the line you're on. Everywh
 - **Comments.** `[[notes]]` appear as bubbles. In the editor, clicking one opens it for editing. In read-only mode it expands in place.
 - **Boneyard.** `/* cut text */` is separate from comments. In the editor it stays readable in place, dimmed and struck through. It never appears in read-only pages or PDFs. The strikethrough S button cuts the selection, or the current line, and restores it when pressed again.
 - **Outlining.** `#` and `##` sections and `= synopses` are visible while editing but never appear in read-only pages or PDFs, and they take no page space. They're available through `outline` for future navigation features.
+- **Outline tab.** Plan a script as cards, in order with its scenes and transitions. A scene and a transition next to each other share a card, and two of the same kind don't. Each scene shows its number, which is the one thing about it you can edit here. The main + adds an act (a `#` line) at the end of the script, and each card's buttons add a synopsis (`=`) or a sequence (`##`). Drag a card by its handle, or use the arrow keys on the handle, to move it with all the script text it holds. Scenes and transitions can be moved here but only edited or deleted in the script. A synopsis shows when it's joined to the line above it, and it can be moved among the cards too. Removing an act takes it and its sequences out of the script, leaves scenes and dialogue alone, and keeps their synopses in the file, out of the outline until a new `#` or `##` line is typed directly above them. Undo works across both tabs. In the app, the address records the tab as `#/edit/<id>?tab=outline`, so a reload stays on it.
 
 Paged view numbers every page, including page 1. Preview and PDFs follow the screenplay standard and leave page 1 unnumbered.
 

@@ -39,6 +39,16 @@ function chooseProvider() {
   });
 }
 
+// The tab lives in the address as #/edit/<id>?tab=outline, so reloading or going back keeps it.
+// Write is the default and adds nothing.
+const tabInAddress = () => new URLSearchParams(location.hash.split('?')[1]).get('tab') === 'outline' ? 'Outline' : 'Write';
+
+const setTabInAddress = (tab) => {
+  const [route] = location.hash.split('?');
+  // Replacing the entry doesn't fire hashchange, which would reopen the script.
+  history.replaceState(history.state, '', tab === 'Outline' ? `${route}?tab=outline` : route);
+};
+
 const readScale = () => {
   try {
     return localStorage.getItem(SCALE_KEY);
@@ -49,6 +59,8 @@ const readScale = () => {
 
 export function renderEditor(root, doc) {
   const script = document.createElement('flow-script');
+  const openTab = tabInAddress();
+  script.setAttribute('workspace', openTab.toLowerCase());
   script.setAttribute('theme', currentTheme());
   // A whole page shrunk to fit a phone is too small to write on.
   if (window.matchMedia('(max-width: 700px)').matches) script.setAttribute('view', 'flow');
@@ -175,9 +187,16 @@ export function renderEditor(root, doc) {
       button({ label: 'Home', title: 'Back to all scripts', icon: 'stack', iconOnly: true, href: '#/', cls: 'home-link' }),
       pillSep(),
       h('span', { class: 'doc' }, name, h('span', { class: 'doc-meta' }, date, where, state))),
-    tabs({ label: 'Workspace', attrs: { slot: 'tabs' } }, [
-      { label: 'Overview', disabled: true, title: 'Coming soon' },
-      { label: 'Write', selected: true },
+    tabs({
+      label: 'Workspace',
+      attrs: { slot: 'tabs' },
+      onSelect: (tab) => {
+        script.setAttribute('workspace', tab.toLowerCase());
+        setTabInAddress(tab);
+      },
+    }, [
+      { label: 'Write', selected: openTab === 'Write' },
+      { label: 'Outline', title: 'Plan the script with acts, sequences and synopses', selected: openTab === 'Outline' },
     ]),
     pill({ label: 'Appearance', attrs: { slot: 'status-end' } }, themePicker({
       up: true,
