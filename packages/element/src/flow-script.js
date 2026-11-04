@@ -46,6 +46,11 @@ export class FlowScript extends HTMLElement {
     this.#scroll = document.createElement('div');
     this.#scroll.className = 'fl-scroll';
     shadow.append(style, this.#scroll);
+    // Chrome counts a scrollbar as part of a container's width, which would size a page to
+    // fit a phone slightly too wide, so measure the room that's really there.
+    new ResizeObserver(() => {
+      this.style.setProperty('--fl-area-w', `${this.#scroll.clientWidth}px`);
+    }).observe(this.#scroll);
   }
 
   connectedCallback() {

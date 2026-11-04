@@ -27,7 +27,7 @@ ${CONTROLS_CSS}
 /* geometricPrecision keeps character widths fractional. Without it, Linux browsers at
    standard density round 9.6px up to 10px, which breaks every column on the page. */
 .fl-script { font-family: var(--fl-script-font); font-variant-ligatures: none; line-height: 1; text-rendering: geometricPrecision; }
-:host(:not([view="flow"], [view="source"])) .fl-script { font-size: calc(min(16px, 100cqw / 52.5) * var(--fl-scale, 1)); }
+:host(:not([view="flow"], [view="source"])) .fl-script { font-size: calc(min(16px, var(--fl-area-w, 100cqw) / 52.5) * var(--fl-scale, 1)); }
 
 /* With the bars, the script fills the room between them when short, so they rest at the top
    and bottom, and grows past them when long. A grid would confine each to its own row. */

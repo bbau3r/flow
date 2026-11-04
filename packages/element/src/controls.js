@@ -79,6 +79,17 @@ export function glyphBadge(text) {
   return badge;
 }
 
+// The scrolling area a control sits in, following slots out of shadow roots. Controls that
+// float in it are cut off at its edges, which stop short of its scrollbars.
+function scrollAreaOf(node) {
+  let current = node;
+  while (current) {
+    if (current.classList?.contains('fl-scroll')) return current;
+    current = current.assignedSlot ?? current.parentNode ?? current.host;
+  }
+  return null;
+}
+
 const graphicFor = ({ icon: iconName, glyph }) => {
   if (iconName) return icon(iconName);
   return glyph ? glyphBadge(glyph) : null;
@@ -321,17 +332,21 @@ export class Menu {
   // The trigger moves as its row wraps, so the popup can't rely on a fixed anchor.
   #keepOnScreen() {
     const { popup } = this;
-    popup.style.transform = '';
+    popup.style.left = '';
     popup.style.maxHeight = '';
     const rect = popup.getBoundingClientRect();
-    const maxRight = document.documentElement.clientWidth - MENU_MARGIN;
+    const area = scrollAreaOf(popup);
+    const origin = area?.getBoundingClientRect() ?? { left: 0, top: 0 };
+    const minLeft = origin.left + MENU_MARGIN;
+    const maxRight = origin.left + (area ?? document.documentElement).clientWidth - MENU_MARGIN;
+    const maxBottom = area ? origin.top + area.clientHeight - MENU_MARGIN : window.innerHeight - MENU_MARGIN;
     let shift = 0;
     if (rect.right > maxRight) shift = maxRight - rect.right;
-    if (rect.left + shift < MENU_MARGIN) shift = MENU_MARGIN - rect.left;
-    if (shift) popup.style.transform = `translateX(${shift}px)`;
-    // Inside the scrolling area a menu is cut off at its edge, not the window's.
-    const bottom = Math.min(window.innerHeight, popup.closest('.fl-scroll')?.getBoundingClientRect().bottom ?? Infinity);
-    const room = this.#up ? rect.bottom - MENU_MARGIN : bottom - rect.top - MENU_MARGIN;
+    if (rect.left + shift < minLeft) shift = minLeft - rect.left;
+    // Chrome lets a transformed menu's original position widen what can scroll, so this moves
+    // it with left instead.
+    if (shift) popup.style.left = `${shift}px`;
+    const room = this.#up ? rect.bottom - origin.top - MENU_MARGIN : maxBottom - rect.top;
     if (rect.height > room) popup.style.maxHeight = `${Math.max(room, 120)}px`;
   }
 }
