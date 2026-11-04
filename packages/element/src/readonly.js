@@ -20,12 +20,33 @@ function runsInto(parent, runs) {
   }
 }
 
+const CLOSE_ICON = '×';
+
+// In flow view a pill can sit near the right edge, so nudge its panel back inside.
+function keepPanelInView(details, panel) {
+  panel.style.left = '';
+  const root = details.closest('.fl-flow');
+  if (!details.open || !root) return;
+  const overflow = panel.getBoundingClientRect().right - root.getBoundingClientRect().right;
+  if (overflow > 0) panel.style.left = `${-overflow}px`;
+}
+
 export function bubble(comment) {
   const details = el('details', 'fl-bubble');
   const summary = el('summary');
-  summary.setAttribute('aria-label', `Note: ${comment.text}`);
-  summary.append(el('span', '', NOTE_ICON), el('span', 'fl-bubble-preview', comment.text.split('\n')[0]));
-  details.append(summary, el('div', 'fl-bubble-body', comment.text));
+  const label = `Note: ${comment.text}`;
+  summary.setAttribute('aria-label', label);
+  summary.append(
+    el('span', 'fl-bubble-icon', NOTE_ICON),
+    el('span', 'fl-bubble-close', CLOSE_ICON),
+    el('span', 'fl-bubble-preview', comment.text.split('\n')[0]),
+  );
+  const panel = el('div', 'fl-bubble-body', comment.text);
+  details.append(summary, panel);
+  details.addEventListener('toggle', () => {
+    summary.setAttribute('aria-label', details.open ? 'Close note' : label);
+    keepPanelInView(details, panel);
+  });
   return details;
 }
 

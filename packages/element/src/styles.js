@@ -95,27 +95,43 @@ ${THEME_CSS}
 .fl-italic { font-style: italic; }
 .fl-underline { text-decoration: underline; }
 
-/* Comment bubbles */
-.fl-bubble { font-family: system-ui, sans-serif; font-size: 0.8em; line-height: 1.3; }
-.fl-bubble summary, .fl-bubble-chip {
-  display: inline-flex; align-items: center; gap: 0.35em; max-width: 16em;
-  padding: 0.1em 0.6em; border-radius: 1em;
+/* Comment bubbles. The summary keeps its place and size whether open or closed, and
+   the note opens as an overlay behind it, so together they read as one pill and
+   nothing around them moves. */
+.fl-bubble { position: relative; isolation: isolate; font-family: system-ui, sans-serif; font-size: 0.8em; line-height: 1.3; }
+.fl-bubble[open] { z-index: 6; }
+.fl-bubble summary {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; gap: 0.35em; height: 1.7em; padding: 0 0.6em;
+  border-radius: 0.85em;
   background: var(--flow-bubble-bg); color: var(--flow-bubble-ink);
   cursor: pointer; list-style: none; user-select: none; white-space: nowrap;
 }
 .fl-bubble summary::-webkit-details-marker { display: none; }
+.fl-bubble[open] summary { background: transparent; }
+.fl-bubble-icon, .fl-bubble-close { display: inline-flex; justify-content: center; flex: none; width: 1em; }
+.fl-bubble-close { display: none; width: 0.8em; font-size: 1.25em; font-weight: 700; line-height: 1; } /* same box as the icon */
+.fl-bubble[open] .fl-bubble-icon { display: none; }
+.fl-bubble[open] .fl-bubble-close { display: inline-flex; }
+.fl-bubble-chip {
+  display: inline-flex; align-items: center; gap: 0.35em; max-width: 16em;
+  padding: 0.1em 0.6em; border-radius: 1em;
+  background: var(--flow-bubble-bg); color: var(--flow-bubble-ink);
+  cursor: pointer; user-select: none; white-space: nowrap;
+}
 .fl-bubble-preview { overflow: hidden; text-overflow: ellipsis; }
+.fl-bubble[open] .fl-bubble-preview { visibility: hidden; }
 .fl-bubble-body {
-  margin-top: 0.3em; padding: 0.5em 0.75em; border-radius: 0.6em;
+  position: absolute; z-index: 0; top: 0;
+  border-radius: 0.85em;
   background: var(--flow-bubble-bg); color: var(--flow-bubble-ink);
   white-space: pre-wrap; overflow-wrap: anywhere;
   box-shadow: 0 3px 10px var(--flow-shadow);
 }
-.fl-bubble[open] .fl-bubble-preview { display: none; }
 .fl-page .fl-bubbles { position: absolute; top: -0.1em; right: 0.5em; display: flex; flex-direction: column; align-items: flex-end; z-index: 5; }
-.fl-page .fl-bubble-body { width: 20em; }
-.fl-page .fl-bubble summary { max-width: 1.9em; }
-.fl-page .fl-bubble[open] { z-index: 6; position: relative; }
+.fl-page .fl-bubble summary { justify-content: center; width: 2.2em; padding: 0; }
+.fl-page .fl-bubble-preview { display: none; }
+.fl-page .fl-bubble-body { right: 0; width: 20em; min-height: 1.7em; padding: 0.2em 2.4em 0.55em 0.85em; }
 .fl-page:has(.fl-bubble[open]) { overflow: visible; z-index: 1; }
 
 /* Script lines, shared by the editor and the read-only flow view */
@@ -159,8 +175,9 @@ ${THEME_CSS}
 .fl-dual .fl-line.fl-character { margin-left: 25% !important; }
 .fl-dual .fl-line.fl-parenthetical { margin-left: 10% !important; }
 .fl-dual .fl-line.fl-dialogue, .fl-dual .fl-line.fl-in-dialogue { margin-left: 0 !important; }
-.fl-flow .fl-bubble { display: inline-block; vertical-align: top; margin: 0 0.25em; }
-.fl-flow .fl-bubble-body { max-width: 28em; }
+.fl-flow .fl-bubble { display: inline-flex; vertical-align: top; max-width: 16em; margin: 0 0.25em; }
+.fl-flow .fl-bubble summary { min-width: 0; }
+.fl-flow .fl-bubble-body { left: 0; width: min(24em, 80cqw); padding: 1.9em 0.85em 0.55em; }
 
 /* Editor */
 .fl-sheet {

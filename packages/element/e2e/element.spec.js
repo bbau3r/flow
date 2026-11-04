@@ -266,6 +266,67 @@ test('read-only bubbles expand and collapse; boneyard stays out', async ({ page 
   expect(await page.locator('flow-script .fl-pages').innerText()).not.toContain('Cut this beat');
 });
 
+for (const view of ['page', 'flow']) {
+  test(`read-only bubble opens in place as one pill in ${view} view`, async ({ page }) => {
+    await page.setViewportSize({ width: 1200, height: 900 });
+    await open(page);
+    await host(page).evaluate((el, view) => { el.view = view; el.readonly = true; }, view);
+    const bubble = page.locator('flow-script .fl-bubble').first();
+    const summary = bubble.locator('summary');
+    const panel = bubble.locator('.fl-bubble-body');
+    const icon = bubble.locator('.fl-bubble-icon');
+    const close = bubble.locator('.fl-bubble-close');
+    const row = page.locator('flow-script .fl-line, flow-script .fl-row').filter({ hasText: 'She sets the thermos' }).first();
+    await expect(icon).toBeVisible();
+    await expect(close).toBeHidden();
+    await summary.scrollIntoViewIfNeeded();
+    const closedBox = await summary.boundingBox();
+    const closedIcon = await icon.boundingBox();
+    const rowBefore = await row.boundingBox();
+
+    await summary.click();
+    await expect(panel).toBeVisible();
+    await expect(close).toBeVisible();
+    await expect(close).toHaveText('×');
+    await expect(icon).toBeHidden();
+    await expect(summary).toHaveAttribute('aria-label', 'Close note');
+
+    // The button stays where it was and nothing around it moves.
+    const openBox = await summary.boundingBox();
+    const openClose = await close.boundingBox();
+    expect(Math.abs(openBox.x - closedBox.x)).toBeLessThan(1);
+    expect(Math.abs(openBox.y - closedBox.y)).toBeLessThan(1);
+    expect(Math.abs((openClose.x + openClose.width / 2) - (closedIcon.x + closedIcon.width / 2))).toBeLessThan(1.5);
+    const rowAfter = await row.boundingBox();
+    expect(Math.abs(rowAfter.y - rowBefore.y)).toBeLessThan(1);
+
+    // The button sits inside the panel, so the two read as a single shape.
+    const panelBox = await panel.boundingBox();
+    expect(panelBox.x).toBeLessThanOrEqual(openBox.x + 1);
+    expect(panelBox.x + panelBox.width).toBeGreaterThanOrEqual(openBox.x + openBox.width - 1);
+    expect(Math.abs(panelBox.y - openBox.y)).toBeLessThan(1);
+    await expect(summary).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+
+    await summary.click();
+    await expect(panel).toBeHidden();
+    await expect(icon).toBeVisible();
+    const reclosed = await summary.boundingBox();
+    expect(Math.abs(reclosed.x - closedBox.x)).toBeLessThan(1);
+  });
+}
+
+test('flow view keeps an opened bubble inside the script column', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 800 });
+  await open(page);
+  await setValue(page, 'A line that runs along almost to the edge of the column [[note near the right edge of the text column]] end.');
+  await host(page).evaluate((el) => { el.view = 'flow'; el.readonly = true; });
+  const bubble = page.locator('flow-script .fl-bubble').first();
+  await bubble.locator('summary').click();
+  const panel = await bubble.locator('.fl-bubble-body').boundingBox();
+  const column = await page.locator('flow-script .fl-flow').boundingBox();
+  await expect.poll(async () => (await bubble.locator('.fl-bubble-body').boundingBox()).x + panel.width).toBeLessThanOrEqual(column.x + column.width + 1);
+});
+
 test('page geometry: a letter page is 8.5x11in with one column at 0.1in', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 900 });
   await open(page);
