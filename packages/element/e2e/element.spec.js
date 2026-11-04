@@ -539,6 +539,67 @@ test('the title page gets a break in every view', async ({ page }) => {
   await expect(page.locator('flow-script .fl-flow')).not.toContainText('===');
 });
 
+test('page view shows the cover page as a full page, spaced like print', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await open(page);
+  await setValue(page, 'Title: BIG\nCredit: by\nAuthor: Me\nSource: A book\nContact:\n    a@b.c\nNotes: Hi\n\nAction here.');
+  const sheet = await page.locator('flow-script .fl-sheet').boundingBox();
+  const topOf = async (text) => (await lineWith(page, text).boundingBox()).y - sheet.y;
+  const row = 16;
+  // 1in margin plus row 15, then two blank rows between each topic.
+  expect(await topOf('BIG')).toBeCloseTo((6 + 15) * row, 0);
+  expect(await topOf('by')).toBeCloseTo((6 + 18) * row, 0);
+  expect(await topOf('Me')).toBeCloseTo((6 + 21) * row, 0);
+  expect(await topOf('A book')).toBeCloseTo((6 + 24) * row, 0);
+  // Contact sits at the foot of the page's text area, on the right.
+  expect(await topOf('a@b.c')).toBeCloseTo((6 + 54) * row, 0);
+  expect((await lineWith(page, 'a@b.c').boundingBox()).x - sheet.x).toBeGreaterThan(300);
+  expect((await lineWith(page, 'Hi').boundingBox()).x - sheet.x).toBeCloseTo(9 * row, 0);
+  const big = await lineWith(page, 'BIG').boundingBox();
+  expect(big.x + big.width / 2 - sheet.x).toBeCloseTo(408, 0);
+
+  // The script then starts on the next page, after exactly one page's height.
+  const gap = page.locator('flow-script .fl-title-gap');
+  await expect(gap).toBeAttached();
+  expect((await gap.boundingBox()).y - sheet.y).toBeCloseTo(1056, 0);
+  expect(await topOf('Action here')).toBeGreaterThan(1056);
+
+  // Editing a field in place still works.
+  await lineWith(page, 'Me').click();
+  await page.keyboard.press('End');
+  await page.keyboard.type('lody');
+  expect(await value(page)).toContain('Author: Melody');
+  expect((await lineWith(page, 'Melody').boundingBox()).y - sheet.y).toBeCloseTo((6 + 21) * row, 0);
+
+  // Flow view returns to plain lines.
+  await rib(page, 'Page view').click();
+  await expect(lineWith(page, 'BIG')).toHaveCSS('position', 'static');
+});
+
+test('a cover page with no script yet still fills a page', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'Title: BIG');
+  await expect(page.locator('flow-script .fl-title-gap')).toBeAttached();
+  const sheet = await page.locator('flow-script .fl-sheet').boundingBox();
+  expect((await page.locator('flow-script .fl-title-gap').boundingBox()).y - sheet.y).toBeCloseTo(1056, 0);
+});
+
+test('turning the title page off lets its lines flow normally', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'Title: BIG\n\nAction.');
+  await expect(lineWith(page, 'BIG')).toHaveCSS('position', 'absolute');
+  await host(page).evaluate((el) => { el.printOptions = { titlePage: false }; });
+  await expect(lineWith(page, 'BIG')).toHaveCSS('position', 'static');
+  await expect(page.locator('flow-script .fl-title-gap')).toHaveCount(0);
+});
+
+test('an app can restyle the ribbon font', async ({ page }) => {
+  await open(page);
+  const ribbon = page.locator('flow-script .fl-ribbon');
+  await host(page).evaluate((el) => el.style.setProperty('--flow-ui-font', 'Georgia'));
+  await expect(ribbon).toHaveCSS('font-family', 'Georgia');
+});
+
 test('paste becomes plain fountain lines', async ({ page }) => {
   await open(page);
   await setValue(page, 'Start');
@@ -580,6 +641,13 @@ test('PDF exports from the ribbon as a real file', async ({ page }) => {
   expect(file.suggestedFilename()).toBe('THE LAST LIGHTHOUSE.pdf');
   await file.saveAs(`${process.env.FLOW_OUT ?? 'test-results'}/sample.pdf`);
   await expect(page.locator('flow-script .fl-status')).toContainText('Exported');
+});
+
+test('PDF export embeds Courier Prime, matching the screen', async ({ page }) => {
+  await open(page);
+  const size = await host(page).evaluate(async (el) => (await el.exportPdf()).blob.size);
+  // The built-in Courier adds nothing to a file, so an embedded font shows in its size.
+  expect(size).toBeGreaterThan(5000);
 });
 
 test('performance: a 100+ page script stays responsive while typing', async ({ page }) => {

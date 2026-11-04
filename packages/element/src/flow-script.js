@@ -11,6 +11,13 @@ import { createRibbon } from './ribbon.js';
 
 let fontsRequested = false;
 
+/** Loads the bundled Courier Prime. Runs automatically once any <flow-script> connects. */
+export function loadFonts() {
+  if (fontsRequested) return;
+  fontsRequested = true;
+  import('./fonts.js').then((m) => m.registerFonts()).catch(() => {});
+}
+
 export class FlowScript extends HTMLElement {
   static observedAttributes = ['readonly', 'view', 'theme', 'paper'];
 
@@ -51,10 +58,7 @@ export class FlowScript extends HTMLElement {
       const script = this.querySelector('script[type="text/fountain"]');
       this.#value = parse(script ? dedent(script.textContent) : this.textContent.trim() ? dedent(this.textContent) : '').source;
     }
-    if (!fontsRequested) {
-      fontsRequested = true;
-      import('./fonts.js').then((m) => m.registerFonts()).catch(() => {});
-    }
+    loadFonts();
     this.applyTheme();
     this.#applyPaper();
     this.#render();
@@ -158,13 +162,18 @@ export class FlowScript extends HTMLElement {
     }
   }
 
+  /** Selects part of a source line and focuses the editor, without scrolling to it. */
+  selectText(line, from, to) {
+    this.#editor?.selectText(line, from, to);
+  }
+
   /**
    * Builds the PDF. Resolves to { blob, bytes, pageCount, unsupported }, where
-   * `unsupported` lists characters the built-in Courier couldn't draw.
+   * `unsupported` lists characters that couldn't be drawn and print as "?".
    */
   async exportPdf(options = {}) {
-    const { renderPdf } = await import('@flow/core/pdf');
-    const result = await renderPdf(this.value, { ...this.#options, ...options });
+    const [{ renderPdf }, { pdfFonts }] = await Promise.all([import('@flow/core/pdf'), import('./pdf-fonts.js')]);
+    const result = await renderPdf(this.value, { ...this.#options, ...options, fonts: pdfFonts() });
     return { ...result, blob: new Blob([result.bytes], { type: 'application/pdf' }) };
   }
 
@@ -285,7 +294,7 @@ export class FlowScript extends HTMLElement {
         try {
           const { pageCount, unsupported } = await this.downloadPdf();
           this.#ribbon.setStatus(unsupported.length
-            ? `Exported, but "${unsupported.slice(0, 8).join('')}" can't be drawn in Courier and show as "?"`
+            ? `Exported, but "${unsupported.slice(0, 8).join('')}" can't be drawn and show as "?"`
             : `Exported ${pageCount} page${pageCount === 1 ? '' : 's'}`);
         } catch (err) {
           this.#ribbon.setStatus(`PDF export failed: ${err.message}`);

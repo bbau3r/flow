@@ -13,6 +13,7 @@ export default defineConfig({
         // Everything is precached, including the editor, PDF and font chunks, so the
         // whole app works offline after the first visit.
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         navigateFallback: 'index.html',
       },
       manifest: {

@@ -10,7 +10,7 @@ import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { Fragment, Slice } from '@tiptap/pm/model';
 import { closeHistory } from '@tiptap/pm/history';
-import { parse, layout, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '@flow/core';
+import { parse, layout, titlePositions, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from '@flow/core';
 
 const NOTE_ICON = '\u{1F4AC}︎';
 
@@ -82,10 +82,19 @@ const GAP_DELAY_MS = 200;
 // Later lines of a note fold into its bubble. A boneyard has no bubble, so all of it stays visible.
 const isCommentTail = (line, index) => line.commentOnly && line.comments.every((c) => c.comment.type === 'note' && c.comment.lineStart !== index);
 
+// In page view, the title page is laid out like print. Its lines are placed by row, and
+// the blank line that separates them from the script takes up no room.
+function coverInfo(parsed, options) {
+  const positions = titlePositions(parsed, options);
+  if (!positions.size) return { positions, last: -1, separator: -1 };
+  const last = Math.max(...parsed.titlePage.flatMap((entry) => entry.lines));
+  return { positions, last, separator: parsed.lines[last + 1]?.type === 'blank' ? last + 1 : -1 };
+}
+
 // Everything a line's decorations depend on, so unchanged lines can be left alone.
-function lineSignature(line, index) {
+function lineSignature(line, index, cover) {
   const openingComments = line.comments.filter((c) => c.comment.lineStart === index).map((c) => c.comment.text);
-  return [line.raw, line.masked, lineClasses(line), isCommentTail(line, index), ...openingComments].join('\u0001');
+  return [line.raw, line.masked, lineClasses(line), isCommentTail(line, index), cover.positions.get(index), cover.separator === index, ...openingComments].join('\u0001');
 }
 
 function openCommentAt(view, pos) {
@@ -95,10 +104,15 @@ function openCommentAt(view, pos) {
   view.focus();
 }
 
-function lineDecorations(node, pos, line, index) {
+function lineDecorations(node, pos, line, index, cover) {
   const decorations = [];
   const at = (offset) => pos + 1 + offset;
-  decorations.push(Decoration.node(pos, pos + node.nodeSize, { class: `${lineClasses(line)}${isCommentTail(line, index) ? ' fl-comment-hidden' : ''}` }));
+  const row = cover.positions.get(index);
+  const classes = [lineClasses(line), isCommentTail(line, index) && 'fl-comment-hidden', row !== undefined && 'fl-title-placed', cover.separator === index && 'fl-title-separator'];
+  decorations.push(Decoration.node(pos, pos + node.nodeSize, {
+    class: classes.filter(Boolean).join(' '),
+    ...(row !== undefined ? { style: `--fl-title-y: ${row}` } : {}),
+  }));
   for (const [a, b] of line.markers) if (b > a) decorations.push(Decoration.inline(at(a), at(b), { class: 'fl-marker' }));
   if (line.sceneNumberRange) decorations.push(Decoration.inline(at(line.sceneNumberRange[0]), at(line.sceneNumberRange[1]), { class: 'fl-scene-number' }));
   for (const run of line.runs) {
@@ -124,13 +138,14 @@ function lineDecorations(node, pos, line, index) {
   return decorations;
 }
 
-function computeScript(doc) {
+function computeScript(doc, options) {
   const parsed = parse(docLines(doc).join('\n'));
-  const signatures = parsed.lines.map(lineSignature);
+  const cover = coverInfo(parsed, options);
+  const signatures = parsed.lines.map((line, i) => lineSignature(line, i, cover));
   const decorations = [];
   let index = 0;
   doc.forEach((node, pos) => {
-    decorations.push(...lineDecorations(node, pos, parsed.lines[index], index));
+    decorations.push(...lineDecorations(node, pos, parsed.lines[index], index, cover));
     index++;
   });
   return { parsed, signatures, decorations: DecorationSet.create(doc, decorations) };
@@ -159,11 +174,12 @@ function touchedLines(tr) {
 
 // Reparses, but only rebuilds decorations for touched lines and for lines elsewhere
 // whose meaning changed (typing "[[" can reclassify a line far below, for example).
-function updateScript(tr, prev) {
+function updateScript(tr, prev, options) {
   const touched = touchedLines(tr);
-  if (!touched) return computeScript(tr.doc);
+  if (!touched) return computeScript(tr.doc, options);
   const parsed = parse(docLines(tr.doc).join('\n'));
-  const signatures = parsed.lines.map(lineSignature);
+  const cover = coverInfo(parsed, options);
+  const signatures = parsed.lines.map((line, i) => lineSignature(line, i, cover));
   const delta = signatures.length - prev.signatures.length;
 
   let decorations = prev.decorations.map(tr.mapping, tr.doc);
@@ -176,7 +192,7 @@ function updateScript(tr, prev) {
     if (before === signatures[i]) return;
     const end = pos + node.nodeSize;
     for (const d of decorations.find(pos, end)) if (d.from >= pos && d.to <= end) remove.push(d);
-    add.push(...lineDecorations(node, pos, parsed.lines[i], i));
+    add.push(...lineDecorations(node, pos, parsed.lines[i], i, cover));
   });
   if (remove.length) decorations = decorations.remove(remove);
   if (add.length) decorations = decorations.add(tr.doc, add);
@@ -214,17 +230,24 @@ function activeDecorations(state, parsed, focused) {
 }
 
 function computeGaps(state, getLayoutOptions) {
-  const { pageStarts } = layout(scriptKey.getState(state).parsed, getLayoutOptions());
-  const starts = new Map(pageStarts.map((p) => [p.line, p]));
+  const { parsed } = scriptKey.getState(state);
+  const options = getLayoutOptions();
+  const { pageStarts } = layout(parsed, options);
+  // The cover page ends right after its last line, even before any script exists.
+  const { last } = coverInfo(parsed, options);
+  const coverGap = (pos, side) => Decoration.widget(pos, () => pageGap(1, false), { side, key: 'page-cover', ignoreSelection: true });
+  const starts = new Map(pageStarts.filter((p) => p.number > 1).map((p) => [p.line, p]));
   const widgets = [];
   let index = 0;
   state.doc.forEach((_node, pos) => {
+    if (last >= 0 && index === last + 1) widgets.push(coverGap(pos, -1));
     const start = starts.get(index++);
     if (start) {
       const { number, continued } = start;
       widgets.push(Decoration.widget(pos, () => pageGap(number, continued), { side: -1, key: `page-${number}-${continued}`, ignoreSelection: true }));
     }
   });
+  if (last >= 0 && last === state.doc.childCount - 1) widgets.push(coverGap(state.doc.content.size, 1));
   return DecorationSet.create(state.doc, widgets);
 }
 
@@ -237,8 +260,11 @@ const FountainDecorations = Extension.create({
       new Plugin({
         key: scriptKey,
         state: {
-          init: (_, state) => computeScript(state.doc),
-          apply: (tr, value) => (tr.docChanged ? updateScript(tr, value) : value),
+          init: (_, state) => computeScript(state.doc, getLayoutOptions()),
+          apply: (tr, value) => {
+            if (tr.docChanged) return updateScript(tr, value, getLayoutOptions());
+            return tr.getMeta('flowRelayout') ? computeScript(tr.doc, getLayoutOptions()) : value;
+          },
         },
         props: { decorations: (state) => scriptKey.getState(state).decorations },
       }),
@@ -361,6 +387,7 @@ export class FlowEditor {
   }
 
   relayout() {
+    this.view.dispatch(this.view.state.tr.setMeta('flowRelayout', true));
     this.view.dispatch(this.view.state.tr.setMeta('flowGaps', computeGaps(this.view.state, this.getLayoutOptions)));
   }
 
@@ -375,6 +402,13 @@ export class FlowEditor {
     const i = Math.max(0, Math.min(index, state.doc.childCount - 1));
     const pos = this.lineStart(i) + 1;
     this.view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, pos)).scrollIntoView());
+    this.focus();
+  }
+
+  selectText(line, from, to) {
+    const start = this.lineStart(line) + 1;
+    const { state } = this.editor;
+    this.view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, start + from, start + to)));
     this.focus();
   }
 

@@ -99,6 +99,17 @@ function titleRows(parsed, profile) {
   return rows.sort((a, b) => a.y - b.y);
 }
 
+// The row each title line starts on, so the editor can draw the cover page like print.
+export function titlePositions(parsed, options = {}) {
+  const opts = { ...DEFAULT_OPTIONS, ...options };
+  const positions = new Map();
+  if (!opts.titlePage) return positions;
+  for (const row of titleRows(parsed, PROFILES[opts.paper] ?? PROFILES.letter) ?? []) {
+    if (!positions.has(row.line)) positions.set(row.line, row.y);
+  }
+  return positions;
+}
+
 const SINGLE_COL = {
   character: COL.character,
   parenthetical: COL.parenthetical,
