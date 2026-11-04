@@ -45,8 +45,6 @@ ${CONTROLS_CSS}
 }
 .fl-chrome { top: 0; }
 .fl-footer { bottom: 0; --fl-control-size: 22px; --fl-control-pad: 6px; --fl-pill-font: 11.5px; --fl-pill-pad: 2px; }
-/* A finger needs more to aim at than a pointer does. */
-@media (pointer: coarse) { .fl-footer { --fl-control-size: 32px; } }
 /* A bar with an open menu comes forward, so the menu can reach over the other bar. */
 .fl-chrome:has(.fl-menu-popup:not([hidden])), .fl-footer:has(.fl-menu-popup:not([hidden])) { z-index: 40; }
 ::slotted(*) { pointer-events: auto; }

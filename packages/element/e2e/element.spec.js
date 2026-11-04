@@ -385,6 +385,18 @@ test('the bottom pills are smaller than the top ones, including what an app adds
   expect(inherited.trim()).toBe(`${bottom.height}px`);
 });
 
+test.describe('on a phone', () => {
+  test.use({ viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true });
+
+  test('the bottom pills stay the same size as on a big screen', async ({ page }) => {
+    await open(page);
+    expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+    const larger = await statusbar(page).getByRole('button', { name: 'Larger' }).boundingBox();
+    expect(larger.height).toBe(22);
+    await expect(statusbar(page).getByRole('button', { name: 'Larger' })).toHaveCSS('font-size', '11.5px');
+  });
+});
+
 test('a status message gets its own pill only when there is one', async ({ page }) => {
   await open(page);
   const status = page.locator('flow-script .fl-status');
