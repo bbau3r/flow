@@ -46,7 +46,9 @@ const fakePickers = () => {
       suggestedName: options.suggestedName,
       startInName: options.startIn?.name,
     });
-    return write('picked.fountain', '');
+    // Confirming the dialog as offered, unless a test chooses a different file.
+    if (window.pickerCancels) throw new DOMException('cancelled', 'AbortError');
+    return (await root()).getFileHandle(window.pickerChoice ?? options.suggestedName, { create: true });
   };
 };
 
@@ -198,22 +200,52 @@ test.describe('local files with direct saving', () => {
     await page.keyboard.press('Control+s');
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     expect(await page.evaluate(() => window.readFile('existing.fountain'))).toBe('INT. ROOM - DAY\n\nFrom disk. Edited.');
+    await expect(page.locator('.doc-name')).toHaveText('existing.fountain');
   });
 
-  test('saving a file that was opened goes straight back to it, without asking', async ({ page }) => {
+  test('save opens the OS dialog in the file\u2019s folder with its name filled in', async ({ page }) => {
     await page.goto(HOME);
     await providerCard(page, 'local').click();
     await expect(editor(page)).toBeVisible();
-    await expect(page.locator('.doc-where')).toContainText('Original file on this device');
+    await expect(page.locator('.doc-where')).toContainText('On this device');
     await lineWith(page, 'From disk').click();
     await page.keyboard.type('Z');
     await page.locator('#save').click();
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     await expect(page.locator('dialog')).toHaveCount(0);
-    expect((await page.evaluate(() => window.pickerCalls)).filter((c) => c.kind === 'save')).toEqual([]);
+    const saves = (await page.evaluate(() => window.pickerCalls)).filter((c) => c.kind === 'save');
+    expect(saves).toEqual([{ kind: 'save', suggestedName: 'existing.fountain', startInName: 'existing.fountain' }]);
   });
 
-  test('save as asks where, starting beside the original', async ({ page }) => {
+  test('choosing another file in the dialog moves the script there', async ({ page }) => {
+    await page.goto(HOME);
+    await providerCard(page, 'local').click();
+    await expect(editor(page)).toBeVisible();
+    await page.evaluate(() => { window.pickerChoice = 'elsewhere.fountain'; });
+    await page.locator('#save').click();
+    await expect(page.locator('.doc-name')).toHaveText('elsewhere.fountain');
+    expect(await page.evaluate(() => window.readFile('elsewhere.fountain'))).toContain('From disk');
+
+    // The next save starts from the new file.
+    await page.locator('#save').click();
+    await expect.poll(async () => (await page.evaluate(() => window.pickerCalls)).at(-1).startInName).toBe('elsewhere.fountain');
+  });
+
+  test('cancelling the OS dialog changes nothing', async ({ page }) => {
+    await page.goto(HOME);
+    await providerCard(page, 'local').click();
+    await expect(editor(page)).toBeVisible();
+    await lineWith(page, 'From disk').click();
+    await page.keyboard.type('Z');
+    await page.evaluate(() => { window.pickerCancels = true; });
+    await page.locator('#save').click();
+    await expect.poll(async () => (await page.evaluate(() => window.pickerCalls)).filter((c) => c.kind === 'save').length).toBe(1);
+    await expect(page.locator('.doc-state')).toHaveText('Unsaved changes');
+    await expect(page.locator('#toast')).toBeHidden();
+    expect(await page.evaluate(() => window.readFile('existing.fountain'))).not.toContain('Z');
+  });
+
+  test('save as first asks which provider, then opens the same dialog', async ({ page }) => {
     await page.goto(HOME);
     await providerCard(page, 'local').click();
     await expect(editor(page)).toBeVisible();
@@ -221,7 +253,7 @@ test.describe('local files with direct saving', () => {
     const dialog = page.locator('dialog');
     await expect(dialog).toContainText('Choose the folder and file name.');
     await dialog.getByRole('button', { name: /This device/ }).click();
-    await expect(page.locator('.doc-name')).toHaveText('picked.fountain');
+    await expect(page.locator('.doc-state')).toHaveText('Saved');
     const save = (await page.evaluate(() => window.pickerCalls)).find((c) => c.kind === 'save');
     expect(save).toEqual({ kind: 'save', suggestedName: 'existing.fountain', startInName: 'existing.fountain' });
   });
@@ -252,7 +284,7 @@ test.describe('local files with direct saving', () => {
     await page.locator('.recent-open').first().click();
     await expect(editor(page)).toBeVisible();
     await page.locator('#save').click();
-    await expect(page.locator('.doc-name')).toHaveText('picked.fountain');
+    await expect(page.locator('.doc-state')).toHaveText('Saved');
     expect((await page.evaluate(() => window.pickerCalls)).filter((c) => c.kind === 'save')).toHaveLength(1);
   });
 
@@ -278,8 +310,8 @@ test.describe('local files with direct saving', () => {
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: /This device/ }).click();
     await expect(page.locator('.doc-state')).toHaveText('Saved');
-    await expect(page.locator('.doc-name')).toHaveText('picked.fountain');
-    expect(await page.evaluate(() => window.readFile('picked.fountain'))).toContain('Title: Untitled Screenplay');
+    await expect(page.locator('.doc-name')).toHaveText('Untitled Screenplay.fountain');
+    expect(await page.evaluate(() => window.readFile('Untitled Screenplay.fountain'))).toContain('Title: Untitled Screenplay');
 
     await editorFocused(page);
     await page.keyboard.type('More.');
@@ -287,7 +319,7 @@ test.describe('local files with direct saving', () => {
     await page.locator('#save').click();
     await expect(page.locator('dialog')).toHaveCount(0);
     await expect(page.locator('.doc-state')).toHaveText('Saved');
-    expect(await page.evaluate(() => window.readFile('picked.fountain'))).toContain('More.');
+    expect(await page.evaluate(() => window.readFile('Untitled Screenplay.fountain'))).toContain('More.');
   });
 
   test('cancelling the save choice changes nothing', async ({ page }) => {

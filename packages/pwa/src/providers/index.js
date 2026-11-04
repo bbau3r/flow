@@ -3,8 +3,9 @@
 //   id, label, description
 //   status()            { ok } or { ok: false, reason } if it can't be used right now
 //   open()              { name, text, ref }, or null if the user cancelled
-//   save(doc, options)  { name, ref } after writing to the existing file. Throws
-//                       ConflictError if the file changed, unless options.force is set.
+//   save(doc, options)  { name, ref } after writing to the doc's file, or null if the user
+//                       cancelled. Throws ConflictError if the file changed, unless
+//                       options.force is set. err.target goes back in options on retry.
 //   saveAs(doc)         { name, ref } for a new file, or null if the user cancelled
 //   saveHint()          what choosing this provider in the save dialog will do
 //   location(doc)       where a doc saved here lives, in words

@@ -114,19 +114,19 @@ Two decisions shape the code:
 
 The home page starts a new script or opens one from a provider. New scripts begin with a title page containing every field Flow prints, to keep or delete.
 
-Scripts autosave to IndexedDB on the device, so work survives closing the tab or losing the connection. The Recent list is that local copy. **Save** writes to the file, and refuses to overwrite a file that changed elsewhere without asking. After the first visit, the whole app works offline, including PDF export.
+Scripts autosave to IndexedDB on the device, so work survives closing the tab or losing the connection. The Recent list is that local copy. **Save** writes to the file, and won't overwrite a file that changed elsewhere without asking. After the first visit, the whole app works offline, including PDF export.
 
 Storage options live in `packages/pwa/src/providers/`. To add one, write an object with the interface described in `providers/index.js` and add it to the list.
 
 | Provider | Opening | Saving |
 | --- | --- | --- |
-| This device, Chromium browsers | File picker | Directly back to the opened file. New files and Save as ask where, starting beside the original |
+| This device, Chromium browsers | File picker | OS save dialog, opened in the file's folder with its name filled in |
 | This device, other browsers, including iOS | File picker | Downloads a copy, because these browsers can't choose a folder |
 | Google Drive | Google's picker | Directly back to the file |
 
 ### Deploying to GitHub Pages
 
-Pushing to `main` runs the tests, then builds and deploys. Other branches and pull requests only run the tests. It needs one setting, once: **Settings > Pages > Build and deployment > Source: GitHub Actions**.
+Pushing to `main` runs the tests, then builds and deploys. Other branches and pull requests only run the tests. It needs one setting, once: **Settings > Pages > Build and deployment > Source: GitHub Actions**. Without it, the deploy step fails with a 404.
 
 The site then lives at `https://<owner>.github.io/<repo>/`. Builds use relative paths, so nothing depends on the repository's name.
 
