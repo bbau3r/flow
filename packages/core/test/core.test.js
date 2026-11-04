@@ -235,6 +235,79 @@ describe('layout', () => {
       }
     });
   });
+  describe('scene continuation', () => {
+    const body = (n) => Array.from({ length: n }, (_, i) => `Beat ${i}.`).join('\n');
+    const on = { sceneContinued: true };
+    const texts = (page) => page.rows.map((r) => r.cells.map((c) => c.runs.map((x) => x.text).join('')).join('|'));
+
+    it('is off by default', () => {
+      const printed = layout(parse(`INT. A - DAY\n\n${body(130)}`)).pages.flatMap(texts).join('\n');
+      expect(printed).not.toContain('CONTINUED');
+    });
+    it('marks the foot and the top of each page a scene runs across, counting from the second', () => {
+      const { pages, profile } = layout(parse(`INT. A - DAY\n\n${body(130)}`), on);
+      expect(pages).toHaveLength(3);
+      expect(texts(pages[0]).at(-1)).toBe('(CONTINUED)');
+      expect(pages[0].rows.at(-1).y).toBe(profile.linesPerPage - 1);
+      expect(pages[0].rows.at(-1).cells[0].x + '(CONTINUED)'.length).toBe(15 + profile.actionWidth);
+      expect(texts(pages[1])[0]).toBe('CONTINUED:');
+      expect(pages[1].rows[1].cells).toEqual([]);
+      expect(texts(pages[2])[0]).toBe('CONTINUED: (2)');
+      expect(texts(pages[2]).at(-1)).not.toBe('(CONTINUED)');
+    });
+    it('repeats the scene number', () => {
+      const { pages } = layout(parse(`INT. A - DAY #7A#\n\n${body(70)}`), on);
+      expect(texts(pages[1])[0]).toBe('7A|CONTINUED:|7A');
+      expect(texts(layout(parse(`INT. A - DAY #7A#\n\n${body(70)}`), { ...on, sceneNumbers: false }).pages[1])[0]).toBe('CONTINUED:');
+    });
+    it('does not mark a page that opens on a new scene', () => {
+      const { pages } = layout(parse(`INT. A - DAY\n\n${body(49)}\n\nINT. B - DAY\n\n${body(5)}`), on);
+      expect(texts(pages[1])[0]).toBe('INT. B - DAY');
+      expect(texts(pages[0]).join()).not.toContain('CONTINUED');
+    });
+    it('does not mark text before the first scene', () => {
+      expect(layout(parse(body(70)), on).pages.flatMap(texts).join()).not.toContain('CONTINUED');
+    });
+    it('does not mark a forced page break, but resumes afterwards', () => {
+      const { pages } = layout(parse(`INT. A - DAY\n\nOne.\n\n===\n\n${body(70)}`), on);
+      expect(texts(pages[1])[0]).toBe('Beat 0.');
+      expect(texts(pages[0]).join()).not.toContain('CONTINUED');
+      expect(texts(pages[2])[0]).toBe('CONTINUED:');
+    });
+    it('sits above a speech carried over with MORE', () => {
+      const { pages } = layout(parse(`INT. A - DAY\n\nBOB\n${body(70)}`), on);
+      expect(texts(pages[0]).slice(-2)).toEqual(['(MORE)', '(CONTINUED)']);
+      expect(texts(pages[1]).slice(0, 3)).toEqual(['CONTINUED:', '', "BOB (CONT'D)"]);
+    });
+    it('reports continued pages to the editor', () => {
+      expect(layout(parse(`INT. A - DAY\n\n${body(70)}`), on).pageStarts[0].continued).toBe(true);
+      expect(layout(parse(`INT. A - DAY\n\n${body(70)}`)).pageStarts[0].continued).toBe(false);
+    });
+    it('stays on the page and loses nothing at every fill level', () => {
+      const blocks = [`BOB\n${body(130)}`, 'INT. B - DAY\n\nAfter.', body(9), `BOB\nHi.\nThere.\n\nAMY ^\nHey.\nYou.`, `BOB\n(aside)\n${body(4)}\n(again)\n${body(4)}`];
+      for (const paper of ['letter', 'a4']) {
+        const limit = paper === 'letter' ? 55 : 57;
+        for (const block of blocks) {
+          for (let n = 1; n <= limit + 3; n++) {
+            const source = `INT. A - DAY\n\n${Array.from({ length: n }, (_, i) => `Fill ${i}.`).join('\n')}\n\n${block}`;
+            const { pages } = layout(parse(source), { ...on, paper });
+            for (const p of pages) {
+              expect(p.rows.length).toBeLessThanOrEqual(limit);
+              expect(Math.max(...p.rows.map((r) => r.y))).toBeLessThan(limit);
+              expect(new Set(p.rows.map((r) => r.y)).size).toBe(p.rows.length);
+            }
+            const wanted = /^(Fill|Beat|After|Hi|There|Hey|You)/;
+            const got = pages.flatMap((p) => p.rows.flatMap((r) => r.cells.map((c) => c.runs.map((x) => x.text).join('')))).filter((t) => wanted.test(t));
+            expect(got.sort()).toEqual(source.split('\n').filter((l) => wanted.test(l)).sort());
+          }
+        }
+      }
+    });
+    it('cannot hang on a block longer than a page', () => {
+      const { pages } = layout(parse(`INT. A - DAY\n\nBOB\n${body(30)}\n\nAMY ^\n${body(200)}`), on);
+      expect(pages.length).toBeGreaterThan(3);
+    });
+  });
   it('honors forced page breaks', () => {
     const { pages } = layout(parse('One.\n\n===\n\nTwo.'));
     expect(pages.map(pageText)).toEqual([['One.'], ['Two.']]);

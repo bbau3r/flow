@@ -20,6 +20,9 @@ export const DEFAULT_OPTIONS = {
   pageNumbers: true,
   more: '(MORE)',
   contd: "(CONT'D)",
+  sceneContinued: false,
+  continuedTop: 'CONTINUED:',
+  continuedBottom: '(CONTINUED)',
 };
 
 function sliceRuns(runs, a, b) {
@@ -199,7 +202,7 @@ function buildBlocks(parsed, profile, opts) {
         }
         return { type: 'scene', line: i, notes: n === 0 ? rowNotes() : [], cells };
       });
-      blocks.push({ type: 'scene', rows, keepNext: true });
+      blocks.push({ type: 'scene', rows, keepNext: true, number: l.sceneNumber });
       continue;
     }
     if (l.type === 'transition') {
@@ -229,23 +232,53 @@ function buildBlocks(parsed, profile, opts) {
 }
 
 function paginate(blocks, profile, opts) {
-  const L = profile.linesPerPage;
+  const W = profile.actionWidth;
+  const footY = profile.linesPerPage - 1;
+  // Scene continuation pins (CONTINUED) to the last row, so body text stops short of it.
+  const L = profile.linesPerPage - (opts.sceneContinued ? 2 : 0);
   const pages = [];
   let cur = [];
+  let header = 0; // rows at the top of this page that aren't script content
+  let scene = null;
+  let afterBreak = false;
   const finish = () => {
     while (cur.length && cur[cur.length - 1].type === 'blank' && !cur[cur.length - 1].notes.length) cur.pop();
     pages.push(cur);
     cur = [];
+    header = 0;
   };
   const minRows = (b) => {
     if (b.dual) return b.rows.length;
     return Math.min(b.rows.length, b.type === 'dialogue' ? 3 : 2);
+  };
+  // A forced page break is a deliberate stop, so it doesn't count as the scene continuing.
+  const beginPage = (block, line) => {
+    const continues = opts.sceneContinued && scene && !afterBreak && pages.length && block.type !== 'scene';
+    afterBreak = false;
+    if (!continues) return;
+    scene.continued++;
+    const top = scene.continued > 1 ? `${opts.continuedTop} (${scene.continued})` : opts.continuedTop;
+    const cells = [{ x: COL.action, runs: plainRun(top) }];
+    if (scene.number && opts.sceneNumbers) {
+      cells.unshift({ x: COL.action - scene.number.length - 3, runs: plainRun(scene.number) });
+      cells.push({ x: COL.action + W + 2, runs: plainRun(scene.number) });
+    }
+    pages[pages.length - 1].push({
+      type: 'continued',
+      line,
+      notes: [],
+      pinY: footY,
+      cells: [{ x: COL.action + W - opts.continuedBottom.length, runs: plainRun(opts.continuedBottom) }],
+    });
+    cur.push({ type: 'continued', line, notes: [], cells }, blankRow(line));
+    header = cur.length;
   };
 
   for (let b = 0; b < blocks.length; b++) {
     const block = blocks[b];
     if (block.type === 'break') {
       if (cur.length) finish();
+      afterBreak = true;
       continue;
     }
     if (block.type === 'blank') {
@@ -254,6 +287,7 @@ function paginate(blocks, profile, opts) {
       cur.push(block.rows[0]);
       continue;
     }
+    if (block.type === 'scene') scene = { number: block.number, continued: 0 };
     // A scene heading must not be stranded at the foot of a page.
     let keep = 0;
     if (block.keepNext) {
@@ -264,7 +298,9 @@ function paginate(blocks, profile, opts) {
     let rows = block.rows;
     const splitsDialogue = block.type === 'dialogue' && !block.dual;
     while (rows.length) {
-      if (!cur.length) keep = 0;
+      if (!cur.length) beginPage(block, rows[0].line);
+      const emptyPage = cur.length === header;
+      if (emptyPage) keep = 0;
       const room = L - cur.length;
       if (rows.length + keep <= room) {
         cur.push(...rows);
@@ -282,7 +318,7 @@ function paginate(blocks, profile, opts) {
         if (take < 2) take = 0;
       }
       // A block longer than a whole page has to break somewhere regardless.
-      if (!take && !cur.length) take = splitsDialogue ? L - 1 : L;
+      if (!take && emptyPage) take = splitsDialogue ? room - 1 : room;
       cur.push(...rows.slice(0, take));
       rows = rows.slice(take);
       if (take && splitsDialogue) {
@@ -306,12 +342,12 @@ export function layout(parsed, options = {}) {
   if (title) pages.push({ kind: 'title', number: null, rows: title });
 
   paginate(buildBlocks(parsed, profile, opts), profile, opts).forEach((rows, n) => {
-    rows.forEach((r, y) => { r.y = y; });
+    rows.forEach((r, y) => { r.y = r.pinY ?? y; });
     pages.push({ kind: 'script', number: n + 1, showNumber: opts.pageNumbers && n > 0, rows });
   });
   // Where each page after the first begins, for the editor's break markers.
   const pageStarts = pages
     .filter((p) => p.kind === 'script' && p.number > 1 && p.rows.length)
-    .map((p) => ({ number: p.number, line: p.rows[0].line }));
+    .map((p) => ({ number: p.number, line: p.rows[0].line, continued: p.rows[0].type === 'continued' }));
   return { profile, options: opts, pages, pageStarts };
 }

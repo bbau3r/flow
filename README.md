@@ -55,7 +55,7 @@ The build produces two forms:
 | `value` | Get or set the script as Fountain text |
 | `outline` | Tree of sections, scenes and synopses |
 | `pageCount` | Script pages at the current print options |
-| `printOptions` | Paper, title page, scene numbers, bold or underlined headings, double spacing, page numbers, and `more`/`contd` text |
+| `printOptions` | Paper, title page, scene numbers, bold or underlined headings, double spacing, page numbers, `sceneContinued`, and the `more`, `contd`, `continuedTop` and `continuedBottom` text |
 | `exportPdf(options)` | Resolves to `{ blob, bytes, pageCount, unsupported }` |
 | `downloadPdf(options)` | Same, and saves the file |
 | `scrollToLine(line)` | Jumps to a source line |

@@ -62,12 +62,12 @@ function chip(comment, onOpen) {
   return dom;
 }
 
-function pageGap(number) {
+function pageGap(number, continued) {
   const dom = document.createElement('div');
   dom.className = 'fl-page-gap';
   dom.setAttribute('aria-hidden', 'true');
   const label = document.createElement('span');
-  label.textContent = `${number}.`;
+  label.textContent = continued ? `(CONTINUED)  ${number}.` : `${number}.`;
   dom.append(label);
   return dom;
 }
@@ -206,12 +206,15 @@ function activeDecorations(state, parsed, focused) {
 
 function computeGaps(state, getLayoutOptions) {
   const { pageStarts } = layout(scriptKey.getState(state).parsed, getLayoutOptions());
-  const starts = new Map(pageStarts.map((p) => [p.line, p.number]));
+  const starts = new Map(pageStarts.map((p) => [p.line, p]));
   const widgets = [];
   let index = 0;
   state.doc.forEach((_node, pos) => {
-    const number = starts.get(index++);
-    if (number) widgets.push(Decoration.widget(pos, () => pageGap(number), { side: -1, key: `page-${number}`, ignoreSelection: true }));
+    const start = starts.get(index++);
+    if (start) {
+      const { number, continued } = start;
+      widgets.push(Decoration.widget(pos, () => pageGap(number, continued), { side: -1, key: `page-${number}-${continued}`, ignoreSelection: true }));
+    }
   });
   return DecorationSet.create(state.doc, widgets);
 }
