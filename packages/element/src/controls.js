@@ -435,6 +435,17 @@ const CONTROL_TOKENS = {
   'dialog-radius': '12px',
   focus: 'var(--flow-accent)',
   scrollbar: 'var(--flow-accent)',
+  // Checkboxes, radio buttons, sliders and progress bars.
+  check: 'var(--flow-accent)',
+  'field-bg': 'var(--flow-paper)',
+  'field-ink': 'var(--flow-ink)',
+  'field-border': 'var(--flow-rule)',
+  'selection-bg': 'color-mix(in srgb, var(--flow-accent) 30%, transparent)',
+  // Where a dragged card will land, and where a tool would add one.
+  'drop-line': 'var(--flow-accent)',
+  'preview-line': 'var(--flow-secondary)',
+  // Pointing at something that deletes.
+  'danger-hover': 'var(--flow-danger)',
 };
 
 /** The token's value, falling back to its default when nobody has set it. */
@@ -480,6 +491,8 @@ export const CONTROLS_CSS = `
 .fl-btn[hidden] { display: none; }
 .fl-btn:hover:not(:disabled) { background: ${token('button-hover-bg')}; }
 .fl-btn:focus-visible, .fl-tab:focus-visible, .fl-menu-item:focus-visible { outline: 2px solid ${token('focus')}; outline-offset: 1px; }
+input[type="checkbox"], input[type="radio"], input[type="range"], progress { accent-color: ${token('check')}; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid ${token('focus')}; outline-offset: 1px; }
 .fl-btn[aria-pressed="true"], .fl-btn[aria-pressed="true"]:hover:not(:disabled), .fl-btn-primary, .fl-btn-primary:hover:not(:disabled) {
   background: ${token('button-active-bg')}; color: ${token('button-active-ink')};
 }

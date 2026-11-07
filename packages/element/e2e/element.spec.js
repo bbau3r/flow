@@ -309,6 +309,44 @@ test('collapsing keeps the rest of the row in place, and keeps up with quick cli
   await expect(formatPills(page)).toBeHidden();
 });
 
+test('folded on its own row, the action center keeps its place and gives the page that row', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await open(page);
+  const inset = () => host(page).evaluate((el) => parseFloat(el.style.getPropertyValue('--fl-inset-top')));
+  // Well below the top row's middle is the second row.
+  const secondRow = async () => {
+    const box = await page.locator('flow-script .fl-export').boundingBox();
+    return box.y + box.height / 2 + 20;
+  };
+  const open_ = await inset();
+  const toggle = collapseToggle(page);
+  const before = await toggle.boundingBox();
+  const rowStart = (await formatPills(page).boundingBox()).x;
+  expect(before.y).toBeGreaterThan(await secondRow());
+  await toggle.click();
+  await expect(formatPills(page)).toBeHidden();
+  await expect.poll(inset).toBeLessThan(open_ - 30);
+  const after = await toggle.boundingBox();
+  expect(after.y).toBeGreaterThan(await secondRow());
+  expect(Math.abs(after.y - before.y)).toBeLessThan(6);
+  // Where the folded row's toggle ends up as the pills close in front of it.
+  expect(Math.abs(after.x - rowStart)).toBeLessThan(2);
+  await toggle.click();
+  await expect.poll(inset).toBe(open_);
+});
+
+test('checkboxes, fields and the palette roles follow the theme', async ({ page }) => {
+  await open(page);
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sand-light'));
+  const dialog = await openExport(page);
+  await expect(dialog.locator('input[type="checkbox"]').first()).toHaveCSS('accent-color', 'rgb(151, 89, 44)');
+  const roles = await host(page).evaluate((el) => {
+    const style = getComputedStyle(el);
+    return ['secondary', 'secondary-ink', 'success', 'warning', 'danger'].map((name) => style.getPropertyValue(`--flow-${name}`).trim());
+  });
+  expect(roles.every(Boolean)).toBe(true);
+});
+
 test('collapsing skips the animation for people who ask for less motion', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await open(page);
@@ -1736,7 +1774,7 @@ test.describe('outline tab', () => {
   // The outline's own padding, where there's no card.
   const pressBetweenCards = (page) => page.locator('flow-script .fl-outline').click({ position: { x: 4, y: 4 } });
 
-  test('the tools add an act, then a synopsis and a sequence below what was just added', async ({ page }) => {
+  test('the tools add an act and a synopsis below it, and a sequence takes the synopsis in', async ({ page }) => {
     await openOutline(page);
     await expect(page.locator('flow-script .fl-outline-hint')).toContainText('Outline your screenplay here.');
     await expect(page.locator('flow-script .fl-outline-hint')).toContainText('drag');
@@ -1747,7 +1785,7 @@ test.describe('outline tab', () => {
     await page.keyboard.type('The setup');
     await tool(page, 'sequence').click();
     await page.keyboard.type('Morning');
-    expect(await value(page)).toBe('# Act One\n= The setup\n\n## Morning');
+    expect(await value(page)).toBe('# Act One\n\n## Morning\n= The setup');
     await expect(page.locator('flow-script .fl-outline-card .fl-outline-card')).toHaveCount(1);
   });
 
@@ -1819,12 +1857,50 @@ test.describe('outline tab', () => {
     await page.keyboard.type('B');
     expect(await value(page)).toBe('# X\n\n## A\n\nINT. ONE - DAY\n\n## B\n\nINT. TWO - DAY');
 
-    // A scene straight under an act isn't inside a sequence, so the sequence goes below it.
+    // A scene straight under an act can belong to a sequence too, so the new one takes it in.
     await setValue(page, '# X\n\nINT. ONE - DAY\n\nINT. TWO - DAY');
     await block(page, 'INT. ONE').locator('.fl-outline-block-text').click();
     await tool(page, 'sequence').click();
     await page.keyboard.type('B');
-    expect(await value(page)).toBe('# X\n\nINT. ONE - DAY\n\n## B\n\nINT. TWO - DAY');
+    expect(await value(page)).toBe('# X\n\n## B\n\nINT. ONE - DAY\n\nINT. TWO - DAY');
+  });
+
+  test('a new act takes in the selected sequence and those after it, even outside any act', async ({ page }) => {
+    await openOutline(page, '## A\n\n## B\n\n## C\n\n## D\n\n## E\n\n## G');
+    await fields(page).nth(2).click();
+    await tool(page, 'act').click();
+    await page.keyboard.type('One');
+    expect(await value(page)).toBe('## A\n\n## B\n\n# One\n\n## C\n\n## D\n\n## E\n\n## G');
+    const act = page.locator('flow-script .fl-outline-list > .fl-outline-card').last();
+    expect(await act.locator('.fl-outline-card .fl-outline-field').evaluateAll((all) => all.map((f) => f.value))).toEqual(['C', 'D', 'E', 'G']);
+  });
+
+  test('pointing at a tool shows where it would add, in the secondary color', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openOutline(page, '# X\n\n## A\n\n## B\n\n## C');
+    const preview = page.locator('flow-script .fl-outline-preview');
+    await expect(preview).toBeHidden();
+
+    // Nothing selected: the end of the script.
+    await tool(page, 'act').hover();
+    await expect(preview).toBeVisible();
+    const last = await page.locator('flow-script .fl-outline-card .fl-outline-card').last().boundingBox();
+    expect((await preview.boundingBox()).y).toBeGreaterThan(last.y + last.height - 2);
+    await page.mouse.move(640, 700);
+    await expect(preview).toBeHidden();
+
+    // B selected: the new act would start at B.
+    await fields(page).nth(2).click();
+    await tool(page, 'act').hover();
+    const b = await page.locator('flow-script .fl-outline-card .fl-outline-card').nth(1).boundingBox();
+    const line = await preview.boundingBox();
+    expect(Math.abs(line.y + line.height / 2 - b.y)).toBeLessThan(6);
+    const secondary = await host(page).evaluate((el) => getComputedStyle(el).getPropertyValue('--flow-secondary').trim());
+    expect(secondary).toBe('#b0645a');
+    await expect(preview).toHaveCSS('background-color', 'rgb(176, 100, 90)');
+
+    await tool(page, 'act').click();
+    await expect(preview).toBeHidden();
   });
 
   test('a tap that wanders a little is still a tap on a touch screen', async ({ browser }) => {

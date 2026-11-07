@@ -89,6 +89,9 @@ export function createOutline({ edit, undo, redo }) {
   );
   const dropLine = element('div', 'fl-outline-drop');
   dropLine.hidden = true;
+  const previewLine = element('div', 'fl-outline-preview');
+  previewLine.hidden = true;
+  previewLine.setAttribute('aria-hidden', 'true');
   const ghost = element('div', 'fl-outline-ghost');
   ghost.hidden = true;
   ghost.setAttribute('aria-hidden', 'true');
@@ -98,7 +101,7 @@ export function createOutline({ edit, undo, redo }) {
     edit(next);
   };
 
-  const root = element('section', 'fl-outline', hint, list, dropLine, ghost);
+  const root = element('section', 'fl-outline', hint, list, dropLine, previewLine, ghost);
   root.setAttribute('aria-label', 'Outline');
   // Focus can rest on the outline itself, with no card selected.
   root.tabIndex = -1;
@@ -119,29 +122,19 @@ export function createOutline({ edit, undo, redo }) {
     return null;
   };
 
-  // Below the selected card is the first place after it, past any synopses at its top so that a
-  // new sequence doesn't take them over. With nothing selected, it's the end of the script.
-  // The level of the header holding the block at `line`, or 0 at the top level.
-  const parentLevelOf = (line) => {
-    const walk = (items, level) => {
-      for (const item of items) {
-        if (item.line === line) return level;
-        const inner = item.children ? walk(item.children, item.level) : null;
-        if (inner !== null) return inner;
-      }
-      return null;
-    };
-    return walk(cards, 0) ?? 0;
-  };
-
-  // A new act or sequence can't sit inside a header of its own level or higher, so with
-  // something inside one selected, it starts at that card and splits the header there: a
-  // sequence B selected in an act holding A, B and C gets the new act between A and B.
+  // Where a tool adds its card. With nothing selected, that's the end of the script.
+  //
+  // A new act or sequence that the selected card could belong to starts at that card, so the
+  // card and everything after it up to the next header of the same level go into it: with
+  // sequences A to G and C selected, a new act holds C through G.
+  //
+  // Otherwise the card goes below the selected one, past any synopses at its top, so that a
+  // new sequence in an act doesn't take over the act's own synopses.
   const placeFor = (spec) => {
     const slots = outlineSlots(cards, lines.length, spec);
     const item = selected === null ? null : itemsByLine.get(selected);
     if (!item) return slots[slots.length - 1].line;
-    if (spec.kind === 'section' && spec.level <= parentLevelOf(item.line)) return item.line;
+    if (spec.kind === 'section' && (item.kind !== 'section' || item.level > spec.level)) return item.line;
     let anchor = item.line;
     for (const child of item.children ?? []) {
       if (child.kind !== 'synopsis') break;
@@ -204,6 +197,32 @@ export function createOutline({ edit, undo, redo }) {
     });
   };
 
+  const placeLine = (node, { y, left, width }) => {
+    node.style.top = `${y}px`;
+    node.style.left = `${left}px`;
+    node.style.width = `${width}px`;
+    node.hidden = false;
+  };
+
+  // Shows where a tool would add its card: at one of the places a dragged one could land, or
+  // at the top of the selected card when the new one would start there.
+  const showPreview = (spec) => {
+    previewLine.hidden = true;
+    if (root.hidden || drag || !cards.length) return;
+    const line = placeFor(spec);
+    const slot = measureSlots(spec).filter((place) => place.line === line).at(-1);
+    if (slot) {
+      placeLine(previewLine, slot);
+      return;
+    }
+    const node = blockNodes.get(line);
+    if (!node) return;
+    const origin = root.getBoundingClientRect();
+    const box = node.getBoundingClientRect();
+    placeLine(previewLine, { y: box.top - 3 - origin.top, left: box.left - origin.left, width: box.width });
+  };
+  const hidePreview = () => { previewLine.hidden = true; };
+
   // The part of the area between the bars, where a drop lands.
   const openArea = () => {
     const area = scrollArea();
@@ -262,6 +281,7 @@ export function createOutline({ edit, undo, redo }) {
   };
 
   const beginDrag = () => {
+    hidePreview();
     drag.active = true;
     drag.slots = measureSlots(drag.item ? drag.item.line : drag.spec);
     if (drag.item) blockNodes.get(drag.item.line).classList.add('fl-outline-dragging');
@@ -308,11 +328,12 @@ export function createOutline({ edit, undo, redo }) {
   const tools = TOOLS.map(({ name, spec }) => {
     const tool = button({
       label: `Add ${name}`,
-      title: `Add ${name === 'act' ? 'an' : 'a'} ${name} below the selected card, or at the end. Drag it to place it.`,
+      title: `Add ${name === 'act' ? 'an' : 'a'} ${name} where the line shows, or drag it into place.`,
       icon: name,
       text: capitalized(name),
       cls: 'fl-outline-tool',
       onClick: () => {
+        hidePreview();
         if (suppressClick) {
           suppressClick = false;
           return;
@@ -321,6 +342,11 @@ export function createOutline({ edit, undo, redo }) {
       },
     });
     draggable(tool, () => ({ spec, icon: name, label: `New ${name}` }));
+    // A finger has no hover, and its tap would leave the line behind.
+    tool.addEventListener('pointerenter', (event) => { if (event.pointerType === 'mouse') showPreview(spec); });
+    tool.addEventListener('pointerleave', hidePreview);
+    tool.addEventListener('focus', () => { if (tool.matches(':focus-visible')) showPreview(spec); });
+    tool.addEventListener('blur', hidePreview);
     return tool;
   });
 
@@ -443,6 +469,7 @@ export function createOutline({ edit, undo, redo }) {
 
   // Redrawing would lose the cursor, so while the fields stay the same they're updated in place.
   const render = (value) => {
+    hidePreview();
     cards = outlineCards(parse(value));
     lines = value.split('\n');
     const nextShape = shapeOf(cards);

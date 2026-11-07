@@ -148,7 +148,7 @@ h2 {
   cursor: pointer;
 }
 
-.recent-remove:hover { color: var(--flow-accent); }
+.recent-remove:hover { color: var(--flow-danger-hover, var(--flow-danger)); }
 
 /* Editor */
 .editor { display: flex; flex-direction: column; height: 100dvh; }

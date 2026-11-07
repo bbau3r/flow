@@ -76,7 +76,7 @@ The build produces two forms:
 
 ### Slots
 
-The editor has a top row, the action center that joins it when there is room, and a row of pills along the bottom, all floating over the script. The action center holds the current tab's commands: formatting in Write, and Act, Sequence and Synopsis in Outline. Read has none. Folded away, it shrinks to its toggle, which moves up beside the tabs when the top row has room. Apps add their own controls with named slots, and read-only mode shows none of them.
+The editor has a top row, the action center that joins it when there is room, and a row of pills along the bottom, all floating over the script. The action center holds the current tab's commands: formatting in Write, and Act, Sequence and Synopsis in Outline. Read has none. Folded away, it shrinks to its toggle. When the action center has a row of its own, the toggle stays at the start of that row but floats over the page, which moves up by the whole row. Apps add their own controls with named slots, and read-only mode shows none of them.
 
 | Slot | Where it goes |
 | --- | --- |
@@ -99,7 +99,7 @@ Syntax markers such as `**`, `.` or `@` show only on the line you're on. Everywh
 - **Comments.** `[[notes]]` appear as bubbles. In the editor, clicking one opens it for editing. In read-only mode it expands in place.
 - **Boneyard.** `/* cut text */` is separate from comments. In the editor it stays readable in place, dimmed and struck through. It never appears in read-only pages or PDFs. The strikethrough S button cuts the selection, or the current line, and restores it when pressed again.
 - **Outlining.** `#` and `##` sections and `= synopses` are visible while editing but never appear in read-only pages or PDFs, and they take no page space. They're available through `outline` for future navigation features.
-- **Outline tab.** Plan a script as cards, in order with its scenes and transitions. A scene and a transition next to each other share a card, and two of the same kind don't. Each scene shows its number, which is the one thing about it you can edit here. The action center's Act, Sequence and Synopsis add a `#`, `##` or `=` line. Click one to add below the selected card, or at the end of the script with nothing selected, or drag it to where it should go. With a card inside an act selected, Act splits that act there: select sequence B of an act holding A, B and C, and the new act goes between A and B, taking B and C. Sequence does the same inside a sequence. A card is selected by clicking or focusing it, and clicking between cards or pressing Escape clears that. Drag a card by its handle, or use the arrow keys on the handle, to move it with all the script text it holds. Scenes and transitions can be moved here but only edited or deleted in the script. The outline follows the file: synopses and sequences can sit above the first act, and anything below an act is part of it. Every synopsis shows, wherever it is. Removing an act takes it and its sequences out of the script, and leaves its scenes, dialogue and synopses to the card above. Undo works across the tabs.
+- **Outline tab.** Plan a script as cards, in order with its scenes and transitions. A scene and a transition next to each other share a card, and two of the same kind don't. Each scene shows its number, which is the one thing about it you can edit here. The action center's Act, Sequence and Synopsis add a `#`, `##` or `=` line. Pointing at one draws a line where it would add its card. Click to add it there, or drag it to where it should go. With nothing selected, it goes at the end of the script. A new act or sequence starts at the selected card when that card could belong to it, taking in that card and what follows up to the next header of its level: with sequences A to G and C selected, a new act holds C through G. Otherwise a new card goes below the selected one. A card is selected by clicking or focusing it, and clicking between cards or pressing Escape clears that. Drag a card by its handle, or use the arrow keys on the handle, to move it with all the script text it holds. Scenes and transitions can be moved here but only edited or deleted in the script. The outline follows the file: synopses and sequences can sit above the first act, and anything below an act is part of it. Every synopsis shows, wherever it is. Removing an act takes it and its sequences out of the script, and leaves its scenes, dialogue and synopses to the card above. Undo works across the tabs.
 - **Read tab.** The pages as they print, with editing off, whichever view Write is in.
 - **Opening files.** Installed on a desktop with Chrome or Edge, the app opens `.fountain` and `.spmd` files from the file manager, in the window that's already open. A file already in the recent list reopens there, refreshed from disk unless it has unsaved changes. Android doesn't support this yet.
 - **Tabs in the app.** The address records the tab as `#/edit/<id>?tab=outline` or `?tab=read`, so a reload stays on it.
@@ -127,7 +127,9 @@ registerTheme('sepia', { paper: '#f4ecd8', ink: '#3b2f1e' });
 <flow-script theme="sepia"></flow-script>
 ```
 
-Colors: `desk`, `paper`, `ink`, `muted`, `accent`, `accent-ink`, `rule`, `ribbon-bg`, `ribbon-ink`, `bubble-bg`, `bubble-ink`, `shadow`.
+Colors: `desk`, `paper`, `ink`, `muted`, `accent`, `accent-ink`, `secondary`, `secondary-ink`, `success`, `warning`, `danger`, `rule`, `ribbon-bg`, `ribbon-ink`, `bubble-bg`, `bubble-ink`, `shadow`.
+
+`accent` is the primary color, and `secondary` complements it. `success`, `warning` and `danger` stay much the same in every palette, shifted only where a palette's own colors would clash with them.
 
 Each component also has its own tokens, which default to those colors. Set them the same ways, as `--flow-<token>` in CSS or by name in `registerTheme`:
 
@@ -138,6 +140,8 @@ Each component also has its own tokens, which default to those colors. Set them 
 | Tabs | `tabs-bg`, `tabs-border`, `tabs-ink`, `tab-selected-bg`, `tab-selected-ink` |
 | Menus | `menu-bg`, `menu-ink`, `menu-border`, `menu-radius`, `menu-heading-bg`, `menu-heading-ink` |
 | Modals | `dialog-bg`, `dialog-ink`, `dialog-radius` |
+| Fields | `check` (checkboxes, radio buttons, sliders and progress bars), `field-bg`, `field-ink`, `field-border`, `selection-bg` |
+| Outline | `drop-line` (where a dragged card lands), `preview-line` (where a tool would add one, `secondary` by default), `danger-hover` (pointing at something that deletes) |
 
  Use `--flow-font` to change the script typeface; anything but a 0.6em-wide monospace font will throw off page alignment. Use `--flow-ui-font` to change the interface font, which defaults to the bundled Roboto. PDFs are always black on white.
 

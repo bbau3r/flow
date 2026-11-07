@@ -1,7 +1,6 @@
 // The action center: the row of commands under the document and tabs. Each tab registers its
 // own set of pills, such as formatting for Write or adding cards for Outline, and the row shows
-// the current tab's set, or nothing. Each set can be folded away on its own, and `onFold` hears
-// whenever the row is folded down to its toggle or opened out again.
+// the current tab's set, or nothing. Each set can be folded away on its own.
 
 import { button } from './controls.js';
 
@@ -14,7 +13,7 @@ const cell = (className, ...children) => {
   return node;
 };
 
-export function createActionCenter({ onFold } = {}) {
+export function createActionCenter() {
   const sets = new Map();
   let current = null;
 
@@ -57,8 +56,6 @@ export function createActionCenter({ onFold } = {}) {
     current.collapsed = collapsed;
     current.onCollapse?.();
     labelToggle();
-    // Opening needs the row's room back before the pills can spread out into it.
-    if (!collapsed) onFold?.(false);
 
     const from = pills.getBoundingClientRect().width;
     stopAnimations();
@@ -82,7 +79,6 @@ export function createActionCenter({ onFold } = {}) {
       pills.hidden = collapsed;
       for (const fading of pillAnimations) fading.cancel();
       pillAnimations = [];
-      if (collapsed) onFold?.(true);
     }).catch(() => {}); // cancelled by a newer click, or a change of set, which has taken over
   }
 
@@ -106,20 +102,12 @@ export function createActionCenter({ onFold } = {}) {
       root.hidden = !current;
       if (!current) {
         pills.replaceChildren();
-        onFold?.(false);
         return;
       }
       root.setAttribute('aria-label', current.label);
       pills.replaceChildren(...current.nodes);
       pills.hidden = current.collapsed;
       labelToggle();
-      onFold?.(current.collapsed);
-    },
-    /** The button that folds the row away and opens it again. */
-    toggle,
-    /** Whether the row is showing only its toggle. */
-    get folded() {
-      return !!current?.collapsed && pills.hidden;
     },
   };
 }
