@@ -89,11 +89,11 @@ test.describe('new scripts', () => {
     for (const key of ['Title:', 'Credit:', 'Author:', 'Source:', 'Draft date:', 'Contact:', 'Copyright:', 'Notes:']) {
       expect(text).toContain(key);
     }
-    await expect(lineWith(page, 'Untitled Screenplay')).toHaveClass(/fl-title/);
+    await expect(lineWith(page, 'Untitled')).toHaveClass(/fl-title/);
     await expect(lineWith(page, 'Written by')).toHaveClass(/fl-title/);
 
     // Removing a field is just deleting its line.
-    const source = lineWith(page, 'Based on the novel');
+    const source = lineWith(page, 'Based On Blank');
     await source.click();
     // Home can only reach the "Source:" label once clicking has revealed it.
     await expect(source).toHaveClass(/fl-active/);
@@ -153,10 +153,10 @@ test.describe('new scripts', () => {
   test('take their name from the title until first saved', async ({ page }) => {
     await newScript(page);
     await expect(page.locator('.doc-name')).toHaveText('Untitled Screenplay');
-    await lineWith(page, 'Untitled Screenplay').click();
+    await lineWith(page, 'Untitled').click();
     await page.keyboard.press('End');
     await page.keyboard.type(' Two');
-    await expect(page.locator('.doc-name')).toHaveText('Untitled Screenplay Two');
+    await expect(page.locator('.doc-name')).toHaveText('Untitled Two');
     await expect(page.locator('.doc-state')).toHaveText('On this device only');
   });
 });
@@ -351,7 +351,7 @@ test.describe('local files with direct saving', () => {
     await expect(page.locator('dialog')).toHaveCount(0);
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     await expect(page.locator('.doc-name')).toHaveText('Untitled Screenplay.fountain');
-    expect(await page.evaluate(() => window.readFile('Untitled Screenplay.fountain'))).toContain('Title: Untitled Screenplay');
+    expect(await page.evaluate(() => window.readFile('Untitled Screenplay.fountain'))).toContain('Title: Untitled\n');
 
     await editorFocused(page);
     await page.keyboard.type('More.');

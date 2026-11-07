@@ -967,8 +967,8 @@ describe('new script template', () => {
   it('prints every field it offers, so nothing in it is a dead end', () => {
     expect(page().kind).toBe('title');
     expect(printed()).toEqual(expect.arrayContaining([
-      'Untitled Screenplay', 'Written by', 'Your Name', 'Based on the novel by Someone Else',
-      'November 3, 2026', 'you@example.com', '555-0100', '(c) 2026 Your Name', 'First draft',
+      'Untitled', 'Written by', 'Your Name', 'Based On Blank',
+      'November 3, 2026', 'you@example.com', '555-555-5555', '(c) 2026 Your Name', 'First draft',
     ]));
   });
   it('still parses cleanly with any one field removed', () => {

@@ -4,15 +4,15 @@
 export function newScript(today = new Date()) {
   const date = today.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   return [
-    'Title: Untitled Screenplay',
+    'Title: Untitled',
     'Credit: Written by',
     'Author: Your Name',
-    'Source: Based on the novel by Someone Else',
+    'Source: Based On Blank',
     `Draft date: ${date}`,
     'Contact:',
     '    Your Name',
     '    you@example.com',
-    '    555-0100',
+    '    555-555-5555',
     `Copyright: (c) ${today.getFullYear()} Your Name`,
     'Notes: First draft',
     '',

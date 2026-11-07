@@ -4,6 +4,7 @@
 //
 // New acts, sequences and synopses come from tools in the action center. A click puts one below
 // the selected card, or at the end with nothing selected, and a drag puts it where it's dropped.
+// An act or sequence clicked in with a card inside an act or sequence selected splits it there.
 
 import {
   cleanSceneNumber, setOutlineSceneNumber,
@@ -12,7 +13,9 @@ import {
 } from '@flow/core';
 import { button, icon, pill } from './controls.js';
 
-const DRAG_THRESHOLD_PX = 4;
+// How far the pointer moves before a press becomes a drag. A finger wanders further during
+// an ordinary tap than a mouse does during a click.
+const DRAG_THRESHOLD_PX = { mouse: 4, touch: 12, pen: 12 };
 const SCROLL_EDGE_PX = 64;
 const SCROLL_SPEED_PX = 12;
 const GHOST_OFFSET_PX = 16;
@@ -118,10 +121,27 @@ export function createOutline({ edit, undo, redo }) {
 
   // Below the selected card is the first place after it, past any synopses at its top so that a
   // new sequence doesn't take them over. With nothing selected, it's the end of the script.
+  // The level of the header holding the block at `line`, or 0 at the top level.
+  const parentLevelOf = (line) => {
+    const walk = (items, level) => {
+      for (const item of items) {
+        if (item.line === line) return level;
+        const inner = item.children ? walk(item.children, item.level) : null;
+        if (inner !== null) return inner;
+      }
+      return null;
+    };
+    return walk(cards, 0) ?? 0;
+  };
+
+  // A new act or sequence can't sit inside a header of its own level or higher, so with
+  // something inside one selected, it starts at that card and splits the header there: a
+  // sequence B selected in an act holding A, B and C gets the new act between A and B.
   const placeFor = (spec) => {
     const slots = outlineSlots(cards, lines.length, spec);
     const item = selected === null ? null : itemsByLine.get(selected);
     if (!item) return slots[slots.length - 1].line;
+    if (spec.kind === 'section' && spec.level <= parentLevelOf(item.line)) return item.line;
     let anchor = item.line;
     for (const child of item.children ?? []) {
       if (child.kind !== 'synopsis') break;
@@ -263,13 +283,13 @@ export function createOutline({ edit, undo, redo }) {
         endDrag();
       };
       window.addEventListener('keydown', onKey, true);
-      drag = { item: null, spec: null, ...start(), startX: event.clientX, startY: event.clientY, pointerY: event.clientY, active: false, inside: false, entered: false, slots: [], slot: null, onKey, frame: 0 };
+      drag = { item: null, spec: null, ...start(), threshold: DRAG_THRESHOLD_PX[event.pointerType] ?? DRAG_THRESHOLD_PX.touch, startX: event.clientX, startY: event.clientY, pointerY: event.clientY, active: false, inside: false, entered: false, slots: [], slot: null, onKey, frame: 0 };
     });
     node.addEventListener('pointermove', (event) => {
       if (!drag) return;
       drag.pointerY = event.clientY;
       if (drag.active) trackPointer();
-      else if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= DRAG_THRESHOLD_PX) beginDrag();
+      else if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= drag.threshold) beginDrag();
     });
     const release = (drop) => () => {
       if (!drag) return;
