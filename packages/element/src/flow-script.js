@@ -139,7 +139,7 @@ export class FlowScript extends HTMLElement {
   /**
    * How the Write tab shows the script: 'flow' (continuous, no pages, the default), 'page'
    * (standard script pages) or 'source' (the Fountain text itself, with nothing hidden or
-   * formatted).
+   * formatted). Read-only shows pages unless this is set.
    */
   get view() {
     const view = this.getAttribute('view');
@@ -348,7 +348,9 @@ export class FlowScript extends HTMLElement {
     this.#outline = null;
     this.#destroyBars();
     this.#read = null;
-    this.#scroll.replaceChildren(renderReadonly(this.#value, { view: this.view, options: this.#options }));
+    // Read-only is for reading, so like the Read tab it shows pages unless asked otherwise.
+    const view = this.hasAttribute('view') ? this.view : 'page';
+    this.#scroll.replaceChildren(renderReadonly(this.#value, { view, options: this.#options }));
     this.dispatchEvent(new CustomEvent('flow-ready'));
   }
 

@@ -34,12 +34,12 @@ export function timeAgo(when) {
 
 const MODES = [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']];
 const THEME_KEY = 'flow-theme';
-const DEFAULT_THEME = { palette: 'amber', mode: 'auto' };
+const DEFAULT_THEME = { palette: 'sand', mode: 'auto' };
 
 // Palettes that have been renamed, so that a choice saved under the old name still holds.
-const RENAMED = { tulip: 'lavender', volcano: 'autumn' };
+const RENAMED = { amber: 'sand', ocean: 'sea', tulip: 'lavender', volcano: 'romance' };
 
-// Stored as a theme name such as ocean-dark. Older versions also stored plain "auto".
+// Stored as a theme name such as sea-dark. Older versions also stored plain "auto".
 function readTheme() {
   let stored = null;
   try {
