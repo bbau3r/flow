@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { PDFDict, PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import { newScript, parse, parseInline, layout, titlePositions, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey, dualAt, scriptTitle, continueTitleField, joinTitleValue, outlineCards, outlineSlots, moveOutlineBlock, setOutlineSceneNumber, addOutlineHeader, addOutlineSubheader, addOutlineSynopsis, setOutlineText, removeOutlineCard, removeOutlineSynopsis } from '../src/index.js';
+import { newScript, parse, parseInline, layout, titlePositions, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey, dualAt, scriptTitle, continueTitleField, joinTitleValue, outlineCards, outlineSlots, moveOutlineBlock, setOutlineSceneNumber, addOutlineSection, addOutlineSynopsis, setOutlineText, removeOutlineCard, removeOutlineSynopsis } from '../src/index.js';
 import { renderPdf } from '../src/pdf.js';
 
 const types = (src) => parse(src).lines.map((l) => l.type);
@@ -152,15 +152,21 @@ describe('outline cards', () => {
   const synopses = (card) => card.children.filter((c) => c.kind === 'synopsis').map((c) => c.text);
   const sequences = (card) => card.children.filter((c) => c.kind === 'section');
 
-  it('nests sub-headers and shows only synopses directly under a header', () => {
+  it('nests sub-headers and shows every synopsis', () => {
     const [act] = cards(['# Act', '= one', '= two', '', '= apart', '', '## Seq', '= three', '', 'INT. A - DAY', '', '= on the scene', '', '### Deep']);
     expect(act.text).toBe('Act');
-    expect(synopses(act)).toEqual(['one', 'two']);
+    expect(synopses(act)).toEqual(['one', 'two', 'apart']);
     const [seq] = sequences(act);
     expect(seq).toMatchObject({ text: 'Seq', level: 2, line: 6 });
-    expect(synopses(seq)).toEqual(['three']);
-    expect(seq.children[1]).toMatchObject({ kind: 'block', text: 'INT. A - DAY', line: 9, end: 13 });
-    expect(seq.children[2]).toMatchObject({ kind: 'section', text: 'Deep', level: 3 });
+    expect(synopses(seq)).toEqual(['three', 'on the scene']);
+    expect(seq.children[1]).toMatchObject({ kind: 'block', text: 'INT. A - DAY', line: 9, end: 11 });
+    expect(seq.children[3]).toMatchObject({ kind: 'section', text: 'Deep', level: 3 });
+  });
+
+  it('keeps synopses and sequences above the first act at the top level', () => {
+    const list = cards(['= My synopsis', '## A sequence', '# My act', '= of the act']);
+    expect(list.map((c) => [c.kind, c.text])).toEqual([['synopsis', 'My synopsis'], ['section', 'A sequence'], ['section', 'My act']]);
+    expect(synopses(list[2])).toEqual(['of the act']);
   });
 
   it('a heading with a synopsis directly under it stays what it is', () => {
@@ -176,9 +182,9 @@ describe('outline cards', () => {
     expect(act.children[0].end).toBe(5);
   });
 
-  it('keeps stacked leftovers hidden together', () => {
-    expect(cards(['# A', '', '= one', '= two'])[0].children).toEqual([]);
-    expect(cards(['= one', '= two'])).toEqual([]);
+  it('shows synopses that follow a blank line', () => {
+    expect(synopses(cards(['# A', '', '= one', '= two'])[0])).toEqual(['one', 'two']);
+    expect(cards(['= one', '= two']).map((c) => c.text)).toEqual(['one', 'two']);
   });
 
   it('lists scene cards in script order, each with the transitions beside its scene', () => {
@@ -247,10 +253,9 @@ describe('outline cards', () => {
     });
   });
 
-  it('does not show a leftover synopsis that follows a scene', () => {
-    const list = cards(removeOutlineCard(['# A', '', 'INT. B - DAY', '', '# C', '= gone'], 4));
-    expect(list[0].children[0].kind).toBe('block');
-    expect(JSON.stringify(list)).not.toContain('gone');
+  it('keeps showing a synopsis whose act was removed, under what is now above it', () => {
+    const list = cards(removeOutlineCard(['# A', '', 'INT. B - DAY', '', '# C', '= kept'], 4));
+    expect(list[0].children.map((c) => [c.kind, c.text])).toEqual([['block', 'INT. B - DAY'], ['synopsis', 'kept']]);
   });
 
   describe('moving', () => {
@@ -294,11 +299,11 @@ describe('outline cards', () => {
       expect(b.children.map((c) => c.text)).toEqual(['INT. FOUR - DAY', 'S']);
     });
 
-    it('keeps a card synopsis attached and a leftover one apart', () => {
-      const script = ['# A', '= a', '', '= left', '', '# B', '= b'];
+    it('moves a card with its synopses', () => {
+      const script = ['# A', '= a', '', '= apart', '', '# B', '= b'];
       const lines = movedTo(script, 5, 0);
-      expect(lines).toEqual(['# B', '= b', '', '# A', '= a', '', '= left']);
-      expect(outlineCards(parse(lines.join('\n'))).map(synopses)).toEqual([['b'], ['a']]);
+      expect(lines).toEqual(['# B', '= b', '', '# A', '= a', '', '= apart']);
+      expect(outlineCards(parse(lines.join('\n'))).map(synopses)).toEqual([['b'], ['a', 'apart']]);
     });
 
     it('adds the blank lines a scene needs, wherever it lands', () => {
@@ -351,15 +356,38 @@ describe('outline cards', () => {
       expect(down.focus).toBe(8);
     });
 
-    it('moves a synopsis between acts, always joined to a line', () => {
+    it('moves a synopsis between acts, joined to the line above', () => {
       const lines = movedTo(['# A', '= a', '', '# B'], 1, 4);
       expect(lines).toEqual(['# A', '', '# B', '= a']);
       expect(outlineCards(parse(lines.join('\n'))).map(synopses)).toEqual([[], ['a']]);
     });
 
-    it('never offers a synopsis the top level, which it could not join', () => {
-      const slots = slotsFor(['INT. X - DAY', '', '# A', '= a'], 3);
-      expect(slots.every((s) => s.parent !== null)).toBe(true);
+    it('offers a synopsis the top level, above the first act', () => {
+      const script = ['INT. X - DAY', '', '# A', '= a'];
+      expect(slotsFor(script, 3).map((s) => [s.line, s.parent])).toEqual([[0, null], [2, null], [4, 2]]);
+      expect(movedTo(script, 3, 0)).toEqual(['= a', '', 'INT. X - DAY', '', '# A']);
+      expect(cards(movedTo(script, 3, 0)).map((c) => c.kind)).toEqual(['synopsis', 'block', 'section']);
+    });
+
+    it('keeps a synopsis apart from the title page', () => {
+      const lines = movedTo(['Title: T', '', '# A', '= a'], 3, 2);
+      expect(lines).toEqual(['Title: T', '', '= a', '', '# A']);
+      expect(parse(lines.join('\n')).titlePage).toHaveLength(1);
+    });
+
+    it('offers a sequence the top level, above the first act', () => {
+      const lines = movedTo(SCRIPT, 18, 2);
+      expect(lines.slice(0, 5)).toEqual(['Title: T', '', '## S', '', 'INT. THREE - DAY']);
+      expect(outlineCards(parse(lines.join('\n'))).map((c) => [c.level, c.text])).toEqual([[2, 'S'], [1, 'A'], [1, 'B']]);
+    });
+
+    it('offers new blocks the same places as ones that are there', () => {
+      const cardsOf = outlineCards(parse(SCRIPT.join('\n')));
+      const places = (moving) => outlineSlots(cardsOf, SCRIPT.length, moving).map((s) => s.line);
+      expect(places({ kind: 'section', level: 1 })).toEqual([2, 22, 25]);
+      expect(places({ kind: 'section', level: 2 })).toEqual([2, 3, 7, 14, 18, 22, 24, 25]);
+      expect(places({ kind: 'synopsis' })).toEqual([2, 3, 7, 14, 18, 20, 22, 24, 25]);
+      expect(outlineSlots([], 1, { kind: 'synopsis' })).toEqual([{ line: 1, before: null, parent: null }]);
     });
 
     it('offers scenes only the places they would stay', () => {
@@ -370,7 +398,7 @@ describe('outline cards', () => {
 
     it('offers headers only places at their own level', () => {
       expect(slotsFor(SCRIPT, 22).map((s) => [s.line, s.parent])).toEqual([[2, null], [25, null]]);
-      expect(slotsFor(SCRIPT, 18).map((s) => [s.line, s.parent])).toEqual([[3, 2], [7, 2], [14, 2], [22, 2], [24, 22], [25, 22]]);
+      expect(slotsFor(SCRIPT, 18).map((s) => [s.line, s.parent])).toEqual([[2, null], [3, 2], [7, 2], [14, 2], [22, 2], [24, 22], [25, 22]]);
     });
 
     it('a sequence can go above scenes, which then become part of it', () => {
@@ -407,35 +435,40 @@ describe('outline cards', () => {
   });
 
   it('adds a header at the end, with a blank line before it', () => {
-    expect(addOutlineHeader([''])).toEqual({ lines: ['#'], focus: 0 });
-    expect(addOutlineHeader(['Action.'])).toEqual({ lines: ['Action.', '', '#'], focus: 2 });
-    expect(addOutlineHeader(['Action.', ''])).toEqual({ lines: ['Action.', '', '#'], focus: 2 });
+    expect(addOutlineSection([''])).toEqual({ lines: ['#'], focus: 0 });
+    expect(addOutlineSection(['Action.'])).toEqual({ lines: ['Action.', '', '#'], focus: 2 });
+    expect(addOutlineSection(['Action.', ''])).toEqual({ lines: ['Action.', '', '#', ''], focus: 2 });
+    expect(addOutlineSection([''], 2)).toEqual({ lines: ['##'], focus: 0 });
+  });
+
+  it('adds a header at the very top without a blank line above it', () => {
+    expect(addOutlineSection(['.X'], 2, 0)).toEqual({ lines: ['##', '', '.X'], focus: 0 });
   });
 
   it('keeps a title page intact when adding the first header', () => {
-    const { lines } = addOutlineHeader(['Title: A', 'Author: B']);
+    const { lines } = addOutlineSection(['Title: A', 'Author: B']);
     const parsed = parse(lines.join('\n'));
     expect(parsed.titlePage).toHaveLength(2);
     expect(parsed.lines[lines.length - 1].type).toBe('section');
   });
 
   it('adds a sequence at the step it was asked for', () => {
-    const { lines, focus } = addOutlineSubheader(['# A', '= s', '', 'Action.', '', '## B', '', '# C'], 7);
+    const { lines, focus } = addOutlineSection(['# A', '= s', '', 'Action.', '', '## B', '', '# C'], 2, 7);
     expect(lines).toEqual(['# A', '= s', '', 'Action.', '', '## B', '', '##', '', '# C']);
     expect(focus).toBe(7);
-    expect(addOutlineSubheader(['# A'], 1).lines).toEqual(['# A', '', '##']);
-    expect(addOutlineSubheader(['# A', '# B'], 1).lines).toEqual(['# A', '', '##', '', '# B']);
-    expect(addOutlineSubheader(['# A', '', '.X', '', '.Y'], 4).lines).toEqual(['# A', '', '.X', '', '##', '', '.Y']);
+    expect(addOutlineSection(['# A'], 2, 1).lines).toEqual(['# A', '', '##']);
+    expect(addOutlineSection(['# A', '# B'], 2, 1).lines).toEqual(['# A', '', '##', '', '# B']);
+    expect(addOutlineSection(['# A', '', '.X', '', '.Y'], 2, 4).lines).toEqual(['# A', '', '.X', '', '##', '', '.Y']);
   });
 
-  it('a new sequence takes a synopsis right below it, rather than hiding it', () => {
-    const { lines } = addOutlineSubheader(['# A', '', 'Text.', '= s'], 3);
+  it('a new sequence takes a synopsis right below it', () => {
+    const { lines } = addOutlineSection(['# A', '', 'Text.', '= s'], 2, 3);
     expect(lines).toEqual(['# A', '', 'Text.', '', '##', '= s']);
     expect(synopses(sequences(cards(lines)[0])[0])).toEqual(['s']);
   });
 
   it('adds an act between two others with the same blank lines', () => {
-    const { lines, focus } = addOutlineSubheader(['# A', '', '.X', '', '# B'], 4, 1);
+    const { lines, focus } = addOutlineSection(['# A', '', '.X', '', '# B'], 1, 4);
     expect(lines).toEqual(['# A', '', '.X', '', '#', '', '# B']);
     expect(focus).toBe(4);
   });
@@ -447,13 +480,11 @@ describe('outline cards', () => {
     expect(act.children.map((c) => c.kind)).toEqual(['block', 'synopsis', 'block']);
   });
 
-  it('does not bring back a hidden synopsis or hide behind one', () => {
-    const added = addOutlineSynopsis(['# A', '', '= hidden'], 3);
-    expect(added.lines).toEqual(['# A', '=', '', '= hidden']);
-    expect(synopses(cards(added.lines)[0])).toEqual(['']);
-    const moved = moveOutlineBlock(['# A', '= a', '', '# B', '', '= hidden'], 1, 6);
-    expect(moved.lines).toEqual(['# A', '', '# B', '= a', '', '= hidden']);
-    expect(cards(moved.lines).map(synopses)).toEqual([[], ['a']]);
+  it('adds a synopsis anywhere, keeping what is around it what it was', () => {
+    expect(addOutlineSynopsis([''])).toEqual({ lines: ['='], focus: 0 });
+    expect(addOutlineSynopsis(['INT. X - DAY'], 0)).toEqual({ lines: ['=', '', 'INT. X - DAY'], focus: 0 });
+    expect(addOutlineSynopsis(['Title: T', '', '# A'], 2)).toEqual({ lines: ['Title: T', '', '=', '', '# A'], focus: 2 });
+    expect(synopses(cards(addOutlineSynopsis(['# A', '', '= apart']).lines)[0])).toEqual(['apart', '']);
   });
 
   it('rewrites card text without disturbing markers or comments', () => {
@@ -478,7 +509,7 @@ describe('outline cards', () => {
     const lines = removeOutlineCard(script, 0);
     expect(lines).toEqual(['= a', '', '= b', '', 'INT. X - DAY', '', 'BOB', 'Hi.', '', '# C', '', 'Action.']);
     const parsed = parse(lines.join('\n'));
-    expect(outlineCards(parsed).map((c) => [c.kind, c.text])).toEqual([['block', 'INT. X - DAY'], ['section', 'C']]);
+    expect(outlineCards(parsed).map((c) => [c.kind, c.text])).toEqual([['synopsis', 'a'], ['synopsis', 'b'], ['block', 'INT. X - DAY'], ['section', 'C']]);
     expect(parsed.lines[4].type).toBe('scene');
     expect(parsed.lines[6].type).toBe('character');
   });
@@ -487,19 +518,12 @@ describe('outline cards', () => {
     expect(removeOutlineCard(['# A', '', '## B', '', '## C'], 2)).toEqual(['# A', '', '## C']);
   });
 
-  it('a leftover synopsis stays out of the card above it', () => {
+  it('a synopsis left by a removed act joins the card above it', () => {
     const blankBetween = removeOutlineCard(['# A', '= a', '', '# B', '= b'], 3);
     expect(blankBetween).toEqual(['# A', '= a', '', '= b']);
-    expect(synopses(cards(blankBetween)[0])).toEqual(['a']);
-    const noBlank = removeOutlineCard(['# A', '# B', '= b'], 1);
-    expect(noBlank).toEqual(['# A', '', '= b']);
-    expect(synopses(cards(noBlank)[0])).toEqual([]);
-  });
-
-  it('a leftover synopsis reappears when a header is typed directly above it', () => {
-    const lines = removeOutlineCard(['# A', '', '# B', '= b'], 2);
-    lines.splice(lines.indexOf('= b'), 0, '# Again');
-    expect(cards(lines).map((c) => [c.text, synopses(c)])).toEqual([['A', []], ['Again', ['b']]]);
+    expect(synopses(cards(blankBetween)[0])).toEqual(['a', 'b']);
+    const first = removeOutlineCard(['# A', '= a', '', '# B'], 0);
+    expect(cards(first).map((c) => c.kind)).toEqual(['synopsis', 'section']);
   });
 
   it('removing keeps comments, which may run on to other lines', () => {
@@ -516,8 +540,8 @@ describe('outline cards', () => {
   });
 
   it('nothing it adds ever prints', () => {
-    const withHeader = setOutlineText(addOutlineHeader(['Action.']).lines, 2, 'Secret');
-    const { lines } = addOutlineSynopsis(addOutlineSubheader(withHeader, 3).lines, 3);
+    const withHeader = setOutlineText(addOutlineSection(['Action.']).lines, 2, 'Secret');
+    const { lines } = addOutlineSynopsis(addOutlineSection(withHeader, 2, 3).lines, 3);
     const printed = layout(parse(setOutlineText(lines, 3, 'Hidden').join('\n'))).pages.flatMap(pageText).join('\n');
     expect(printed).toContain('Action.');
     expect(printed).not.toMatch(/Secret|Hidden|#|=/);

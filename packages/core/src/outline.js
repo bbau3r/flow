@@ -3,9 +3,8 @@
 // where only the scene number can change. Moving any of them carries the script text beneath
 // it along.
 //
-// A synopsis shows when it's joined to the line above it, and can sit anywhere among the cards.
-// Removing an act leaves its synopses in the file with a blank line above them, out of the
-// outline until someone types a new # or ## directly above.
+// Every synopsis shows, wherever it sits. Like a sequence, it can come before the first act,
+// and anything below an act is part of that act, just as it reads in the file.
 
 import { parse } from './parser.js';
 
@@ -14,15 +13,7 @@ const contentOf = (line) => (line.contentEnd > line.contentStart ? line.raw.slic
 const parsedLines = (lines) => parse(lines.join('\n')).lines;
 const commentsOn = (line) => line.comments.map((c) => line.raw.slice(c.start, c.end)).join(' ');
 
-// Synopses stacked on one another share the fate of the first, whatever is above it.
-function shownSynopsis(parsed, i) {
-  if (parsed[i].type !== 'synopsis') return false;
-  let above = i - 1;
-  while (above >= 0 && parsed[above].type === 'synopsis') above--;
-  return above >= 0 && !parsed[above].blank;
-}
-
-const isBlock = (parsed, i) => ['section', 'scene', 'transition'].includes(parsed[i].type) || shownSynopsis(parsed, i);
+const isBlock = (parsed, i) => ['section', 'scene', 'transition', 'synopsis'].includes(parsed[i].type);
 
 // The line after everything a header holds: its text, scenes and deeper headers.
 function sectionEnd(parsed, line) {
@@ -87,44 +78,43 @@ export function outlineCards({ lines }) {
 }
 
 /**
- * Where the block at `line` can go, in script order, as { line, before, parent }: the line to
- * insert at, and the block it lands above and the header it lands in, or null for the end and
- * the top level. Script text belongs to the header above it, so a scene or synopsis below a
- * sequence is part of that sequence, and its place at the bottom of an act is the end of the
- * act's last one. An act or sequence can go above scenes and synopses, which then become part
- * of it, keeps its level, and so stays among headers of that level. A synopsis stays inside an
- * act or sequence, since it needs a line above to join.
+ * Where a block can go, in script order, as { line, before, parent }: the line to insert at,
+ * and the block it lands above and the header it lands in, or null for the end and the top
+ * level. `moving` is the line of a block already there, or { kind, level } for a new one.
+ *
+ * Script text belongs to the header above it, so a scene or synopsis below a sequence is part
+ * of that sequence, and its place at the bottom of an act is the end of the act's last one.
+ * The top level is whatever comes before the first act. An act or sequence can go above scenes
+ * and synopses, which then become part of it, and only sits inside headers of a higher level.
  */
-export function outlineSlots(cards, total, line) {
+export function outlineSlots(cards, total, moving) {
   const find = (list) => {
     for (const item of list) {
-      if (item.line === line) return item;
+      if (item.line === moving) return item;
       const inner = item.children && find(item.children);
       if (inner) return inner;
     }
     return null;
   };
-  const moving = find(cards);
+  const existing = typeof moving === 'number';
+  const { kind, level } = existing ? find(cards) : moving;
+  // Headers this deep or deeper can't hold it, and one higher than it ends where it can go.
+  const limit = kind === 'section' ? level : Infinity;
   const slots = [];
   const walk = (children, parent, parentLevel, end) => {
-    const kids = children.filter((kid) => kid.line !== line);
-    const firstSection = kids.findIndex((kid) => kid.kind === 'section');
-    const before = (kid) => slots.push({ line: kid.line, before: kid.line, parent });
-    const atEnd = () => slots.push({ line: end, before: null, parent });
-    if (moving.kind === 'section') {
-      if (parentLevel === moving.level - 1) {
-        kids.filter((kid) => kid.kind !== 'section' || kid.level === moving.level).forEach(before);
-        atEnd();
+    const items = existing ? children.filter((item) => item.line !== moving) : children;
+    if (parentLevel < limit) {
+      let closed = false;
+      for (const item of items) {
+        slots.push({ line: item.line, before: item.line, parent });
+        if (item.kind === 'section' && item.level < limit) {
+          closed = true;
+          break;
+        }
       }
-    } else if (moving.kind === 'synopsis' && parent === null) {
-      // Nothing at the top level to join.
-    } else if (firstSection < 0) {
-      kids.forEach(before);
-      atEnd();
-    } else {
-      kids.slice(0, firstSection + 1).forEach(before);
+      if (!closed) slots.push({ line: end, before: null, parent });
     }
-    for (const kid of kids) if (kid.kind === 'section') walk(kid.children, kid.line, kid.level, kid.end);
+    for (const item of items) if (item.kind === 'section' && item.level < limit) walk(item.children, item.line, item.level, item.end);
   };
   walk(cards, null, 0, total);
   return slots.sort((a, b) => a.line - b.line);
@@ -132,19 +122,21 @@ export function outlineSlots(cards, total, line) {
 
 const splitsComment = (comments, at) => comments.some((c) => c.lineStart < at && c.lineEnd >= at);
 
-function trimBlank(part, { start = true, end = true } = {}) {
-  let a = 0;
-  let b = part.length;
-  while (start && a < b && isBlank(part[a])) a++;
-  while (end && b > a && isBlank(part[b - 1])) b--;
-  return part.slice(a, b);
+// The written part of lines [a, b), without the blank lines at either end.
+function trimmed(input, a, b, { start = true, end = true } = {}) {
+  while (start && a < b && isBlank(input[a])) a++;
+  while (end && b > a && isBlank(input[b - 1])) b--;
+  return [a, b];
 }
+
+// A synopsis joins the line above it, unless that's the title page, which it would look part of.
+const joins = (parsed, line, above) => parsed[line].type === 'synopsis' && parsed[above]?.type !== 'title';
 
 /**
  * Moves a block and all it holds so that it lands before line `target`. Exactly one blank line
  * ends up between blocks, which is what scene headings and transitions need to stay what they
- * are, except that a synopsis stays joined to whatever is now above it. Returns { lines, focus },
- * its new line, or null if this wouldn't change anything.
+ * are, except that a synopsis joins whatever is now above it. Returns { lines, focus }, its new
+ * line, or null if this wouldn't change anything.
  */
 export function moveOutlineBlock(input, line, requested) {
   const { lines: parsed, comments } = parse(input.join('\n'));
@@ -153,18 +145,21 @@ export function moveOutlineBlock(input, line, requested) {
   if (target >= line && target <= end) return null;
   if ([line, end, target].some((at) => splitsComment(comments, at))) return null;
 
-  const moved = trimBlank(input.slice(line, end));
+  const moved = trimmed(input, line, end);
   const parts = target < line
-    ? [[trimBlank(input.slice(0, target), { start: false }), 0], [moved, line], [trimBlank(input.slice(target, line)), target], [trimBlank(input.slice(end), { end: false }), end]]
-    : [[trimBlank(input.slice(0, line), { start: false }), 0], [trimBlank(input.slice(end, target)), end], [moved, line], [trimBlank(input.slice(target), { end: false }), target]];
+    ? [trimmed(input, 0, target, { start: false }), moved, trimmed(input, target, line), trimmed(input, end, input.length, { end: false })]
+    : [trimmed(input, 0, line, { start: false }), trimmed(input, end, target), moved, trimmed(input, target, input.length, { end: false })];
 
   const lines = [];
   let focus = 0;
-  for (const [part, from] of parts) {
-    if (!part.length) continue;
-    if (lines.length && parsed[from].type !== 'synopsis') lines.push('');
+  let last = -1;
+  for (const part of parts) {
+    const [a, b] = part;
+    if (a === b) continue;
+    if (lines.length && !joins(parsed, a, last)) lines.push('');
     if (part === moved) focus = lines.length;
-    lines.push(...part);
+    lines.push(...input.slice(a, b));
+    last = b - 1;
   }
   return { lines, focus };
 }
@@ -183,41 +178,44 @@ export function setOutlineSceneNumber(input, line, text) {
   return lines;
 }
 
-/** Adds a # header at the end of the script. Returns { lines, focus }, the new line. */
-export function addOutlineHeader(input) {
-  const lines = [...input];
-  if (lines.length === 1 && lines[0] === '') lines.pop();
-  else if (!isBlank(lines[lines.length - 1])) lines.push('');
-  lines.push('#');
-  return { lines, focus: lines.length - 1 };
-}
-
-// Where text arriving before `target` really goes: after the last thing written above it, and
-// before a hidden synopsis, which would otherwise hide what joined it.
+// Where text arriving before `target` really goes: after the last thing written above it.
 function insertionPoint(parsed, target) {
   let at = target;
-  while (at > 0 && (parsed[at - 1].type === 'blank' || (parsed[at - 1].type === 'synopsis' && !shownSynopsis(parsed, at - 1)))) at--;
+  while (at > 0 && parsed[at - 1].type === 'blank') at--;
   return at;
 }
 
-/** Adds an act's sequence (## by default) before line `target`, with blank lines around it. */
-export function addOutlineSubheader(input, target, level = 2) {
-  const lines = [...input];
+// An empty script is one blank line, which what's added replaces.
+const startFrom = (input) => (input.length === 1 && input[0] === '' ? [] : [...input]);
+
+/**
+ * Adds an act (level 1) or sequence (level 2) before line `target`, the end by default, with
+ * blank lines around it. Returns { lines, focus }, the new line.
+ */
+export function addOutlineSection(input, level = 1, target = input.length) {
+  const lines = startFrom(input);
   const parsed = parsedLines(lines);
-  const at = insertionPoint(parsed, target);
-  const added = ['', '#'.repeat(level)];
-  // A synopsis below stays joined, now to the new sequence.
+  const at = insertionPoint(parsed, Math.min(target, lines.length));
+  const added = at > 0 ? ['', '#'.repeat(level)] : ['#'.repeat(level)];
+  // A synopsis below stays joined, now to the new header.
   if (at < lines.length && !isBlank(lines[at]) && parsed[at].type !== 'synopsis') added.push('');
   lines.splice(at, 0, ...added);
-  return { lines, focus: at + 1 };
+  return { lines, focus: at + added.indexOf('#'.repeat(level)) };
 }
 
-/** Adds a synopsis before line `target`, joined to whatever is written above it. */
-export function addOutlineSynopsis(input, target) {
-  const lines = [...input];
-  const at = insertionPoint(parsedLines(lines), target);
-  lines.splice(at, 0, '=');
-  return { lines, focus: at };
+/**
+ * Adds a synopsis before line `target`, the end by default, joined to whatever is written above
+ * it unless that's the title page. Returns { lines, focus }, the new line.
+ */
+export function addOutlineSynopsis(input, target = input.length) {
+  const lines = startFrom(input);
+  const parsed = parsedLines(lines);
+  const at = insertionPoint(parsed, Math.min(target, lines.length));
+  const added = at > 0 && parsed[at - 1].type === 'title' ? ['', '='] : ['='];
+  // A scene heading or transition below needs the blank line above it.
+  if (at < lines.length && !isBlank(lines[at]) && parsed[at].type !== 'synopsis') added.push('');
+  lines.splice(at, 0, ...added);
+  return { lines, focus: at + added.indexOf('=') };
 }
 
 /** Rewrites a card's text, keeping the marker and any comment at the end of the line. */
@@ -250,12 +248,12 @@ export function removeOutlineCard(input, line) {
   return lines.length ? lines : [''];
 }
 
-/** Removes one synopsis for good, which is what its own remove button asks for. */
+/** Removes one synopsis, which is what its own remove button asks for. */
 export function removeOutlineSynopsis(input, line) {
   const lines = [...input];
   const parsed = parsedLines(lines);
   if (parsed[line].comments.length) lines[line] = commentsOn(parsed[line]);
-  // What's below shouldn't join what's above, unless it's another synopsis, which has to.
+  // What's below shouldn't join what's above, unless it's another synopsis.
   else if (!isBlank(lines[line + 1]) && parsed[line + 1].type !== 'synopsis') lines[line] = '';
   else lines.splice(line, 1);
   return lines.length ? lines : [''];
