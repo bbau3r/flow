@@ -553,25 +553,32 @@ describe('settings', () => {
     expect(parseDimensions('US Letter')).toBe('letter');
     expect(parseDimensions('letter')).toBe('letter');
     expect(parseDimensions(' a4 ')).toBe('a4');
-    expect(parseDimensions('8in x 10in')).toEqual({ width: 8, height: 10 });
-    expect(parseDimensions('8" x 10"')).toEqual({ width: 8, height: 10 });
-    expect(parseDimensions('8.5 X 14')).toEqual({ width: 8.5, height: 14 });
+    expect(parseDimensions('8in x 10in')).toEqual({ width: 8, height: 10, unit: 'in' });
+    expect(parseDimensions('8" x 10"')).toEqual({ width: 8, height: 10, unit: 'in' });
+    expect(parseDimensions('8.5 X 14')).toEqual({ width: 8.5, height: 14, unit: 'in' });
+    expect(parseDimensions('21cm x 29.7cm')).toEqual({ width: 21, height: 29.7, unit: 'cm' });
+    expect(parseDimensions('210 x 297 mm')).toEqual({ width: 210, height: 297, unit: 'mm' });
+    expect(parseDimensions('8in x 25.4cm')).toEqual({ width: 8, height: 10, unit: 'in' });
     expect(parseDimensions('legal')).toBe(null);
     expect(parseDimensions('')).toBe(null);
   });
   it('keeps custom sizes wide enough for the script columns', () => {
-    expect(parseDimensions('4" x 3"')).toEqual({ width: 7.5, height: 6 });
-    expect(parseDimensions('40in x 40in')).toEqual({ width: 17, height: 17 });
+    expect(parseDimensions('4" x 3"')).toEqual({ width: 7.5, height: 6, unit: 'in' });
+    expect(parseDimensions('40in x 40in')).toEqual({ width: 17, height: 17, unit: 'in' });
+    expect(parseDimensions('10cm x 10cm')).toEqual({ width: 19.05, height: 15.24, unit: 'cm' });
   });
   it('names sizes the way the Settings block writes them', () => {
     expect(formatDimensions('letter')).toBe('US Letter');
     expect(formatDimensions('a4')).toBe('A4');
     expect(formatDimensions({ width: 8, height: 10.5 })).toBe('8in x 10.5in');
+    expect(formatDimensions({ width: 210, height: 297, unit: 'mm' })).toBe('210mm x 297mm');
   });
   it('gives a custom size the margins of US Letter', () => {
     const letter = pageProfile('letter');
     const custom = pageProfile({ width: 8.5, height: 11 });
     expect([custom.linesPerPage, custom.actionWidth]).toEqual([letter.linesPerPage, letter.actionWidth]);
+    const metric = pageProfile('21.59cm x 27.94cm');
+    expect([metric.linesPerPage, metric.actionWidth]).toEqual([letter.linesPerPage, letter.actionWidth]);
     expect(pageProfile('nonsense')).toBe(letter);
   });
   it('reads the Settings block from the title page', () => {

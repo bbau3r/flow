@@ -4,7 +4,8 @@
 //   Settings:
 //       Dimensions: A4
 //
-// Dimensions is US Letter, A4, or a width and height in inches, such as 6in x 9in or 6" x 9".
+// Dimensions is US Letter, A4, or a width and height in inches, centimetres or millimetres,
+// such as 6in x 9in, 6" x 9", 15cm x 23cm or 150 x 230 mm.
 
 /** Named paper sizes. Metrics follow afterwriting's print profiles. */
 export const PROFILES = {
@@ -14,40 +15,58 @@ export const PROFILES = {
 
 export const PAPER_NAMES = { letter: 'US Letter', a4: 'A4' };
 
+/** The units a custom size can be in, as how many of each make an inch. */
+export const UNITS = { in: 1, cm: 2.54, mm: 25.4 };
+
 // The script's columns are set in inches from the left edge, so a page narrower than this
 // would cut dialogue and character cues off its right side.
 export const CUSTOM_LIMITS = { width: [7.5, 17], height: [6, 17] };
 
+/** CUSTOM_LIMITS in another unit, rounded inwards so both ends are allowed. */
+export function customLimits(unit = 'in') {
+  const per = UNITS[unit] ?? 1;
+  const range = ([min, max]) => [Math.ceil(min * per * 100) / 100, Math.floor(max * per * 100) / 100];
+  return { width: range(CUSTOM_LIMITS.width), height: range(CUSTOM_LIMITS.height) };
+}
+
 const clamp = (n, [min, max]) => Math.min(max, Math.max(min, n));
 const round = (n) => Math.round(n * 100) / 100;
 
-const INCHES = String.raw`(?:in|inch|inches|"|”|″)?`;
+const UNIT = String.raw`(in|inch|inches|"|”|″|cm|mm)?`;
+const UNIT_OF = { inch: 'in', inches: 'in', '"': 'in', '”': 'in', '″': 'in' };
 const NUMBER = String.raw`(\d+(?:\.\d*)?|\.\d+)`;
-const SIZE_RE = new RegExp(String.raw`^${NUMBER}\s*${INCHES}\s*[x×*]\s*${NUMBER}\s*${INCHES}$`);
+const SIZE_RE = new RegExp(String.raw`^${NUMBER}\s*${UNIT}\s*[x×*]\s*${NUMBER}\s*${UNIT}$`);
 
 /**
- * Reads a page size: 'letter' or 'a4' for a named size, or { width, height } in inches,
- * kept within CUSTOM_LIMITS. Null for anything it doesn't recognize.
+ * Reads a page size: 'letter' or 'a4' for a named size, or { width, height, unit } for a
+ * custom one, kept within CUSTOM_LIMITS. A unit given once, as in 150 x 230 mm, counts for
+ * both sides, and inches are the default. Null for anything it doesn't recognize.
  */
 export function parseDimensions(text) {
-  if (text && typeof text === 'object') return customSize(text.width, text.height);
+  if (text && typeof text === 'object') return customSize(text.width, text.height, text.unit);
   const value = String(text ?? '').trim().toLowerCase().replace(/[\s_-]+/g, ' ');
   if (/^(?:us )?letter$/.test(value)) return 'letter';
   if (value === 'a4') return 'a4';
   const size = SIZE_RE.exec(value);
-  return size ? customSize(Number(size[1]), Number(size[2])) : null;
+  if (!size) return null;
+  const unitOf = (u) => (u ? UNIT_OF[u] ?? u : null);
+  const unit = unitOf(size[2]) ?? unitOf(size[4]) ?? 'in';
+  const heightUnit = unitOf(size[4]) ?? unit;
+  return customSize(Number(size[1]), (Number(size[3]) * UNITS[unit]) / UNITS[heightUnit], unit);
 }
 
-function customSize(width, height) {
-  if (!(width > 0) || !(height > 0)) return null;
-  return { width: round(clamp(width, CUSTOM_LIMITS.width)), height: round(clamp(height, CUSTOM_LIMITS.height)) };
+function customSize(width, height, unit = 'in') {
+  const per = UNITS[unit];
+  if (!per || !(width > 0) || !(height > 0)) return null;
+  const fit = (n, limits) => round(clamp(n / per, limits) * per);
+  return { width: fit(width, CUSTOM_LIMITS.width), height: fit(height, CUSTOM_LIMITS.height), unit };
 }
 
 /** A page size as the Settings block writes it, and as the dialogs name it. */
 export function formatDimensions(paper) {
   const size = parseDimensions(paper);
   if (!size) return PAPER_NAMES.letter;
-  return typeof size === 'string' ? PAPER_NAMES[size] : `${size.width}in x ${size.height}in`;
+  return typeof size === 'string' ? PAPER_NAMES[size] : `${size.width}${size.unit} x ${size.height}${size.unit}`;
 }
 
 /** The layout metrics for a page size, with US Letter for one it doesn't recognize. */
@@ -56,12 +75,15 @@ export function pageProfile(paper) {
   if (typeof size === 'string') return PROFILES[size];
   // Margins as on US Letter: 1.5in on the left, about 1in on the right, and 11 rows for the
   // top and bottom margins and the page number.
+  const widthIn = size.width / UNITS[size.unit];
+  const heightIn = size.height / UNITS[size.unit];
   return {
     paper: 'custom',
-    widthIn: size.width,
-    heightIn: size.height,
-    linesPerPage: Math.floor(size.height * 6) - 11,
-    actionWidth: Math.floor(size.width * 10) - 24,
+    widthIn,
+    heightIn,
+    // Rounded first, so that a metric size a hair under a whole column still gets it.
+    linesPerPage: Math.floor(round(heightIn * 6)) - 11,
+    actionWidth: Math.floor(round(widthIn * 10)) - 24,
   };
 }
 
