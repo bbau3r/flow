@@ -1,13 +1,16 @@
 // The Outline tab: the script's acts, sequences, scenes and transitions in order, as a column of cards
 // and blocks. They hold nothing of their own. Each edit changes the script's text, and they're
 // redrawn from it, so this and the Write tab can't disagree and they share one undo history.
+//
+// New acts, sequences and synopses come from tools in the action center. A click puts one below
+// the selected card, or at the end with nothing selected, and a drag puts it where it's dropped.
 
 import {
   cleanSceneNumber, setOutlineSceneNumber,
-  addOutlineHeader, addOutlineSubheader, addOutlineSynopsis, moveOutlineBlock, outlineCards,
+  addOutlineSection, addOutlineSynopsis, moveOutlineBlock, outlineCards,
   outlineSlots, parse, removeOutlineCard, removeOutlineSynopsis, setOutlineText,
 } from '@flow/core';
-import { button, icon } from './controls.js';
+import { button, icon, pill, pillSep } from './controls.js';
 
 const DRAG_THRESHOLD_PX = 4;
 const SCROLL_EDGE_PX = 64;
@@ -37,6 +40,13 @@ const iconFor = (item) => {
   return item.level === 1 ? 'act' : 'sequence';
 };
 
+// What each tool adds, in the terms outlineSlots places it by.
+const TOOLS = [
+  { name: 'act', spec: { kind: 'section', level: 1 } },
+  { name: 'sequence', spec: { kind: 'section', level: 2 } },
+  { name: 'synopsis', spec: { kind: 'synopsis' } },
+];
+
 // Everything that decides what's drawn, apart from the text of the fields.
 const shapeOf = (items) => items.map((item) => {
   if (item.kind === 'section') return `${item.level}@${item.line}(${shapeOf(item.children)})`;
@@ -58,6 +68,9 @@ export function createOutline({ edit, undo, redo }) {
   let fields = [];
   let blockNodes = new Map();
   let childNodes = new Map();
+  let itemsByLine = new Map();
+  let selected = null;
+  let suppressClick = false;
   let handles = new Map();
   let typing = false;
   let focusAfterRender = null;
@@ -65,7 +78,7 @@ export function createOutline({ edit, undo, redo }) {
   let drag = null;
 
   const list = element('div', 'fl-outline-list');
-  const hint = element('p', 'fl-outline-hint', 'Plan your script here. Add an act for each part of the story, then a synopsis or sequences under it. None of it prints.');
+  const hint = element('p', 'fl-outline-hint', 'Outline your screenplay here.');
   const dropLine = element('div', 'fl-outline-drop');
   dropLine.hidden = true;
   const ghost = element('div', 'fl-outline-ghost');
@@ -77,18 +90,44 @@ export function createOutline({ edit, undo, redo }) {
     edit(next);
   };
 
-  const add = button({
-    label: 'Add act',
-    title: 'Add an act at the end of the script',
-    icon: 'plus',
-    iconOnly: true,
-    cls: 'fl-outline-plus',
-    onClick: () => apply(addOutlineHeader(lines)),
-  });
-
-  const root = element('section', 'fl-outline', hint, list, element('div', 'fl-outline-add', add), dropLine, ghost);
+  const root = element('section', 'fl-outline', hint, list, dropLine, ghost);
   root.setAttribute('aria-label', 'Outline');
+  // Focus can rest on the outline itself, with no card selected.
+  root.tabIndex = -1;
   root.hidden = true;
+
+  const select = (line) => {
+    if (selected !== null) blockNodes.get(selected)?.classList.remove('fl-outline-selected');
+    selected = line !== null && blockNodes.has(line) ? line : null;
+    if (selected !== null) blockNodes.get(selected).classList.add('fl-outline-selected');
+  };
+
+  // The innermost card or block holding a node inside the outline.
+  const cardLineOf = (node) => {
+    for (let at = node; at && at !== root; at = at.parentElement) {
+      const line = at.dataset?.line;
+      if (line !== undefined && blockNodes.get(Number(line)) === at) return Number(line);
+    }
+    return null;
+  };
+
+  // Below the selected card is the first place after it, past any synopses at its top so that a
+  // new sequence doesn't take them over. With nothing selected, it's the end of the script.
+  const placeFor = (spec) => {
+    const slots = outlineSlots(cards, lines.length, spec);
+    const item = selected === null ? null : itemsByLine.get(selected);
+    if (!item) return slots[slots.length - 1].line;
+    let anchor = item.line;
+    for (const child of item.children ?? []) {
+      if (child.kind !== 'synopsis') break;
+      anchor = child.line;
+    }
+    return (slots.find((slot) => slot.line > anchor) ?? slots[slots.length - 1]).line;
+  };
+
+  const create = (spec, at) => {
+    apply(spec.kind === 'synopsis' ? addOutlineSynopsis(lines, at) : addOutlineSection(lines, spec.level, at));
+  };
 
   const scrollArea = () => root.parentElement;
 
@@ -129,9 +168,9 @@ export function createOutline({ edit, undo, redo }) {
 
   // Where each slot shows, measured once: nothing moves in the outline during a drag, and being
   // relative to the outline, these still hold while the area scrolls.
-  const measureSlots = (line) => {
+  const measureSlots = (moving) => {
     const origin = root.getBoundingClientRect();
-    return outlineSlots(cards, lines.length, line).map((slot) => {
+    return outlineSlots(cards, lines.length, moving).map((slot) => {
       const wrapper = childNodes.get(slot.parent).getBoundingClientRect();
       const y = slot.before === null
         ? wrapper.bottom + 3
@@ -140,10 +179,28 @@ export function createOutline({ edit, undo, redo }) {
     });
   };
 
+  // The part of the area between the bars, where a drop lands.
+  const openArea = () => {
+    const area = scrollArea();
+    const bounds = area.getBoundingClientRect();
+    const bars = getComputedStyle(area);
+    return {
+      top: bounds.top + parseFloat(bars.scrollPaddingTop || 0),
+      bottom: bounds.bottom - parseFloat(bars.scrollPaddingBottom || 0),
+    };
+  };
+
   const trackPointer = () => {
     const origin = root.getBoundingClientRect();
     const y = drag.pointerY - origin.top;
-    drag.slot = drag.slots.reduce((best, slot) => (Math.abs(slot.y - y) < Math.abs(best.y - y) ? slot : best), drag.slots[0]);
+    const open = openArea();
+    // A new card still over the action center hasn't been brought to the outline yet.
+    drag.inside = drag.pointerY >= open.top && drag.pointerY <= open.bottom;
+    if (drag.inside) drag.entered = true;
+    drag.slot = drag.item || drag.inside
+      ? drag.slots.reduce((best, slot) => (Math.abs(slot.y - y) < Math.abs(best.y - y) ? slot : best), drag.slots[0])
+      : null;
+    dropLine.hidden = !drag.slot;
     if (drag.slot) {
       dropLine.hidden = false;
       dropLine.style.top = `${drag.slot.y}px`;
@@ -156,15 +213,15 @@ export function createOutline({ edit, undo, redo }) {
   };
 
   // The bars float over the top and bottom of the area, so scrolling starts clear of them.
+  // A new card only scrolls the area once it has been over the outline, not as it leaves the bar.
   const autoScroll = () => {
     if (!drag?.active) return;
     const area = scrollArea();
-    const bounds = area.getBoundingClientRect();
-    const bars = getComputedStyle(area);
-    const top = bounds.top + parseFloat(bars.scrollPaddingTop || 0) + SCROLL_EDGE_PX;
-    const bottom = bounds.bottom - parseFloat(bars.scrollPaddingBottom || 0) - SCROLL_EDGE_PX;
-    if (drag.pointerY < top) area.scrollTop -= SCROLL_SPEED_PX;
-    else if (drag.pointerY > bottom) area.scrollTop += SCROLL_SPEED_PX;
+    const open = openArea();
+    if (drag.item || drag.entered) {
+      if (drag.pointerY < open.top + SCROLL_EDGE_PX) area.scrollTop -= SCROLL_SPEED_PX;
+      else if (drag.pointerY > open.bottom - SCROLL_EDGE_PX) area.scrollTop += SCROLL_SPEED_PX;
+    }
     trackPointer();
     drag.frame = requestAnimationFrame(autoScroll);
   };
@@ -173,7 +230,7 @@ export function createOutline({ edit, undo, redo }) {
     if (!drag) return;
     cancelAnimationFrame(drag.frame);
     window.removeEventListener('keydown', drag.onKey, true);
-    blockNodes.get(drag.item.line)?.classList.remove('fl-outline-dragging');
+    if (drag.item) blockNodes.get(drag.item.line)?.classList.remove('fl-outline-dragging');
     dropLine.hidden = true;
     ghost.hidden = true;
     drag = null;
@@ -181,13 +238,67 @@ export function createOutline({ edit, undo, redo }) {
 
   const beginDrag = () => {
     drag.active = true;
-    drag.slots = measureSlots(drag.item.line);
-    blockNodes.get(drag.item.line).classList.add('fl-outline-dragging');
+    drag.slots = measureSlots(drag.item ? drag.item.line : drag.spec);
+    if (drag.item) blockNodes.get(drag.item.line).classList.add('fl-outline-dragging');
     const text = element('span', '', drag.label);
-    ghost.replaceChildren(icon(iconFor(drag.item)), text);
+    ghost.replaceChildren(icon(drag.icon), text);
     ghost.hidden = false;
     autoScroll();
   };
+
+  // Dragging from `node`: a block that's there, given `item`, or a new one, given `spec`. The
+  // pointer is captured, so the drag follows it out of the outline and back.
+  const draggable = (node, start) => {
+    node.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      node.setPointerCapture(event.pointerId);
+      const onKey = (key) => {
+        if (key.key !== 'Escape') return;
+        key.stopPropagation();
+        endDrag();
+      };
+      window.addEventListener('keydown', onKey, true);
+      drag = { item: null, spec: null, ...start(), startX: event.clientX, startY: event.clientY, pointerY: event.clientY, active: false, inside: false, entered: false, slots: [], slot: null, onKey, frame: 0 };
+    });
+    node.addEventListener('pointermove', (event) => {
+      if (!drag) return;
+      drag.pointerY = event.clientY;
+      if (drag.active) trackPointer();
+      else if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= DRAG_THRESHOLD_PX) beginDrag();
+    });
+    const release = (drop) => () => {
+      if (!drag) return;
+      const { item, spec, slot, active } = drag;
+      endDrag();
+      // The click that follows a drag isn't another request to add.
+      if (active) suppressClick = true;
+      if (!drop || !active || !slot) return;
+      if (item) moveTo(item.line, slot.line);
+      else create(spec, slot.line);
+    };
+    node.addEventListener('pointerup', release(true));
+    node.addEventListener('pointercancel', release(false));
+  };
+
+  const tools = TOOLS.map(({ name, spec }) => {
+    const tool = button({
+      label: `Add ${name}`,
+      title: `Add ${name === 'act' ? 'an' : 'a'} ${name} below the selected card, or at the end. Drag it to place it.`,
+      icon: name,
+      text: capitalized(name),
+      cls: 'fl-outline-tool',
+      onClick: () => {
+        if (suppressClick) {
+          suppressClick = false;
+          return;
+        }
+        create(spec, placeFor(spec));
+      },
+    });
+    draggable(tool, () => ({ spec, icon: name, label: `New ${name}` }));
+    return tool;
+  });
+  const toolPill = pill({ label: 'Add to the outline' }, tools[0], pillSep(), tools[1], pillSep(), tools[2]);
 
   const handleFor = (entry, name) => {
     const handle = button({
@@ -202,31 +313,7 @@ export function createOutline({ edit, undo, redo }) {
       event.preventDefault();
       nudge(entry.item, event.key === 'ArrowDown');
     });
-    handle.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0) return;
-      handle.setPointerCapture(event.pointerId);
-      const onKey = (key) => {
-        if (key.key !== 'Escape') return;
-        key.stopPropagation();
-        endDrag();
-      };
-      window.addEventListener('keydown', onKey, true);
-      drag = { item: entry.item, label: entry.field?.value || entry.item.text || name, startY: event.clientY, pointerY: event.clientY, active: false, slots: [], slot: null, onKey, frame: 0 };
-    });
-    handle.addEventListener('pointermove', (event) => {
-      if (!drag) return;
-      drag.pointerY = event.clientY;
-      if (drag.active) trackPointer();
-      else if (Math.abs(event.clientY - drag.startY) >= DRAG_THRESHOLD_PX) beginDrag();
-    });
-    const release = (drop) => () => {
-      if (!drag) return;
-      const { item, slot, active } = drag;
-      endDrag();
-      if (drop && active && slot) moveTo(item.line, slot.line);
-    };
-    handle.addEventListener('pointerup', release(true));
-    handle.addEventListener('pointercancel', release(false));
+    draggable(handle, () => ({ item: entry.item, icon: iconFor(entry.item), label: entry.field?.value || entry.item.text || name }));
     handles.set(entry.item.line, handle);
     return handle;
   };
@@ -253,10 +340,16 @@ export function createOutline({ edit, undo, redo }) {
       event.preventDefault();
       const next = fields[fields.indexOf(entry) + 1];
       if (next) focusField(next);
-      else add.focus();
+      else tools[0].focus();
     });
     fields.push(entry);
     return entry;
+  };
+
+  const register = (item, node) => {
+    node.dataset.line = item.line;
+    blockNodes.set(item.line, node);
+    itemsByLine.set(item.line, item);
   };
 
   const removeButton = (options) => button({ ...options, icon: 'close', iconOnly: true, cls: 'fl-outline-remove' });
@@ -280,7 +373,7 @@ export function createOutline({ edit, undo, redo }) {
       return row;
     });
     const node = element('div', 'fl-outline-block', handleFor(entry, block.scene ? 'scene' : 'transition'), kindIcon('scene'), element('div', 'fl-outline-lines', ...lines));
-    blockNodes.set(block.line, node);
+    register(block, node);
     return node;
   };
 
@@ -300,47 +393,11 @@ export function createOutline({ edit, undo, redo }) {
         onClick: () => apply({ lines: removeOutlineCard(lines, header.item.line) }),
       }),
     ));
-    blockNodes.set(card.line, node);
+    register(card, node);
 
     const children = element('div', 'fl-outline-children', ...card.children.map(buildItem));
     childNodes.set(card.line, children);
     node.append(children);
-
-    // A new synopsis goes with any already at the top. The rest follow what the card holds.
-    let synopsisAt = card.line + 1;
-    for (const kid of card.children) {
-      if (kid.kind !== 'synopsis') break;
-      synopsisAt = kid.line + 1;
-    }
-    const actions = [button({
-      label: 'Add synopsis',
-      title: `Add a synopsis to this ${name}`,
-      icon: 'synopsis',
-      text: 'Synopsis',
-      cls: 'fl-btn-outline',
-      onClick: () => apply(addOutlineSynopsis(lines, synopsisAt)),
-    })];
-    if (top) {
-      actions.push(button({
-        label: 'Add sequence',
-        title: 'Add a sequence to this act',
-        icon: 'sequence',
-        text: 'Sequence',
-        cls: 'fl-btn-outline',
-        onClick: () => apply(addOutlineSubheader(lines, card.end)),
-      }));
-    }
-    // The main + already adds an act after the last one.
-    if (top && card.end < lines.length) {
-      actions.push(button({
-        label: 'Add act after this one',
-        icon: 'act',
-        text: 'Act',
-        cls: 'fl-btn-outline',
-        onClick: () => apply(addOutlineSubheader(lines, card.end, 1)),
-      }));
-    }
-    node.append(element('div', 'fl-outline-actions', ...actions));
     return node;
   };
 
@@ -351,7 +408,7 @@ export function createOutline({ edit, undo, redo }) {
       title: 'Delete this synopsis from the script',
       onClick: () => apply({ lines: removeOutlineSynopsis(lines, entry.item.line) }),
     }));
-    blockNodes.set(synopsis.line, node);
+    register(synopsis, node);
     return node;
   };
 
@@ -383,6 +440,8 @@ export function createOutline({ edit, undo, redo }) {
       fields = [];
       handles = new Map();
       blockNodes = new Map();
+      itemsByLine = new Map();
+      selected = null;
       childNodes = new Map([[null, list]]);
       shape = nextShape;
       list.replaceChildren(...cards.map(buildItem));
@@ -391,11 +450,31 @@ export function createOutline({ edit, undo, redo }) {
       const target = fields.find(({ item }) => item.line === (focusAfterRender ?? activeLine));
       if (handleAfterRender !== null) handles.get(handleAfterRender)?.focus();
       else if (target) focusField(target);
-      else if (focusAfterRender !== null || active) add.focus();
+      else if (focusAfterRender !== null || active) root.focus();
+      // Whatever has focus now is the selected card, or nothing is.
+      const focused = root.getRootNode().activeElement;
+      select(root.contains(focused) ? cardLineOf(focused) : null);
     }
     focusAfterRender = null;
     handleAfterRender = null;
   };
+
+  // A card is selected by focusing or pressing anywhere in it. Pressing between the cards, or
+  // Escape, selects nothing.
+  root.addEventListener('focusin', (event) => {
+    const line = cardLineOf(event.target);
+    if (line !== null) select(line);
+  });
+  root.addEventListener('pointerdown', (event) => {
+    const line = cardLineOf(event.target);
+    select(line);
+    if (line === null) root.focus({ preventScroll: true });
+  });
+  root.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || selected === null || drag) return;
+    select(null);
+    root.focus({ preventScroll: true });
+  });
 
   // One history for both tabs, rather than each text box keeping its own.
   root.addEventListener('keydown', (event) => {
@@ -416,10 +495,12 @@ export function createOutline({ edit, undo, redo }) {
 
   return {
     root,
+    /** The pills this tab puts in the action center. */
+    tools: [toolPill],
     render,
     // Only moves focus into the outline when it's somewhere else.
     focus() {
-      if (!root.contains(root.getRootNode().activeElement)) add.focus();
+      if (!root.contains(root.getRootNode().activeElement)) root.focus({ preventScroll: true });
     },
     destroy() {
       endDrag();

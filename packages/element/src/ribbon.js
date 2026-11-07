@@ -1,9 +1,10 @@
 // What sits above the script: the document, tabs and export controls, which an app fills
-// through named slots, and the formatting controls, which follow the line the cursor is on.
-// They share a row when there's room. All of it goes inside the scrolling area, so that the
+// through named slots, and the action center, which holds the current tab's commands, such as
+// the formatting controls that follow the line the cursor is on. They share a row when there's room. All of it goes inside the scrolling area, so that the
 // script can pass beneath it.
 
 import { actionPill, button, centerGlyphs, glyphBadge, Menu, pill, pillSep } from './controls.js';
+import { createActionCenter } from './action-center.js';
 
 const STYLE_BUTTONS = [
   { key: 'bold', label: 'Bold', text: 'B', cls: 'fl-b', title: 'Bold (Ctrl/Cmd+B)' },
@@ -48,8 +49,6 @@ const ACTION = TOPICS.get('action');
 // The topics that offer dual dialogue as an extra.
 const DUAL_TOPICS = new Set(['character', 'parenthetical', 'dialogue']);
 
-const COLLAPSE_MS = 220;
-
 const slot = (name) => {
   const node = document.createElement('slot');
   node.name = name;
@@ -72,9 +71,8 @@ function createTopBar(actions) {
   setExportActions([]);
   const bar = document.createElement('div');
   bar.className = 'fl-topbar';
-  const tabsCell = cell('fl-topbar-tabs', slot('tabs'));
-  bar.append(cell('fl-topbar-start', slot('document'), tabsCell), exportHolder);
-  return { bar, tabsCell, exportHolder, setExportActions };
+  bar.append(cell('fl-topbar-start', slot('document'), cell('fl-topbar-tabs', slot('tabs'))), exportHolder);
+  return { bar, exportHolder, setExportActions };
 }
 
 export function createRibbon(actions) {
@@ -139,73 +137,17 @@ export function createRibbon(actions) {
   const additions = pill({ label: 'Topic options' }, dual);
   additions.hidden = true;
 
-  const row = document.createElement('div');
-  row.className = 'fl-ribbon';
-  row.setAttribute('role', 'toolbar');
-  row.setAttribute('aria-label', 'Formatting');
-  const formatting = cell('fl-format-pills',
-    styles,
-    pill({ label: 'Topic' }, topics.root),
-    pill({ label: 'Page break' }, pageBreak),
-    pill({ label: 'Comments' }, comment),
-    additions);
-
-  const collapseButton = button({
-    label: 'Hide formatting',
-    icon: 'chevron-left',
-    iconOnly: true,
-    cls: 'fl-format-toggle',
-    attrs: { 'aria-expanded': 'true' },
-    onClick: () => setCollapsed(collapseButton.getAttribute('aria-expanded') === 'true'),
+  const center = createActionCenter();
+  center.set('write', {
+    label: 'Formatting',
+    pills: [styles, pill({ label: 'Topic' }, topics.root), pill({ label: 'Page break' }, pageBreak), pill({ label: 'Comments' }, comment), additions],
+    onCollapse: () => topics.close(),
   });
-
-  let animation = null;
-  let pillAnimations = [];
-  const clearPillAnimations = () => {
-    for (const running of pillAnimations) running.cancel();
-    pillAnimations = [];
-  };
-  // The Web Animations API needs no timing kept in step with the CSS, and it can start
-  // from wherever an interrupted animation had got to. The space closes up while each pill
-  // fades on its own, which keeps its shadow whole, unlike fading or clipping them as a group.
-  function setCollapsed(collapsed) {
-    const label = collapsed ? 'Show formatting' : 'Hide formatting';
-    collapseButton.setAttribute('aria-expanded', String(!collapsed));
-    collapseButton.setAttribute('aria-label', label);
-    collapseButton.title = label;
-    topics.close();
-
-    const from = formatting.getBoundingClientRect().width;
-    animation?.cancel();
-    clearPillAnimations();
-    formatting.hidden = false;
-    formatting.classList.add('fl-format-animating');
-    const to = collapsed ? 0 : formatting.scrollWidth;
-    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : COLLAPSE_MS;
-    const shown = { opacity: 1, transform: 'none' };
-    const gone = { opacity: 0, transform: 'translateX(-8px)' };
-    pillAnimations = [...formatting.children].filter((child) => !child.hidden).map((child) => child.animate(
-      collapsed ? [shown, gone] : [gone, shown],
-      { duration, easing: 'ease', fill: 'forwards' },
-    ));
-    const running = formatting.animate(
-      [{ width: `${from}px` }, { width: `${to}px` }],
-      { duration, easing: 'ease' },
-    );
-    animation = running;
-    running.finished.then(() => {
-      formatting.classList.remove('fl-format-animating');
-      formatting.hidden = collapsed;
-      clearPillAnimations();
-    }).catch(() => {}); // cancelled by a newer click, which has taken over
-  }
-
-  row.append(formatting, collapseButton);
 
   const root = document.createElement('div');
   root.className = 'fl-chrome';
   const topBar = createTopBar(actions);
-  topBar.bar.insertBefore(row, topBar.exportHolder);
+  topBar.bar.insertBefore(center.root, topBar.exportHolder);
   root.append(topBar.bar);
 
   // The bundled font can replace a fallback after the badges were first measured.
@@ -232,13 +174,14 @@ export function createRibbon(actions) {
       }
       additions.hidden = !DUAL_TOPICS.has(state.type);
     },
-    // Preview is only for reading, so nothing that edits or changes tab stays on show. The
-    // Outline tab has its own controls, and the formatting ones act on the script's cursor.
-    setView(view, outlining = false) {
-      const previewing = view === 'preview' && !outlining;
-      row.hidden = previewing || outlining;
-      topBar.tabsCell.hidden = previewing;
-      if (row.hidden) topics.close();
+    /** Registers the commands a tab shows in the action center, as a list of pills. */
+    setActions(workspace, options) {
+      center.set(workspace, options);
+    },
+    // Each tab shows its own commands, and Read has none.
+    setWorkspace(workspace) {
+      if (workspace !== 'write') topics.close();
+      center.show(workspace);
     },
   };
 }

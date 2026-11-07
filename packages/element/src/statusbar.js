@@ -12,7 +12,6 @@ const VIEWS = [
   { value: 'flow', icon: 'seamless', label: 'Seamless', title: 'Continuous text, with no pages' },
   { value: 'page', icon: 'paged', label: 'Paged', title: 'Editable standard script pages' },
   { value: 'source', icon: 'source', label: 'Fountain', title: 'The Fountain text itself, with nothing hidden or formatted' },
-  { value: 'preview', icon: 'preview', label: 'Preview', title: 'The pages as they print. Editing is off.' },
 ];
 
 export function createStatusbar(actions) {
@@ -88,13 +87,14 @@ export function createStatusbar(actions) {
       undo.disabled = !state.canUndo;
       redo.disabled = !state.canRedo;
     },
-    // The views are ways of showing the script's pages, which the Outline tab doesn't.
-    setView(next, outlining = false) {
+    // The views are ways of writing the script, so they're only on the Write tab, and Read
+    // changes nothing that could be undone.
+    setView(next, workspace = 'write') {
       view = next;
       viewMenu.refresh();
-      if (outlining) viewMenu.close();
-      viewPill.hidden = outlining;
-      history.hidden = view === 'preview' && !outlining;
+      if (workspace !== 'write') viewMenu.close();
+      viewPill.hidden = workspace !== 'write';
+      history.hidden = workspace === 'read';
     },
     setScale(next) {
       scale = next;

@@ -33,14 +33,19 @@ function chooseProvider() {
   });
 }
 
-// The tab lives in the address as #/edit/<id>?tab=outline, so reloading or going back keeps it.
-// Write is the default and adds nothing.
-const tabInAddress = () => new URLSearchParams(location.hash.split('?')[1]).get('tab') === 'outline' ? 'Outline' : 'Write';
+// The tab lives in the address as #/edit/<id>?tab=outline or ?tab=read, so reloading or going
+// back keeps it. Write is the default and adds nothing.
+const TABS = ['Write', 'Outline', 'Read'];
+
+const tabInAddress = () => {
+  const tab = new URLSearchParams(location.hash.split('?')[1]).get('tab');
+  return TABS.find((name) => name.toLowerCase() === tab) ?? 'Write';
+};
 
 const setTabInAddress = (tab) => {
   const [route] = location.hash.split('?');
   // Replacing the entry doesn't fire hashchange, which would reopen the script.
-  history.replaceState(history.state, '', tab === 'Outline' ? `${route}?tab=outline` : route);
+  history.replaceState(history.state, '', tab === 'Write' ? route : `${route}?tab=${tab.toLowerCase()}`);
 };
 
 const readScale = () => {
@@ -191,6 +196,7 @@ export function renderEditor(root, doc) {
     }, [
       { label: 'Write', selected: openTab === 'Write' },
       { label: 'Outline', title: 'Plan the script with acts, sequences and synopses', selected: openTab === 'Outline' },
+      { label: 'Read', title: 'The pages as they print, with editing off', selected: openTab === 'Read' },
     ]),
     pill({ label: 'Appearance', attrs: { slot: 'status-end' } }, themePicker({
       up: true,

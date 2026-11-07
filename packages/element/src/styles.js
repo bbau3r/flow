@@ -27,7 +27,7 @@ ${CONTROLS_CSS}
 /* geometricPrecision keeps character widths fractional. Without it, Linux browsers at
    standard density round 9.6px up to 10px, which breaks every column on the page. */
 .fl-script { font-family: var(--fl-script-font); font-variant-ligatures: none; line-height: 1; text-rendering: geometricPrecision; }
-:host(:not([view="flow"], [view="source"])) .fl-script { font-size: calc(min(16px, var(--fl-area-w, 100cqw) / 52.5) * var(--fl-scale, 1)); }
+:host(:not([view="flow"], [view="source"])) .fl-script, .fl-read { font-size: calc(min(16px, var(--fl-area-w, 100cqw) / 52.5) * var(--fl-scale, 1)); }
 
 /* With the bars, the script fills the room between them when short, so they rest at the top
    and bottom, and grows past them when long. A grid would confine each to its own row. */
@@ -55,21 +55,27 @@ ${CONTROLS_CSS}
   grid-template-areas: "start end" "format format";
 }
 .fl-topbar:has(> .fl-ribbon[hidden]) { row-gap: 0; }
+/* Folded away, the action center is only its toggle, which moves up beside the tabs so the
+   page below can move up too. */
+.fl-topbar:has(> .fl-ribbon > .fl-action-pills[hidden]) {
+  grid-template-columns: minmax(0, max-content) auto minmax(max-content, 1fr);
+  grid-template-areas: "start format end";
+}
 /* Stretched, so that the document and tabs pills always match in height. */
 .fl-topbar-start { grid-area: start; display: flex; align-items: stretch; gap: 8px; min-width: 0; }
 .fl-topbar-tabs { flex: none; display: flex; }
 .fl-topbar-tabs[hidden], .fl-ribbon[hidden] { display: none; }
 .fl-topbar-end { grid-area: end; display: flex; justify-content: flex-end; }
 .fl-ribbon { grid-area: format; display: flex; align-items: center; gap: 8px; }
-.fl-format-pills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
-.fl-format-pills[hidden] { display: none; }
-.fl-format-animating { flex-wrap: nowrap; }
-.fl-format-animating > * { flex: none; }
+.fl-action-pills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
+.fl-action-pills[hidden] { display: none; }
+.fl-action-animating { flex-wrap: nowrap; }
+.fl-action-animating > * { flex: none; }
 /* A bare icon over the page, unlike the pills around it, until the pointer finds it. */
-.fl-format-toggle { pointer-events: auto; color: var(--flow-ink); }
-.fl-format-toggle .fl-svg { transition: transform 220ms ease; }
-.fl-format-toggle[aria-expanded="false"] .fl-svg { transform: rotate(180deg); }
-@media (prefers-reduced-motion: reduce) { .fl-format-toggle .fl-svg { transition: none; } }
+.fl-action-toggle { pointer-events: auto; color: var(--flow-ink); }
+.fl-action-toggle .fl-svg { transition: transform 220ms ease; }
+.fl-action-toggle[aria-expanded="false"] .fl-svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .fl-action-toggle .fl-svg { transition: none; } }
 /* With room for everything, one row. The title gives way first if it's long. */
 @container (min-width: 1000px) {
   .fl-topbar {
@@ -95,8 +101,9 @@ ${CONTROLS_CSS}
     scrollbar-width: thin; scrollbar-color: ${token('scrollbar')} transparent;
     pointer-events: auto;
   }
-  .fl-ribbon > *, .fl-format-pills > * { flex: none; }
-  .fl-format-pills { flex-wrap: nowrap; column-gap: 6px; }
+  .fl-ribbon:has(> .fl-action-pills[hidden]) { margin: 0; padding: 0; overflow: visible; }
+  .fl-ribbon > *, .fl-action-pills > * { flex: none; }
+  .fl-action-pills { flex-wrap: nowrap; column-gap: 6px; }
   /* The row would clip a menu anchored inside it, so it anchors to the whole bar instead. */
   .fl-ribbon .fl-menu { position: static; }
 }
@@ -287,7 +294,7 @@ ${CONTROLS_CSS}
   padding: 0.5em 0.5em 0.35em 0.35em;
   background: var(--flow-desk); box-shadow: none;
 }
-/* A connector through the gap between acts, like the one down to the main +. */
+/* A connector through the gap between acts. */
 .fl-outline-list > .fl-outline-card { position: relative; }
 .fl-outline-list > .fl-outline-card + .fl-outline-card::before {
   content: ""; position: absolute; left: 50%; bottom: 100%; width: 1px; height: calc(1.25em + 1px);
@@ -306,7 +313,6 @@ ${CONTROLS_CSS}
 .fl-outline-heading { font-size: 1.25em; font-weight: 600; }
 .fl-outline-card .fl-outline-card .fl-outline-heading { font-size: 1.05em; }
 .fl-outline-synopsis { color: var(--flow-muted); font-style: italic; }
-.fl-outline-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px; font-size: 13px; line-height: 1.25; color: var(--flow-muted); }
 .fl-outline-grip {
   --fl-control-size: 1.5em; --fl-control-pad: 0;
   flex: none; height: 1.35em; min-height: 0; padding: 0; color: var(--flow-muted); font-size: 1em; cursor: grab; touch-action: none;
@@ -357,16 +363,16 @@ ${CONTROLS_CSS}
 }
 .fl-outline-ghost[hidden] { display: none; }
 .fl-outline-ghost .fl-svg { width: 1em; height: 1em; color: var(--flow-accent); }
-.fl-outline-add { display: flex; flex-direction: column; align-items: center; }
-.fl-outline-list:not(:empty) + .fl-outline-add::before { content: ""; width: 1px; height: 1.25em; background: var(--flow-rule); }
-.fl-outline-plus, .fl-outline-plus:hover:not(:disabled) {
-  --fl-control-size: 40px; --fl-control-pad: 0;
-  background: var(--flow-paper); color: var(--flow-accent);
-  border: 1px solid var(--flow-accent);
-  box-shadow: 0 1px 6px var(--flow-shadow);
-}
 .fl-outline-hint { max-width: 26em; margin: 3em auto 1em; color: var(--flow-muted); text-align: center; }
 .fl-outline-hint[hidden] { display: none; }
+.fl-outline:focus { outline: none; }
+/* The card that new ones from the action center go below. */
+.fl-outline-selected { border-color: var(--flow-accent); box-shadow: 0 0 0 1px var(--flow-accent); }
+.fl-outline-card .fl-outline-card.fl-outline-selected { box-shadow: 0 0 0 1px var(--flow-accent); }
+.fl-outline-row.fl-outline-selected { border-radius: 6px; box-shadow: 0 0 0 1px var(--flow-accent); }
+/* Dragged from the action center, they can be placed or clicked. */
+.fl-outline-tool { touch-action: none; }
+.fl-outline-tool .fl-svg { color: var(--flow-accent); }
 
 @media print {
   :host { background: none; }
