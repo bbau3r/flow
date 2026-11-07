@@ -46,7 +46,7 @@ ${CONTROLS_CSS}
 .fl-chrome { top: 0; }
 .fl-footer { bottom: 0; --fl-control-size: 22px; --fl-control-pad: 6px; --fl-pill-font: 11.5px; --fl-pill-pad: 2px; }
 /* A bar with an open menu comes forward, so the menu can reach over the other bar. */
-.fl-chrome:has(.fl-menu-popup:not([hidden])), .fl-footer:has(.fl-menu-popup:not([hidden])) { z-index: 40; }
+.fl-chrome:has(.fl-menu-popup:not([hidden])), .fl-footer:has(.fl-menu-popup:not([hidden])), .fl-footer:has(.fl-fold-open) { z-index: 40; }
 ::slotted(*) { pointer-events: auto; }
 /* Two rows by default, with the formatting controls leaning left on the second. */
 .fl-topbar {
@@ -113,6 +113,24 @@ ${CONTROLS_CSS}
 }
 .fl-statusbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 6px 12px; }
 .fl-scale { min-width: 3.5em; font-variant-numeric: tabular-nums; }
+/* The typed scale and its reset button are for the dropdown; the pill's 100% resets it. */
+.fl-scale-field, .fl-scale-unit, .fl-scale-reset { display: none; }
+.fl-scale-unit { padding: 0 2px; color: var(--flow-muted); }
+.fl-fold-summary { font-variant-numeric: tabular-nums; }
+@container (max-width: 600px) {
+  .fl-fold-value > .fl-scale { display: none; }
+  .fl-scale-field, .fl-scale-unit { display: inline-block; }
+  .fl-scale-reset { display: inline-flex; margin-left: 2px; }
+  .fl-fold-toggle:has(> .fl-fold-summary) { gap: 4px; padding-inline: 8px; }
+}
+.fl-page-field {
+  appearance: none; box-sizing: content-box; min-width: 1ch; height: var(--fl-control-size, 22px); padding: 0 8px;
+  background: ${token('field-bg')}; color: ${token('field-ink')};
+  border: 1px solid ${token('field-border')}; border-radius: ${token('button-radius')};
+  font: inherit; font-variant-numeric: tabular-nums; text-align: center;
+}
+.fl-page-field:focus-visible { outline: 2px solid ${token('focus')}; outline-offset: 1px; }
+.fl-page-total { padding: 0 6px 0 4px; color: var(--flow-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fl-status { padding: 0 8px; color: var(--flow-muted); }
 .fl-spacer { flex: 1; }
 .fl-field { display: flex; align-items: center; gap: 8px; padding: 4px 0; }

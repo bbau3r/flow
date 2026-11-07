@@ -348,6 +348,152 @@ test('the chosen item in a dropdown sits on a faint wash of the accent', async (
   expect(Number(wash.match(/[\d.]+/g)[3])).toBeCloseTo(0.12, 2);
 });
 
+test('Read in Paged view jumps between pages beside the scale, typed or stepped', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await open(page, { view: 'flow' });
+  const pages = statusbar(page).getByRole('group', { name: 'Pages' });
+  await expect(pages).toBeHidden();
+  await show(page, 'Read');
+  await expect(pages).toBeVisible();
+  const total = await page.locator('flow-script .fl-read .fl-page:not([data-page="title"])').count();
+  expect(total).toBeGreaterThan(2);
+  const field = pages.getByRole('textbox', { name: 'Page' });
+  const previous = pages.getByRole('button', { name: 'Previous page' });
+  const next = pages.getByRole('button', { name: 'Next page' });
+  await expect(field).toHaveValue('1');
+  await expect(pages).toContainText(`/ ${total}`);
+  await expect(previous).toBeDisabled();
+  // Right after the scale pill.
+  const labels = await page.locator('flow-script .fl-statusbar > .fl-pill').evaluateAll((all) => all.filter((p) => !p.hidden).map((p) => p.getAttribute('aria-label')));
+  expect(labels.slice(0, 3)).toEqual(['Read view', 'Page scale', 'Pages']);
+  const topOf = (n) => page.locator(`flow-script .fl-read .fl-page[data-page="${n}"]`).evaluate((el) => {
+    const scroll = el.closest('.fl-scroll');
+    return el.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+  });
+  await field.fill('3');
+  await field.press('Enter');
+  await expect(field).toHaveValue('3');
+  const landed = await topOf(3);
+  expect(landed).toBeGreaterThan(0);
+  expect(landed).toBeLessThan(200);
+  await previous.click();
+  await expect(field).toHaveValue('2');
+  await next.click();
+  await expect(field).toHaveValue('3');
+  // Out of range goes to the last page; scrolling by hand keeps the number in step.
+  await field.fill('999');
+  await field.press('Enter');
+  await expect(field).toHaveValue(String(total));
+  await expect(next).toBeDisabled();
+  await page.locator('flow-script .fl-scroll').evaluate((el) => { el.scrollTop = 0; });
+  await expect(field).toHaveValue('1');
+  // Seamless has no pages to jump between.
+  await host(page).evaluate((el) => { el.readView = 'flow'; });
+  await expect(pages).toBeHidden();
+});
+
+test('the Write tab in Paged view jumps between pages too, and the pill has no icon of its own', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await open(page, { view: 'flow' });
+  await setValue(page, Array.from({ length: 150 }, (_, i) => `Action ${i}.`).join('\n\n'));
+  const pages = statusbar(page).getByRole('group', { name: 'Pages' });
+  await expect(pages).toBeHidden();
+  await chooseView(page, 'Paged');
+  await expect(pages).toBeVisible();
+  await expect(pages.locator('svg:visible')).toHaveCount(2);
+  const field = pages.getByRole('textbox', { name: 'Page' });
+  await expect(field).toHaveValue('1');
+  const gaps = page.locator('flow-script .fl-page-gap[data-page]');
+  await expect(gaps.first()).toBeAttached();
+  const total = (await gaps.count()) + 1;
+  await expect(pages).toContainText(`/ ${total}`);
+  await field.fill('3');
+  await field.press('Enter');
+  await expect(field).toHaveValue('3');
+  const gap = await page.locator('flow-script .fl-page-gap[data-page="3"]').boundingBox();
+  const bar = await page.locator('flow-script .fl-chrome').boundingBox();
+  expect(gap.y + gap.height).toBeGreaterThan(bar.y + bar.height - 1);
+  expect(gap.y + gap.height).toBeLessThan(bar.y + bar.height + 60);
+  await pages.getByRole('button', { name: 'Previous page' }).click();
+  await expect(field).toHaveValue('2');
+  await chooseView(page, 'Seamless');
+  await expect(pages).toBeHidden();
+});
+
+test('on a phone, the scale and page pills fold to buttons that open them as dropdowns', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 700 });
+  await open(page);
+  await show(page, 'Read');
+  const scale = statusbar(page).getByRole('group', { name: 'Page scale' });
+  const showScale = statusbar(page).getByRole('button', { name: 'Show page scale' });
+  const showPages = statusbar(page).getByRole('button', { name: 'Show pages' });
+  const percent = statusbar(page).locator('.fl-scale');
+  const typed = statusbar(page).getByRole('textbox', { name: 'Page scale, in percent' });
+  const field = statusbar(page).getByRole('textbox', { name: 'Page' });
+  // Folded, the scale still shows beside its icon, and the button opens the dropdown.
+  await expect(showScale).toBeVisible();
+  await expect(showScale).toHaveText('100%');
+  await expect(showScale.locator('svg')).toHaveCount(1);
+  await expect(showPages).toBeVisible();
+  await expect(showPages).toHaveText('1');
+  await expect(percent).toBeHidden();
+  await expect(field).toBeHidden();
+  await showScale.click();
+  await expect(showScale).toHaveAttribute('aria-expanded', 'true');
+  await expect(typed).toBeVisible();
+  await expect(typed).toHaveValue('100');
+  // Above the pill: a heading with its icon, then the value, then the buttons.
+  const body = statusbar(page).locator('.fl-fold-open > .fl-fold-body');
+  const pillBox = await scale.boundingBox();
+  const bodyBox = await body.boundingBox();
+  expect(bodyBox.y + bodyBox.height).toBeLessThan(pillBox.y);
+  const heading = body.locator('.fl-menu-heading');
+  await expect(heading).toHaveText('Page scale');
+  await expect(heading.locator('svg')).toHaveCount(1);
+  const rows = await Promise.all([heading, body.locator('.fl-fold-value'), body.locator('.fl-fold-actions')].map((row) => row.boundingBox()));
+  expect(rows[0].y + rows[0].height).toBeLessThanOrEqual(rows[1].y + 1);
+  expect(rows[1].y + rows[1].height).toBeLessThanOrEqual(rows[2].y + 1);
+  // Centered over its button.
+  const toggleBox = await showScale.boundingBox();
+  expect(bodyBox.x + bodyBox.width / 2).toBeCloseTo(toggleBox.x + toggleBox.width / 2, 0);
+  // The scale can be typed, stepped, or reset with its own button.
+  const reset = statusbar(page).getByRole('button', { name: 'Reset to 100%', exact: true });
+  await expect(reset).toBeDisabled();
+  await statusbar(page).getByRole('button', { name: 'Larger' }).click();
+  await expect(typed).toHaveValue('110');
+  await expect(showScale).toHaveText('110%');
+  await typed.fill('150');
+  await typed.press('Enter');
+  await expect(host(page)).toHaveAttribute('scale', '150');
+  await typed.fill('900');
+  await typed.press('Enter');
+  await expect(typed).toHaveValue('200');
+  await expect(reset).toBeEnabled();
+  await reset.click();
+  await expect(typed).toHaveValue('100');
+  await expect(showScale).toHaveText('100%');
+  // Opening the other closes this one, as does Escape.
+  await showPages.click();
+  await expect(typed).toBeHidden();
+  await expect(field).toBeVisible();
+  await expect(statusbar(page).locator('.fl-fold-open .fl-menu-heading')).toHaveText('Pages');
+  await field.fill('2');
+  await field.press('Enter');
+  await expect(showPages).toHaveText('2');
+  const pagesBody = await statusbar(page).locator('.fl-fold-open > .fl-fold-body').boundingBox();
+  const pagesToggle = await showPages.boundingBox();
+  expect(pagesBody.x + pagesBody.width / 2).toBeCloseTo(pagesToggle.x + pagesToggle.width / 2, 0);
+  await page.keyboard.press('Escape');
+  await expect(field).toBeHidden();
+  // Wider again, both pills show their controls with no fold, and 100% resets.
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await expect(showScale).toBeHidden();
+  await expect(typed).toBeHidden();
+  await expect(reset).toBeHidden();
+  await expect(percent).toBeVisible();
+  await expect(field).toBeVisible();
+});
+
 test('pinching scales the script, not the page, and the app hears the new scale', async ({ browser }) => {
   const context = await browser.newContext({ hasTouch: true, viewport: { width: 800, height: 900 } });
   const page = await context.newPage();
@@ -694,7 +840,7 @@ test('the bottom pills are separate, and float over the page with clicks passing
   await open(page);
   await setValue(page, Array.from({ length: 200 }, (_, i) => `Beat ${i}.`).join('\n\n'));
   const labels = await page.locator('flow-script .fl-statusbar > .fl-pill').evaluateAll((pills) => pills.filter((p) => !p.hidden).map((p) => p.getAttribute('aria-label')));
-  expect(labels).toEqual(['View', 'Page scale', 'History']);
+  expect(labels).toEqual(['View', 'Page scale', 'Pages', 'History']);
   const scaleBox = await page.locator('flow-script .fl-statusbar > .fl-pill:visible').nth(1).boundingBox();
   const viewBox = await page.locator('flow-script .fl-statusbar > .fl-pill:visible').nth(0).boundingBox();
   expect(scaleBox.x).toBeGreaterThan(viewBox.x + viewBox.width);
@@ -835,9 +981,9 @@ test.describe('on a phone', () => {
   test('the bottom pills stay the same size as on a big screen', async ({ page }) => {
     await open(page);
     expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
-    const larger = await statusbar(page).getByRole('button', { name: 'Larger' }).boundingBox();
-    expect(larger.height).toBe(22);
-    await expect(statusbar(page).getByRole('button', { name: 'Larger' })).toHaveCSS('font-size', '11.5px');
+    const fold = statusbar(page).getByRole('button', { name: 'Show page scale' });
+    expect((await fold.boundingBox()).height).toBe(22);
+    await expect(fold).toHaveCSS('font-size', '11.5px');
   });
 });
 

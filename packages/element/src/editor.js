@@ -68,6 +68,7 @@ function pageGap(number, continued) {
   // Page 1 only gets a break when a title page sits before it.
   dom.className = number === 1 ? 'fl-page-gap fl-title-gap' : 'fl-page-gap';
   dom.setAttribute('aria-hidden', 'true');
+  dom.dataset.page = number;
   const label = document.createElement('span');
   label.textContent = continued ? `(CONTINUED)  ${number}.` : `${number}.`;
   dom.append(label);
