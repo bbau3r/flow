@@ -59,6 +59,26 @@ const shapeOf = (items) => items.map((item) => {
 
 const sceneNumbers = (block) => block.lines.filter((line) => line.kind === 'scene').map((line) => ({ line: line.line, text: line.number }));
 
+// How many scenes a card holds, at any depth, to show while it's folded.
+const sceneCount = (items) => items.reduce((sum, item) => {
+  if (item.kind === 'section') return sum + sceneCount(item.children);
+  return sum + (item.kind === 'block' && item.scene ? 1 : 0);
+}, 0);
+
+// Folding is kept by what a card is rather than where, since lines move with every edit
+// above it: its level and title, and which of the cards with both it is.
+const foldKeys = (items, keys = new Map(), seen = new Map()) => {
+  for (const item of items) {
+    if (item.kind !== 'section') continue;
+    const base = `${item.level}:${item.text}`;
+    const nth = seen.get(base) ?? 0;
+    seen.set(base, nth + 1);
+    keys.set(item.line, `${base}#${nth}`);
+    foldKeys(item.children, keys, seen);
+  }
+  return keys;
+};
+
 const fieldItems = (items) => items.flatMap((item) => {
   if (item.kind === 'section') return [item, ...fieldItems(item.children)];
   return item.kind === 'synopsis' ? [item] : sceneNumbers(item);
@@ -79,6 +99,7 @@ export function createOutline({ edit, undo, redo }) {
   let focusAfterRender = null;
   let handleAfterRender = null;
   let drag = null;
+  let folded = new Set();
 
   const list = element('div', 'fl-outline-list');
   const hint = element(
@@ -185,16 +206,31 @@ export function createOutline({ edit, undo, redo }) {
   };
 
   // Where each slot shows, measured once: nothing moves in the outline during a drag, and being
-  // relative to the outline, these still hold while the area scrolls.
+  // relative to the outline, these still hold while the area scrolls. A folded card's insides
+  // aren't on screen, so the card as a whole stands for the first place in it, and a drop
+  // there puts the block at its top.
   const measureSlots = (moving) => {
     const origin = root.getBoundingClientRect();
-    return outlineSlots(cards, lines.length, moving).map((slot) => {
+    const all = outlineSlots(cards, lines.length, moving);
+    const shown = (slot) => childNodes.get(slot.parent).getClientRects().length > 0;
+    const into = new Map();
+    for (const slot of all) {
+      if (shown(slot) || into.has(slot.parent) || !folded.has(slot.parent)) continue;
+      const card = blockNodes.get(slot.parent);
+      if (!card?.getClientRects().length) continue;
+      const box = card.getBoundingClientRect();
+      into.set(slot.parent, {
+        ...slot, into: card,
+        y: (box.top + box.bottom) / 2 - origin.top, top: box.top - origin.top, bottom: box.bottom - origin.top,
+      });
+    }
+    return [...all.filter(shown).map((slot) => {
       const wrapper = childNodes.get(slot.parent).getBoundingClientRect();
       const y = slot.before === null
         ? wrapper.bottom + 3
         : blockNodes.get(slot.before).getBoundingClientRect().top - 3;
       return { ...slot, y: y - origin.top, left: wrapper.left - origin.left, width: wrapper.width };
-    });
+    }), ...into.values()];
   };
 
   const placeLine = (node, { y, left, width }) => {
@@ -210,7 +246,7 @@ export function createOutline({ edit, undo, redo }) {
     previewLine.hidden = true;
     if (root.hidden || drag || !cards.length) return;
     const line = placeFor(spec);
-    const slot = measureSlots(spec).filter((place) => place.line === line).at(-1);
+    const slot = measureSlots(spec).filter((place) => place.line === line && !place.into).at(-1);
     if (slot) {
       placeLine(previewLine, slot);
       return;
@@ -234,6 +270,14 @@ export function createOutline({ edit, undo, redo }) {
     };
   };
 
+  let into = null;
+  const markInto = (card) => {
+    if (card === into) return;
+    into?.classList.remove('fl-outline-drop-into');
+    into = card;
+    into?.classList.add('fl-outline-drop-into');
+  };
+
   const trackPointer = () => {
     const origin = root.getBoundingClientRect();
     const y = drag.pointerY - origin.top;
@@ -241,12 +285,17 @@ export function createOutline({ edit, undo, redo }) {
     // A new card still over the action center hasn't been brought to the outline yet.
     drag.inside = drag.pointerY >= open.top && drag.pointerY <= open.bottom;
     if (drag.inside) drag.entered = true;
+    // Over a folded card it can go in, the block goes into it; anywhere else, to the
+    // nearest place between cards.
+    const nearest = (slots) => slots.reduce((best, slot) => (Math.abs(slot.y - y) < Math.abs(best.y - y) ? slot : best), slots[0]);
+    const over = drag.slots.filter((slot) => slot.into && y >= slot.top && y <= slot.bottom).at(-1);
+    const between = drag.slots.filter((slot) => !slot.into);
     drag.slot = drag.item || drag.inside
-      ? drag.slots.reduce((best, slot) => (Math.abs(slot.y - y) < Math.abs(best.y - y) ? slot : best), drag.slots[0])
+      ? over ?? (between.length ? nearest(between) : null)
       : null;
-    dropLine.hidden = !drag.slot;
-    if (drag.slot) {
-      dropLine.hidden = false;
+    markInto(drag.slot?.into ?? null);
+    dropLine.hidden = !drag.slot || !!drag.slot.into;
+    if (drag.slot && !drag.slot.into) {
       dropLine.style.top = `${drag.slot.y}px`;
       dropLine.style.left = `${drag.slot.left}px`;
       dropLine.style.width = `${drag.slot.width}px`;
@@ -276,6 +325,7 @@ export function createOutline({ edit, undo, redo }) {
     window.removeEventListener('keydown', drag.onKey, true);
     if (drag.item) blockNodes.get(drag.item.line)?.classList.remove('fl-outline-dragging');
     dropLine.hidden = true;
+    markInto(null);
     ghost.hidden = true;
     drag = null;
   };
@@ -427,27 +477,64 @@ export function createOutline({ edit, undo, redo }) {
     return node;
   };
 
+  const setFolded = (node, fold) => {
+    const line = Number(node.dataset.line);
+    if (fold) folded.add(line);
+    else folded.delete(line);
+    node.classList.toggle('fl-outline-folded', fold);
+    const children = childNodes.get(line);
+    children.hidden = fold;
+    const toggle = node.querySelector(':scope > .fl-outline-row > .fl-outline-fold');
+    const name = levelName(itemsByLine.get(line).level);
+    const label = fold ? `Show what's in this ${name}` : `Fold this ${name} away`;
+    toggle.setAttribute('aria-expanded', String(!fold));
+    toggle.setAttribute('aria-label', label);
+    toggle.title = label;
+    // Text boxes sized while folded away measured nothing.
+    if (!fold) for (const { field } of fields) if (node.contains(field)) fit(field);
+  };
+
+  // Opens every folded card around `node`, so what's just been added or focused can be seen.
+  const reveal = (node) => {
+    for (let at = node?.parentElement?.closest('.fl-outline-folded'); at; at = at.parentElement?.closest('.fl-outline-folded')) {
+      if (root.contains(at)) setFolded(at, false);
+    }
+  };
+
   const buildCard = (card) => {
     const top = card.level === 1;
     const name = levelName(card.level);
     const header = fieldFor(card, capitalized(name));
+    const scenes = sceneCount(card.children);
+    const count = element('span', 'fl-outline-count', scenes === 1 ? '1 scene' : `${scenes} scenes`);
+    const fold = button({
+      label: `Fold this ${name} away`,
+      icon: 'chevron',
+      iconOnly: true,
+      cls: 'fl-outline-fold',
+      attrs: { 'aria-expanded': 'true' },
+      onClick: () => setFolded(node, !folded.has(Number(node.dataset.line))),
+    });
     const node = element('article', 'fl-outline-card', element(
       'div',
       'fl-outline-row fl-outline-heading',
       handleFor(header, name),
       kindIcon(iconFor(card)),
       header.field,
+      count,
       removeButton({
         label: `Remove ${name}`,
         title: `Remove this ${top ? 'act and its sequences' : name} from the script. Scenes stay, and so do synopses, out of the outline.`,
         onClick: () => apply({ lines: removeOutlineCard(lines, header.item.line) }),
       }),
+      fold,
     ));
     register(card, node);
 
     const children = element('div', 'fl-outline-children', ...card.children.map(buildItem));
     childNodes.set(card.line, children);
     node.append(children);
+    if (folded.has(card.line)) setFolded(node, true);
     return node;
   };
 
@@ -470,6 +557,7 @@ export function createOutline({ edit, undo, redo }) {
   // Redrawing would lose the cursor, so while the fields stay the same they're updated in place.
   const render = (value) => {
     hidePreview();
+    const previous = cards;
     cards = outlineCards(parse(value));
     lines = value.split('\n');
     const nextShape = shapeOf(cards);
@@ -487,6 +575,10 @@ export function createOutline({ edit, undo, redo }) {
       });
     } else {
       endDrag();
+      // Carry folding over to the same cards in the new outline.
+      const before = foldKeys(previous);
+      const keep = new Set([...folded].map((line) => before.get(line)));
+      folded = new Set([...foldKeys(cards)].filter(([, key]) => keep.has(key)).map(([line]) => line));
       const activeLine = active?.item.line;
       fields = [];
       handles = new Map();
@@ -499,8 +591,13 @@ export function createOutline({ edit, undo, redo }) {
       hint.hidden = cards.length > 0;
       for (const { field } of fields) fit(field);
       const target = fields.find(({ item }) => item.line === (focusAfterRender ?? activeLine));
-      if (handleAfterRender !== null) handles.get(handleAfterRender)?.focus();
-      else if (target) focusField(target);
+      if (handleAfterRender !== null) {
+        reveal(handles.get(handleAfterRender));
+        handles.get(handleAfterRender)?.focus();
+      } else if (target) {
+        reveal(target.field);
+        focusField(target);
+      }
       else if (focusAfterRender !== null || active) root.focus();
       // Whatever has focus now is the selected card, or nothing is.
       const focused = root.getRootNode().activeElement;

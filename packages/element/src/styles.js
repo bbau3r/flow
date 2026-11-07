@@ -335,6 +335,18 @@ ${CONTROLS_CSS}
 .fl-outline-card:has(> .fl-outline-row :focus, > .fl-outline-children > .fl-outline-row :focus) > .fl-outline-children > .fl-outline-row > .fl-outline-remove,
 .fl-outline-remove:focus-visible { opacity: 1; pointer-events: auto; }
 .fl-outline-remove:hover:not(:disabled) { color: ${token('danger-hover')}; }
+/* Acts and sequences fold away to their heading, keeping how many scenes they hold in view. */
+.fl-outline-fold {
+  --fl-control-size: 1.6em; --fl-control-pad: 0;
+  flex: none; color: var(--flow-muted); font-size: 13px; font-style: normal;
+}
+.fl-outline-fold .fl-svg { transform: rotate(180deg); transition: transform 180ms ease; }
+.fl-outline-fold[aria-expanded="false"] .fl-svg { transform: none; }
+@media (prefers-reduced-motion: reduce) { .fl-outline-fold .fl-svg { transition: none; } }
+.fl-outline-count { display: none; flex: none; align-self: center; color: var(--flow-muted); font-size: 0.6em; font-weight: 400; white-space: nowrap; }
+.fl-outline-folded > .fl-outline-row > .fl-outline-count { display: inline; }
+.fl-outline-children[hidden] { display: none; }
+.fl-outline-card.fl-outline-drop-into { outline: 2px solid var(--flow-accent); outline-offset: 2px; }
 /* Scenes and transitions can be moved here but only changed in the script. */
 .fl-outline-block {
   display: flex; align-items: flex-start; gap: 0.5em; min-width: 0; padding: 0.35em 0.75em 0.35em 0.35em;

@@ -1866,6 +1866,70 @@ test.describe('outline tab', () => {
   // The outline's own padding, where there's no card.
   const pressBetweenCards = (page) => page.locator('flow-script .fl-outline').click({ position: { x: 4, y: 4 } });
 
+  test('acts and sequences fold away with the chevron on their right, and stay folded through edits', async ({ page }) => {
+    await openOutline(page, '# One\n\n## Chase\n\nINT. A - DAY\n\nINT. B - DAY\n\n# Two\n\nINT. C - DAY\n');
+    const act = page.locator('flow-script .fl-outline-list > .fl-outline-card').first();
+    const fold = act.locator(':scope > .fl-outline-row > .fl-outline-fold');
+    // On the right, past the title and the remove button.
+    const heading = await act.locator(':scope > .fl-outline-row .fl-outline-field').boundingBox();
+    expect((await fold.boundingBox()).x).toBeGreaterThan(heading.x + heading.width);
+    await expect(fold).toHaveAttribute('aria-expanded', 'true');
+    await expect(block(page, 'INT. A')).toBeVisible();
+    await fold.click();
+    await expect(fold).toHaveAttribute('aria-expanded', 'false');
+    await expect(block(page, 'INT. A')).toBeHidden();
+    await expect(act.locator(':scope > .fl-outline-row > .fl-outline-count')).toHaveText('2 scenes');
+    await expect(block(page, 'INT. C')).toBeVisible();
+    // An edit elsewhere redraws the outline, and the act stays folded.
+    await host(page).evaluate((el) => { el.value = `Opening.\n\n${el.value}`; });
+    await expect(block(page, 'INT. A')).toBeHidden();
+    await expect(page.locator('flow-script .fl-outline-list > .fl-outline-card').first().locator(':scope > .fl-outline-row > .fl-outline-fold')).toHaveAttribute('aria-expanded', 'false');
+    // A sequence folds on its own, inside an open act.
+    await page.locator('flow-script .fl-outline-list > .fl-outline-card').first().locator(':scope > .fl-outline-row > .fl-outline-fold').click();
+    const sequence = page.locator('flow-script .fl-outline-card .fl-outline-card').first();
+    await sequence.locator(':scope > .fl-outline-row > .fl-outline-fold').click();
+    await expect(block(page, 'INT. B')).toBeHidden();
+    await expect(sequence.locator(':scope > .fl-outline-row > .fl-outline-field')).toBeVisible();
+  });
+
+  test('a block dragged onto a folded card is outlined there, then lands at its top and opens it', async ({ page }) => {
+    await openOutline(page, '# One\n\nINT. A - DAY\n\n# Two\n\n## Chase\n\nINT. C - DAY\n\nINT. D - DAY\n');
+    const two = page.locator('flow-script .fl-outline-list > .fl-outline-card').nth(1);
+    await two.locator(':scope > .fl-outline-row > .fl-outline-fold').click();
+    await expect(block(page, 'INT. C')).toBeHidden();
+    const handle = block(page, 'INT. A').locator('.fl-outline-grip');
+    const from = await handle.boundingBox();
+    const to = await two.boundingBox();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + 8);
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 6 });
+    await expect(two).toHaveClass(/fl-outline-drop-into/);
+    await expect(page.locator('flow-script .fl-outline-drop')).toBeHidden();
+    await page.mouse.up();
+    await expect(page.locator('flow-script .fl-outline-drop-into')).toHaveCount(0);
+    // It goes in first, ahead of the sequence, and the act opens to show it.
+    expect(await value(page)).toBe('# One\n\n# Two\n\nINT. A - DAY\n\n## Chase\n\nINT. C - DAY\n\nINT. D - DAY\n');
+    const reopened = page.locator('flow-script .fl-outline-list > .fl-outline-card').nth(1);
+    await expect(reopened.locator(':scope > .fl-outline-row > .fl-outline-fold')).toHaveAttribute('aria-expanded', 'true');
+    await expect(block(page, 'INT. A')).toBeVisible();
+
+    // A new card from the tools goes in the same way.
+    const chase = page.locator('flow-script .fl-outline-card .fl-outline-card').first();
+    await chase.locator(':scope > .fl-outline-row > .fl-outline-fold').click();
+    await expect(block(page, 'INT. C')).toBeHidden();
+    const tile = await tool(page, 'synopsis').boundingBox();
+    const target = await chase.boundingBox();
+    await page.mouse.move(tile.x + tile.width / 2, tile.y + tile.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(tile.x + tile.width / 2, tile.y + tile.height / 2 + 20);
+    await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 8 });
+    await expect(chase).toHaveClass(/fl-outline-drop-into/);
+    await page.mouse.up();
+    expect(await value(page)).toBe('# One\n\n# Two\n\nINT. A - DAY\n\n## Chase\n=\n\nINT. C - DAY\n\nINT. D - DAY\n');
+    await expect(block(page, 'INT. C')).toBeVisible();
+  });
+
   test('the tools add an act and a synopsis below it, and a sequence takes the synopsis in', async ({ page }) => {
     await openOutline(page);
     await expect(page.locator('flow-script .fl-outline-hint')).toContainText('Outline your screenplay here.');
