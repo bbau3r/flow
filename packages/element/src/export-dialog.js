@@ -1,6 +1,9 @@
-// The PDF export options, which apply to the page view as they change.
+// The PDF export options. All but the page size apply to the page view as they change. The
+// page size is the script's own, from its page settings, unless one export asks for another.
 
+import { formatDimensions } from '@flow/core';
 import { button, openModal } from './controls.js';
+import { dimensionsField } from './dimensions-field.js';
 
 const CHECKS = [
   ['titlePage', 'Title page'],
@@ -12,17 +15,17 @@ const CHECKS = [
   ['pageNumbers', 'Page numbers'],
 ];
 
-const PAPERS = [['letter', 'US Letter'], ['a4', 'A4']];
+const DEFAULT = 'default';
 
 export function openExportDialog(parent, actions) {
   const options = actions.getOptions();
 
-  const paper = document.createElement('label');
-  paper.className = 'fl-field';
-  const select = document.createElement('select');
-  for (const [value, label] of PAPERS) select.add(new Option(label, value, false, options.paper === value));
-  select.addEventListener('change', () => actions.setOption('paper', select.value));
-  paper.append('Paper', select);
+  const paper = dimensionsField({
+    label: 'Paper',
+    value: actions.getExportPaper() ?? DEFAULT,
+    first: { value: DEFAULT, label: `Default (${formatDimensions(actions.getScriptPaper())})` },
+    onChange: (size) => actions.setExportPaper(size === DEFAULT ? null : size),
+  });
 
   const checks = CHECKS.map(([key, label]) => {
     const wrap = document.createElement('label');
@@ -37,7 +40,7 @@ export function openExportDialog(parent, actions) {
 
   const modal = openModal(parent, {
     title: 'Export PDF',
-    body: [paper, ...checks],
+    body: [...paper.nodes, ...checks],
     onClose: actions.onClose,
     actions: [
       button({ label: 'Cancel', cls: 'fl-btn-outline', onClick: () => modal.close() }),
@@ -45,6 +48,7 @@ export function openExportDialog(parent, actions) {
         label: 'Export PDF',
         cls: 'fl-btn-primary',
         onClick: () => {
+          if (paper.value === null) return;
           modal.close();
           actions.exportPdf();
         },

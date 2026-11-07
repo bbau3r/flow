@@ -1382,7 +1382,7 @@ test('export actions show as buttons, then collapse into a vertical menu with PD
   await expect(more).toBeVisible();
   await more.click();
   const holder = page.locator('flow-script .fl-export-holder');
-  await expect(holder.getByRole('menuitem')).toHaveCount(2);
+  await expect(holder.getByRole('menuitem')).toHaveCount(3); // Keep, PDF and Settings
   await holder.getByRole('menuitem', { name: 'Keep', exact: true }).click();
   expect(await page.evaluate(() => window.ran)).toEqual(['keep', 'keep']);
   await more.click();
@@ -2800,4 +2800,117 @@ test.describe('title page values on their own lines', () => {
     expect(Math.abs(box.x - above.x)).toBeLessThan(2);
     expect(Math.abs(box.y - above.y)).toBeLessThan(40);
   });
+});
+
+test.describe('project settings', () => {
+  const pageWidth = (page) => host(page).evaluate((el) => el.style.getPropertyValue('--fl-page-w'));
+  const openSettings = async (page) => {
+    await page.locator('flow-script .fl-settings').getByRole('button', { name: 'Project settings' }).click();
+    const dialog = page.locator('flow-script dialog');
+    await expect(dialog.getByRole('heading', { name: 'Project Settings' })).toBeVisible();
+    return dialog;
+  };
+
+  test('the page shows each size as it is chosen, and only Save writes it', async ({ page }) => {
+    await open(page);
+    await setValue(page, 'Title: BIG\n\nAction.');
+    expect(await pageWidth(page)).toBe('51em');
+    let dialog = await openSettings(page);
+    await expect(dialog.getByText('Settings are saved in the script title section')).toBeVisible();
+    await dialog.getByLabel('Dimensions').selectOption('a4');
+    await expect.poll(() => pageWidth(page)).toBe(`${8.27 * 6}em`);
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect.poll(() => pageWidth(page)).toBe('51em');
+    expect(await value(page)).toBe('Title: BIG\n\nAction.');
+
+    dialog = await openSettings(page);
+    await dialog.getByLabel('Dimensions').selectOption('a4');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    expect(await value(page)).toBe('Settings:\n    Dimensions: A4\nTitle: BIG\n\nAction.');
+    expect(await pageWidth(page)).toBe(`${8.27 * 6}em`);
+  });
+
+  test('a custom size can be in centimetres', async ({ page }) => {
+    await open(page);
+    await setValue(page, 'Action.');
+    const dialog = await openSettings(page);
+    await dialog.getByLabel('Dimensions').selectOption('custom');
+    await dialog.getByLabel('Unit').selectOption('cm');
+    await expect(dialog.getByLabel('Width')).toHaveValue('21.59');
+    await dialog.getByLabel('Width').fill('21');
+    await dialog.getByLabel('Height').fill('29.7');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    expect(await value(page)).toBe('Settings:\n    Dimensions: 21cm x 29.7cm\n\nAction.');
+  });
+
+  for (const view of ['Paged', 'Seamless']) {
+    test(`settings are out of sight in ${view} view, and the cursor goes around them`, async ({ page }) => {
+      await open(page);
+      await chooseView(page, view);
+      await setValue(page, 'Settings:\n    Dimensions: A4\nTitle: BIG\n\nAction.');
+      await expect(lineWith(page, 'Dimensions')).toBeHidden();
+      // Page gaps follow a pause in typing, and keys pressed before they settle can go astray.
+      const pace = () => page.waitForTimeout(300);
+      await lineWith(page, 'BIG').click();
+      await pace();
+      for (const key of ['Home', 'ArrowUp', 'Backspace']) {
+        await page.keyboard.press(key);
+        await pace();
+      }
+      await page.keyboard.type('X');
+      expect(await value(page)).toMatch(/^Settings:\n {4}Dimensions: A4\nTitle: .*X.*BIG|^Settings:\n {4}Dimensions: A4\nX?Title: BIG/);
+      expect((await value(page)).split('\n').slice(0, 2)).toEqual(['Settings:', '    Dimensions: A4']);
+    });
+  }
+
+  test('Fountain view shows the settings', async ({ page }) => {
+    await open(page);
+    await setValue(page, 'Settings:\n    Dimensions: A4\n\nAction.');
+    await chooseView(page, 'Fountain');
+    await expect(lineWith(page, 'Dimensions')).toBeVisible();
+  });
+
+  test("the export defaults to the script's size, and another one leaves the page alone", async ({ page }) => {
+    await open(page);
+    await setValue(page, 'Settings:\n    Dimensions: A4\n\nAction.');
+    const dialog = await openExport(page);
+    const paper = dialog.getByLabel('Paper');
+    await expect(paper.locator('option:checked')).toHaveText('Default (A4)');
+    await paper.selectOption('letter');
+    await page.keyboard.press('Escape');
+    expect(await pageWidth(page)).toBe(`${8.27 * 6}em`);
+  });
+
+  test('on a phone, settings join the ... menu', async ({ page }) => {
+    await open(page);
+    await page.setViewportSize({ width: 400, height: 800 });
+    await expect(page.locator('flow-script .fl-settings')).toBeHidden();
+    const holder = page.locator('flow-script .fl-export-holder');
+    await holder.getByRole('button', { name: 'Export', exact: true }).click();
+    await holder.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+    await expect(page.locator('flow-script dialog').getByRole('heading', { name: 'Project Settings' })).toBeVisible();
+  });
+});
+
+test('the project settings draw the page at its proportions, measured', async ({ page }) => {
+  await open(page);
+  await page.locator('flow-script .fl-settings').getByRole('button', { name: 'Project settings' }).click();
+  const dialog = page.locator('flow-script dialog');
+  const preview = dialog.getByRole('img', { name: /^Page / });
+  await expect(preview).toHaveAttribute('aria-label', 'Page 8.5 by 11 in');
+  const ratio = async () => {
+    const box = await preview.locator('.fl-preview-sheet').boundingBox();
+    return box.width / box.height;
+  };
+  await expect.poll(ratio).toBeCloseTo(8.5 / 11, 1);
+  await dialog.getByLabel('Dimensions').selectOption('custom');
+  await dialog.getByLabel('Width').fill('17');
+  await dialog.getByLabel('Height').fill('6');
+  await expect(preview).toHaveAttribute('aria-label', 'Page 17 by 6 in');
+  await expect(preview.getByText('17 in')).toBeVisible();
+  await expect.poll(ratio).toBeCloseTo(17 / 6, 1);
+  const frame = await preview.boundingBox();
+  const sheet = await preview.locator('.fl-preview-sheet').boundingBox();
+  expect(sheet.x).toBeGreaterThanOrEqual(frame.x);
+  expect(sheet.x + sheet.width).toBeLessThanOrEqual(frame.x + frame.width);
 });
