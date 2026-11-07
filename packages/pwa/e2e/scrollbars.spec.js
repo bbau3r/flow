@@ -19,12 +19,16 @@ async function longScript(page) {
   return area;
 }
 
-for (const view of ['Paged', 'Preview', 'Seamless', 'Fountain']) {
-  test(`${view} view never scrolls sideways at any window width`, async ({ page }) => {
+for (const view of ['Paged', 'Read', 'Seamless', 'Fountain']) {
+  test(`${view} never scrolls sideways at any window width`, async ({ page }) => {
     const area = await longScript(page);
-    const bar = page.locator('flow-script .fl-statusbar');
-    await bar.locator('.fl-menu-trigger').click();
-    await bar.getByRole('menuitemradio', { name: view, exact: true }).click();
+    if (view === 'Read') {
+      await page.getByRole('tab', { name: 'Read' }).click();
+    } else {
+      const bar = page.locator('flow-script .fl-statusbar');
+      await bar.locator('.fl-menu-trigger').click();
+      await bar.getByRole('menuitemradio', { name: view, exact: true }).click();
+    }
     for (const width of [1280, 900, 700, 600, 500, 420, 390, 320]) {
       await page.setViewportSize({ width, height: 700 });
       await expect.poll(() => area.evaluate((el) => el.scrollWidth - el.clientWidth), `at ${width}px`).toBeLessThanOrEqual(0);
@@ -35,7 +39,7 @@ for (const view of ['Paged', 'Preview', 'Seamless', 'Fountain']) {
 test('zooming a page past the window does scroll sideways, on purpose', async ({ page }) => {
   const area = await longScript(page);
   await page.setViewportSize({ width: 600, height: 700 });
-  await page.locator('flow-script').evaluate((el) => { el.scale = 200; });
+  await page.locator('flow-script').evaluate((el) => { el.view = 'page'; el.scale = 200; });
   await expect.poll(() => area.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(100);
 });
 
