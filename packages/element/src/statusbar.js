@@ -5,7 +5,7 @@ import { button, icon, Menu, pill, pillSep } from './controls.js';
 
 export const SCALE_MIN = 50;
 export const SCALE_MAX = 200;
-const SCALE_STEP = 10;
+export const SCALE_STEP = 10;
 const SCALE_DEFAULT = 100;
 
 const VIEWS = [
@@ -14,23 +14,35 @@ const VIEWS = [
   { value: 'source', icon: 'source', label: 'Fountain', title: 'The Fountain text itself, with nothing hidden or formatted' },
 ];
 
-export function createStatusbar(actions) {
-  let view = 'flow';
-  let scale = SCALE_DEFAULT;
+// Read shows the script as it prints, so only the views that look like the script.
+const READ_VIEWS = [
+  { value: 'flow', icon: 'seamless', label: 'Seamless', title: 'Continuous text, with no pages' },
+  { value: 'page', icon: 'paged', label: 'Paged', title: 'Standard script pages, as they print' },
+];
 
-  const viewMenu = new Menu({
+function viewMenu(views, current, onSelect) {
+  return new Menu({
     up: true,
-    sections: [{ items: VIEWS }],
-    isChecked: (value) => value === view,
+    sections: [{ items: views }],
+    isChecked: (value) => value === current(),
     trigger: () => {
-      const current = VIEWS.find((v) => v.value === view);
+      const shown = views.find((v) => v.value === current());
       const name = document.createElement('span');
       name.className = 'fl-label fl-collapse';
-      name.textContent = current.label;
-      return { label: `View: ${current.label}`, content: [icon(current.icon), name] };
+      name.textContent = shown.label;
+      return { label: `View: ${shown.label}`, content: [icon(shown.icon), name] };
     },
-    onSelect: (value) => actions.setView(value),
+    onSelect,
   });
+}
+
+export function createStatusbar(actions) {
+  let view = 'flow';
+  let readView = 'page';
+  let scale = SCALE_DEFAULT;
+
+  const writeMenu = viewMenu(VIEWS, () => view, (value) => actions.setView(value));
+  const readMenu = viewMenu(READ_VIEWS, () => readView, (value) => actions.setReadView(value));
 
   const percent = button({
     label: 'Reset page scale',
@@ -63,9 +75,12 @@ export function createStatusbar(actions) {
 
   const bar = document.createElement('div');
   bar.className = 'fl-statusbar';
-  const viewPill = pill({ label: 'View' }, viewMenu.root);
+  const viewPill = pill({ label: 'View' }, writeMenu.root);
+  const readPill = pill({ label: 'Read view' }, readMenu.root);
+  readPill.hidden = true;
   bar.append(
     viewPill,
+    readPill,
     pill({ label: 'Page scale' }, percent, pillSep(), bigger, smaller),
     statusPill,
     spacer,
@@ -80,20 +95,25 @@ export function createStatusbar(actions) {
   return {
     root,
     destroy() {
-      viewMenu.close();
+      writeMenu.close();
+      readMenu.close();
       root.remove();
     },
     update(state) {
       undo.disabled = !state.canUndo;
       redo.disabled = !state.canRedo;
     },
-    // The views are ways of writing the script, so they're only on the Write tab, and Read
-    // changes nothing that could be undone.
-    setView(next, workspace = 'write') {
+    // Write and Read each have their own views, and Outline has none. Read changes nothing
+    // that could be undone.
+    setView(next, workspace = 'write', nextRead = readView) {
       view = next;
-      viewMenu.refresh();
-      if (workspace !== 'write') viewMenu.close();
+      readView = nextRead;
+      writeMenu.refresh();
+      readMenu.refresh();
+      if (workspace !== 'write') writeMenu.close();
+      if (workspace !== 'read') readMenu.close();
       viewPill.hidden = workspace !== 'write';
+      readPill.hidden = workspace !== 'read';
       history.hidden = workspace === 'read';
     },
     setScale(next) {
