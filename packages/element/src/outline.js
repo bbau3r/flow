@@ -10,7 +10,7 @@ import {
   addOutlineSection, addOutlineSynopsis, moveOutlineBlock, outlineCards,
   outlineSlots, parse, removeOutlineCard, removeOutlineSynopsis, setOutlineText,
 } from '@flow/core';
-import { button, icon, pill, pillSep } from './controls.js';
+import { button, icon, pill } from './controls.js';
 
 const DRAG_THRESHOLD_PX = 4;
 const SCROLL_EDGE_PX = 64;
@@ -78,7 +78,12 @@ export function createOutline({ edit, undo, redo }) {
   let drag = null;
 
   const list = element('div', 'fl-outline-list');
-  const hint = element('p', 'fl-outline-hint', 'Outline your screenplay here.');
+  const hint = element(
+    'div',
+    'fl-outline-hint',
+    element('p', 'fl-outline-hint-title', 'Outline your screenplay here.'),
+    element('p', '', 'Click Act, Sequence or Synopsis above to add one, or drag it to where it belongs.'),
+  );
   const dropLine = element('div', 'fl-outline-drop');
   dropLine.hidden = true;
   const ghost = element('div', 'fl-outline-ghost');
@@ -298,7 +303,6 @@ export function createOutline({ edit, undo, redo }) {
     draggable(tool, () => ({ spec, icon: name, label: `New ${name}` }));
     return tool;
   });
-  const toolPill = pill({ label: 'Add to the outline' }, tools[0], pillSep(), tools[1], pillSep(), tools[2]);
 
   const handleFor = (entry, name) => {
     const handle = button({
@@ -496,7 +500,7 @@ export function createOutline({ edit, undo, redo }) {
   return {
     root,
     /** The pills this tab puts in the action center. */
-    tools: [toolPill],
+    tools: tools.map((tool) => pill({ label: tool.getAttribute('aria-label') }, tool)),
     render,
     // Only moves focus into the outline when it's somewhere else.
     focus() {

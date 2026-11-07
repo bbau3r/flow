@@ -61,8 +61,6 @@ export function renderEditor(root, doc) {
   const openTab = tabInAddress();
   script.setAttribute('workspace', openTab.toLowerCase());
   script.setAttribute('theme', currentTheme());
-  // A whole page shrunk to fit a phone is too small to write on.
-  if (window.matchMedia('(max-width: 700px)').matches) script.setAttribute('view', 'flow');
   const scale = readScale();
   if (scale) script.setAttribute('scale', scale);
   script.addEventListener('flow-scale', (event) => {

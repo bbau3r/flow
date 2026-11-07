@@ -27,7 +27,7 @@ ${CONTROLS_CSS}
 /* geometricPrecision keeps character widths fractional. Without it, Linux browsers at
    standard density round 9.6px up to 10px, which breaks every column on the page. */
 .fl-script { font-family: var(--fl-script-font); font-variant-ligatures: none; line-height: 1; text-rendering: geometricPrecision; }
-:host(:not([view="flow"], [view="source"])) .fl-script, .fl-read { font-size: calc(min(16px, var(--fl-area-w, 100cqw) / 52.5) * var(--fl-scale, 1)); }
+:host([view="page"]) .fl-script, .fl-read { font-size: calc(min(16px, var(--fl-area-w, 100cqw) / 52.5) * var(--fl-scale, 1)); }
 
 /* With the bars, the script fills the room between them when short, so they rest at the top
    and bottom, and grows past them when long. A grid would confine each to its own row. */
@@ -55,9 +55,9 @@ ${CONTROLS_CSS}
   grid-template-areas: "start end" "format format";
 }
 .fl-topbar:has(> .fl-ribbon[hidden]) { row-gap: 0; }
-/* Folded away, the action center is only its toggle, which moves up beside the tabs so the
-   page below can move up too. */
-.fl-topbar:has(> .fl-ribbon > .fl-action-pills[hidden]) {
+/* Folded away, the action center is only its toggle, which moves up beside the tabs when there's
+   room, so the page below can move up too. */
+.fl-topbar.fl-topbar-inline {
   grid-template-columns: minmax(0, max-content) auto minmax(max-content, 1fr);
   grid-template-areas: "start format end";
 }
@@ -101,7 +101,7 @@ ${CONTROLS_CSS}
     scrollbar-width: thin; scrollbar-color: ${token('scrollbar')} transparent;
     pointer-events: auto;
   }
-  .fl-ribbon:has(> .fl-action-pills[hidden]) { margin: 0; padding: 0; overflow: visible; }
+  .fl-topbar-inline > .fl-ribbon { margin: 0; padding: 0; overflow: visible; }
   .fl-ribbon > *, .fl-action-pills > * { flex: none; }
   .fl-action-pills { flex-wrap: nowrap; column-gap: 6px; }
   /* The row would clip a menu anchored inside it, so it anchors to the whole bar instead. */
@@ -365,6 +365,8 @@ ${CONTROLS_CSS}
 .fl-outline-ghost .fl-svg { width: 1em; height: 1em; color: var(--flow-accent); }
 .fl-outline-hint { max-width: 26em; margin: 3em auto 1em; color: var(--flow-muted); text-align: center; }
 .fl-outline-hint[hidden] { display: none; }
+.fl-outline-hint p { margin: 0.5em 0 0; }
+.fl-outline-hint .fl-outline-hint-title { margin: 0; color: var(--flow-ink); font-size: 1.15em; font-weight: 600; }
 .fl-outline:focus { outline: none; }
 /* The card that new ones from the action center go below. */
 .fl-outline-selected { border-color: var(--flow-accent); box-shadow: 0 0 0 1px var(--flow-accent); }

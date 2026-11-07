@@ -15,7 +15,7 @@ const VIEWS = [
 ];
 
 export function createStatusbar(actions) {
-  let view = 'page';
+  let view = 'flow';
   let scale = SCALE_DEFAULT;
 
   const viewMenu = new Menu({

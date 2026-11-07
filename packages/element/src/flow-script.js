@@ -137,13 +137,13 @@ export class FlowScript extends HTMLElement {
   }
 
   /**
-   * How the Write tab shows the script: 'page' (standard script pages, the default), 'flow'
-   * (continuous, no pages) or 'source' (the Fountain text itself, with nothing hidden or
+   * How the Write tab shows the script: 'flow' (continuous, no pages, the default), 'page'
+   * (standard script pages) or 'source' (the Fountain text itself, with nothing hidden or
    * formatted).
    */
   get view() {
     const view = this.getAttribute('view');
-    return view === 'flow' || view === 'source' ? view : 'page';
+    return view === 'page' || view === 'source' ? view : 'flow';
   }
 
   set view(v) {

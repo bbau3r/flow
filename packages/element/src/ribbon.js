@@ -71,8 +71,9 @@ function createTopBar(actions) {
   setExportActions([]);
   const bar = document.createElement('div');
   bar.className = 'fl-topbar';
-  bar.append(cell('fl-topbar-start', slot('document'), cell('fl-topbar-tabs', slot('tabs'))), exportHolder);
-  return { bar, exportHolder, setExportActions };
+  const start = cell('fl-topbar-start', slot('document'), cell('fl-topbar-tabs', slot('tabs')));
+  bar.append(start, exportHolder);
+  return { bar, start, exportHolder, setExportActions };
 }
 
 export function createRibbon(actions) {
@@ -137,7 +138,24 @@ export function createRibbon(actions) {
   const additions = pill({ label: 'Topic options' }, dual);
   additions.hidden = true;
 
-  const center = createActionCenter();
+  // Folded, the toggle moves up beside the tabs when the top row has room for it, which lets
+  // the page move up too. Otherwise it keeps a row of its own.
+  let topBar = null;
+  const placeToggle = () => {
+    if (!topBar) return;
+    const { bar, start, exportHolder } = topBar;
+    bar.classList.remove('fl-topbar-inline');
+    if (!center.folded) return;
+    const style = getComputedStyle(bar);
+    const gap = parseFloat(style.columnGap) || 0;
+    const room = bar.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    // The start's natural width, which its own cell may have squeezed.
+    start.style.width = 'max-content';
+    const needed = start.offsetWidth + center.toggle.offsetWidth + exportHolder.offsetWidth + 2 * gap;
+    start.style.width = '';
+    bar.classList.toggle('fl-topbar-inline', needed <= room);
+  };
+  const center = createActionCenter({ onFold: placeToggle });
   center.set('write', {
     label: 'Formatting',
     pills: [styles, pill({ label: 'Topic' }, topics.root), pill({ label: 'Page break' }, pageBreak), pill({ label: 'Comments' }, comment), additions],
@@ -146,9 +164,17 @@ export function createRibbon(actions) {
 
   const root = document.createElement('div');
   root.className = 'fl-chrome';
-  const topBar = createTopBar(actions);
+  topBar = createTopBar(actions);
   topBar.bar.insertBefore(center.root, topBar.exportHolder);
   root.append(topBar.bar);
+  // Only the width matters: the folded row changes the height, which needs no new check.
+  let barWidth = 0;
+  const resize = new ResizeObserver(([entry]) => {
+    if (entry.contentRect.width === barWidth) return;
+    barWidth = entry.contentRect.width;
+    placeToggle();
+  });
+  resize.observe(topBar.bar);
 
   // The bundled font can replace a fallback after the badges were first measured.
   const recenter = () => centerGlyphs(root);
@@ -160,6 +186,7 @@ export function createRibbon(actions) {
     setExportActions: topBar.setExportActions,
     destroy() {
       document.fonts.removeEventListener('loadingdone', recenter);
+      resize.disconnect();
       topics.close();
       root.remove();
     },
