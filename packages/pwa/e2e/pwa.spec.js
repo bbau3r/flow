@@ -435,6 +435,65 @@ test.describe('local files without direct saving, as on iOS', () => {
   });
 });
 
+test.describe('files opened from the system', () => {
+  // The operating system hands files over through launchQueue, which a test can't trigger, so
+  // this stands in for it. The handles and everything after them are real.
+  const fakeLaunchQueue = () => {
+    Object.defineProperty(window, 'launchQueue', {
+      value: { setConsumer(consumer) { window.launchFiles = (handles) => consumer({ files: handles }); } },
+    });
+    window.launchFile = async (name, text) => {
+      const root = await navigator.storage.getDirectory();
+      const handle = await root.getFileHandle(name, { create: true });
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      await window.launchFiles([handle]);
+    };
+  };
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(fakePickers);
+    await page.addInitScript(fakeLaunchQueue);
+  });
+
+  test('a launched file opens in the editor and saves straight back to it', async ({ page }) => {
+    await page.goto(HOME);
+    await page.evaluate(() => window.launchFile('launched.fountain', 'INT. DOCK - NIGHT\r\n\r\nWaves.'));
+    await expect(editor(page)).toBeVisible();
+    await expect(page.locator('.doc-name')).toHaveText('launched.fountain');
+    await expect(page.locator('.doc-state')).toHaveText('Saved');
+    expect(await value(page)).toBe('INT. DOCK - NIGHT\n\nWaves.');
+
+    await lineWith(page, 'Waves').click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' More.');
+    await page.locator('#save').click();
+    await expect(page.locator('.doc-state')).toHaveText('Saved');
+    expect(await page.evaluate(() => window.readFile('launched.fountain'))).toContain('Waves. More.');
+  });
+
+  test('opening the same file again reuses its script, refreshed unless it has unsaved work', async ({ page }) => {
+    await page.goto(HOME);
+    await page.evaluate(() => window.launchFile('again.fountain', 'First.'));
+    await expect(editor(page)).toBeVisible();
+    const firstUrl = page.url();
+
+    await page.evaluate(() => window.launchFile('again.fountain', 'Changed on disk.'));
+    await expect.poll(() => value(page)).toBe('Changed on disk.');
+    expect(page.url()).toBe(firstUrl);
+
+    await lineWith(page, 'Changed on disk').click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('!');
+    await expect(page.locator('.doc-state')).toHaveText('Unsaved changes');
+    await page.evaluate(() => window.launchFile('again.fountain', 'Disk again.'));
+    await expect.poll(() => value(page)).toBe('Changed on disk.!');
+
+    await page.locator('.home-link').click();
+    await expect(page.locator('.recent-name', { hasText: 'again.fountain' })).toHaveCount(1);
+  });
+});
+
 test.describe('installable and offline', () => {
   test('has a valid manifest and icons, relative to where it is hosted', async ({ page, request }) => {
     await page.goto(HOME);
@@ -447,6 +506,9 @@ test.describe('installable and offline', () => {
     expect(manifest.start_url).toBe('./');
     expect(manifest.icons.map((i) => i.sizes)).toEqual(expect.arrayContaining(['192x192', '512x512']));
     expect(manifest.icons.some((i) => i.purpose === 'maskable')).toBe(true);
+    // Installed on a desktop, it opens Fountain files from the file manager, in the open window.
+    expect(manifest.file_handlers).toEqual([{ action: './', accept: { 'text/plain': ['.fountain', '.spmd'] } }]);
+    expect(manifest.launch_handler).toEqual({ client_mode: 'focus-existing' });
     for (const icon of manifest.icons) {
       const response = await request.get(new URL(icon.src, manifestUrl).href);
       expect(response.status(), icon.src).toBe(200);

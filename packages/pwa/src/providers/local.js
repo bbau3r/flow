@@ -75,12 +75,17 @@ export const localProvider = {
     }
     try {
       const [handle] = await window.showOpenFilePicker({ id: PICKER_ID, types: TYPES });
-      const file = await handle.getFile();
-      return { name: file.name, text: await file.text(), ref: { handle, lastModified: file.lastModified } };
+      return await this.openHandle(handle);
     } catch (err) {
       if (isCancel(err)) return null;
       throw err;
     }
+  },
+
+  /** Reads a file the writer has already chosen, such as one opened with Flow from the system. */
+  async openHandle(handle) {
+    const file = await handle.getFile();
+    return { name: file.name, text: await file.text(), ref: { handle, lastModified: file.lastModified } };
   },
 
   // Saving always shows the OS dialog, opened in the file's folder with its name filled

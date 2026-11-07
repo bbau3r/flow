@@ -47,9 +47,11 @@ Labels such as `Copyright:` stay hidden until the cursor is on the line, so a ne
 
 Build a design document with the owner and refine the UI against it. Open Pencil is preferred if its files can live in this repository without needing Git LFS, so check the file format and sizes first. Figma is the alternative.
 
-### Open `.fountain` files from the operating system
+### Open `.fountain` files on Android
 
-Register a file handler in the web app manifest so that an installed Flow can open `.fountain` files directly.
+An installed Flow opens `.fountain` and `.spmd` files from the file manager on desktop Chrome and Edge, through `file_handlers` in the manifest and `launchQueue` in `packages/pwa/src/main.js`. Android doesn't support this yet: as of February 2026, Chromium's [notices](https://groups.google.com/a/chromium.org/g/blink-dev/c/go7j3TqGwJY) said file handling was "not yet supported on Android". The same manifest entry should start working there once it ships, so check the [Chrome Platform Status](https://chromestatus.com/) entry for File Handling first.
+
+**In the meantime:** a `share_target` in the manifest would let people share a `.fountain` file to Flow from Android's share sheet. Sharing files arrives as a POST, which the service worker would have to catch and pass to the page.
 
 ## Quality
 

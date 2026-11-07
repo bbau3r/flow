@@ -5,6 +5,7 @@ import { getDoc } from './store.js';
 import { renderHome } from './home.js';
 import { renderEditor } from './editor-view.js';
 import { currentTheme, toast } from './ui.js';
+import { openLaunchedFile } from './launch.js';
 
 const app = document.getElementById('app');
 let leaveView = null;
@@ -29,6 +30,23 @@ for (const event of ['online', 'offline']) {
   window.addEventListener(event, () => { if (onHome()) route(); });
 }
 route().catch((err) => toast(err.message));
+
+// Files opened with Flow from the operating system, such as a double-clicked .fountain file.
+if ('launchQueue' in window) {
+  window.launchQueue.setConsumer(async ({ files }) => {
+    if (!files?.length) return;
+    try {
+      let doc = null;
+      for (const handle of files) doc = await openLaunchedFile(handle);
+      const target = `#/edit/${doc.id}`;
+      // The script may be open already, which needs a redraw rather than a new address.
+      if (location.hash === target) await route();
+      else location.hash = target;
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+}
 
 const updateSW = registerSW({
   onNeedRefresh() {
