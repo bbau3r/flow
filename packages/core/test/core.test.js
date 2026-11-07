@@ -46,6 +46,20 @@ describe('element classification', () => {
     expect(typeOf('\nCUT TO:\n', 'CUT')).toBe('transition');
     expect(typeOf('\nCUT TO:  \n', 'CUT')).toBe('action');
   });
+  it('detects any all-caps transition ending in a colon, not just TO:', () => {
+    expect(typeOf('\nSMASH CUT:\n', 'SMASH')).toBe('transition');
+    expect(typeOf('\nFADE IN:\n', 'FADE')).toBe('transition');
+    expect(typeOf('\nMATCH CUT ON THE DOOR:\n', 'MATCH')).toBe('transition');
+    expect(typeOf('Action.\n\nINTERCUT:\n\nMore.', 'INTERCUT')).toBe('transition');
+  });
+  it('keeps colon lines that are not transitions as what they are', () => {
+    expect(typeOf('\nSmash cut:\n', 'Smash')).toBe('action'); // not all caps
+    expect(typeOf('\n10:\n', '10')).toBe('action'); // no letters
+    expect(typeOf('\nSMASH CUT: \n', 'SMASH')).toBe('action'); // trailing-space opt out
+    expect(typeOf('\nSMASH CUT:\nHello', 'SMASH')).toBe('character'); // text right below
+    expect(typeOf('Action.\nSMASH CUT:\n', 'SMASH')).toBe('action'); // text right above
+    expect(typeOf('\nSMASH CUT.\n', 'SMASH')).toBe('action'); // no colon
+  });
   it('keeps a two-space line inside dialogue', () => {
     expect(types('\nA\nline one\n  \nline two')).toEqual(['blank', 'character', 'dialogue', 'dialogue', 'dialogue']);
   });

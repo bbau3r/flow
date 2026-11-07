@@ -102,6 +102,14 @@ test('typing fountain auto-formats as you go', async ({ page }) => {
   await expect(page.locator('flow-script .ProseMirror .fl-i', { hasText: 'runs' })).toHaveCSS('font-style', 'italic');
 });
 
+test('any all-caps line ending in a colon is a transition, not just TO:', async ({ page }) => {
+  await open(page);
+  await setValue(page, 'Action.\n\nSMASH CUT:\n\nMore.\n\nCUT TO:\n\nLast.\n\nLater that night:\n\nEnd.');
+  await expect(lineWith(page, 'SMASH CUT:')).toHaveClass(/fl-transition/);
+  await expect(lineWith(page, 'CUT TO:')).toHaveClass(/fl-transition/);
+  await expect(lineWith(page, 'Later that night:')).toHaveClass(/fl-action/);
+});
+
 test('B/I/U apply to a selection, via ribbon and keyboard, and toggle back off', async ({ page }) => {
   await open(page);
   await setValue(page, 'word');
@@ -2385,6 +2393,14 @@ test.describe('outline tab', () => {
     await page.keyboard.press('ArrowDown');
     expect(await value(page)).toContain('INT. TWO - DAY\n\nINT. ONE - DAY\n\nCUT TO:\n\nINT. THREE - DAY');
     await expect(cards.nth(1)).toContainText('CUT TO:');
+  });
+
+  test('a transition ending in a colon without TO joins its scene card', async ({ page }) => {
+    await openOutline(page, 'INT. ONE - DAY\n\nSMASH CUT:\n\nINT. TWO - DAY');
+    const cards = page.locator('flow-script .fl-outline-block');
+    await expect(cards).toHaveCount(2);
+    await expect(cards.nth(0).locator('.fl-outline-line')).toHaveCount(2);
+    await expect(cards.nth(0).locator('.fl-outline-transition')).toContainText('SMASH CUT:');
   });
 
   test('a scene number shows at the right of its card, and can be edited there', async ({ page }) => {
