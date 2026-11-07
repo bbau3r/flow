@@ -141,6 +141,40 @@ export const PALETTES = {
       scheme: 'dark',
     },
   },
+  // Deep teal and charcoal blue on pale ash by day, muted teal on near-grey by night.
+  sage: {
+    label: 'Sage',
+    light: {
+      desk: '#dfe4db',
+      paper: '#f6f8f4',
+      ink: '#2f3e46',
+      muted: '#4c6662',
+      accent: '#52796f',
+      'accent-ink': '#f6f8f4',
+      rule: '#cad2c5',
+      'ribbon-bg': '#eef1ea',
+      'ribbon-ink': '#2f3e46',
+      'bubble-bg': '#d5e3d5',
+      'bubble-ink': '#354f52',
+      shadow: 'rgb(47 62 70 / 0.22)',
+      scheme: 'light',
+    },
+    dark: {
+      desk: '#1b1f1e',
+      paper: '#252b2a',
+      ink: '#e3e8e0',
+      muted: '#a9bcb0',
+      accent: '#84a98c',
+      'accent-ink': '#252b2a',
+      rule: '#3c4a48',
+      'ribbon-bg': '#202625',
+      'ribbon-ink': '#e3e8e0',
+      'bubble-bg': '#354f52',
+      'bubble-ink': '#e3e8e0',
+      shadow: 'rgb(0 0 0 / 0.6)',
+      scheme: 'dark',
+    },
+  },
   // Space indigo and dusty grape on parchment, with lilac and almond between, and almond on
   // indigo-tinted grey by night.
   lavender: {
