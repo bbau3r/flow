@@ -192,9 +192,9 @@ export function renderEditor(root, doc) {
         setTabInAddress(tab);
       },
     }, [
-      { label: 'Write', selected: openTab === 'Write' },
-      { label: 'Outline', title: 'Plan the script with acts, sequences and synopses', selected: openTab === 'Outline' },
-      { label: 'Read', title: 'The pages as they print, with editing off', selected: openTab === 'Read' },
+      { label: 'Write', icon: 'write', selected: openTab === 'Write' },
+      { label: 'Outline', icon: 'outline', title: 'Plan the script with acts, sequences and synopses', selected: openTab === 'Outline' },
+      { label: 'Read', icon: 'read', title: 'The pages as they print, with editing off', selected: openTab === 'Read' },
     ]),
     pill({ label: 'Appearance', attrs: { slot: 'status-end' } }, themePicker({
       up: true,

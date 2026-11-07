@@ -15,7 +15,9 @@ const ICONS = {
   redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
   seamless: '<path d="M4 3h16"/><path d="M4 21h16"/><path d="M7 8h10"/><path d="M7 12h10"/><path d="M7 16h6"/>',
   paged: '<path d="M2 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H2z"/><path d="M22 5h-7a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h8z"/>',
-  preview: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+  write: '<path d="M12 20h9"/><path d="M16.4 3.6a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  outline: '<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/>',
+  read: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
   source: '<path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/>',
   palette: '<path d="M12 22a10 10 0 1 1 10-10c0 2.5-2 4-4.5 4H15a2 2 0 0 0-1.5 3.3c.6.8 0 2.7-1.5 2.7z"/><circle cx="7.5" cy="10.5" r=".5"/><circle cx="12" cy="7.5" r=".5"/><circle cx="16.5" cy="10.5" r=".5"/>',
   plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
@@ -154,7 +156,7 @@ function responsive(attrs, wide, compact) {
 
 /**
  * Tabs, as a pill of tabs or, when space runs short, a dropdown naming the current one.
- * Items are { label, selected, disabled, title }, and `onSelect` gets the label of a tab
+ * Items are { label, icon, selected, disabled, title }, and `onSelect` gets the label of a tab
  * the writer switches to.
  */
 export function tabs({ label, attrs, onSelect }, items) {
@@ -171,7 +173,8 @@ export function tabs({ label, attrs, onSelect }, items) {
     const tab = document.createElement('button');
     tab.type = 'button';
     tab.className = 'fl-tab';
-    tab.textContent = item.label;
+    if (item.icon) tab.append(icon(item.icon));
+    tab.append(item.label);
     tab.disabled = !!item.disabled;
     if (item.title) tab.title = item.title;
     setAttrs(tab, { role: 'tab', 'aria-selected': String(!!item.selected) });
@@ -188,7 +191,7 @@ export function tabs({ label, attrs, onSelect }, items) {
     trigger: () => {
       const name = document.createElement('span');
       name.textContent = current.label;
-      return { label: `${label}: ${current.label}`, content: [name] };
+      return { label: `${label}: ${current.label}`, content: [...(current.icon ? [icon(current.icon)] : []), name] };
     },
     onSelect: (value) => select(items.find((item) => item.label === value)),
   });
@@ -489,7 +492,7 @@ export const CONTROLS_CSS = `
 
 .fl-tabs { align-items: stretch; background: ${token('tabs-bg')}; border-color: ${token('tabs-border')}; color: ${token('tabs-ink')}; }
 .fl-tab {
-  appearance: none; min-height: 30px; padding: 3px 16px;
+  appearance: none; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 16px 3px 12px;
   background: transparent; color: inherit;
   border: 0; border-radius: ${token('button-radius')};
   font: inherit; font-weight: 600; white-space: nowrap; cursor: pointer;
@@ -497,6 +500,7 @@ export const CONTROLS_CSS = `
 .fl-tab:focus-visible { outline-color: ${token('tabs-ink')}; }
 .fl-tab[aria-selected="true"] { background: ${token('tab-selected-bg')}; color: ${token('tab-selected-ink')}; }
 .fl-tab:disabled { opacity: 0.8; cursor: default; }
+.fl-tab .fl-svg { width: 1.1em; height: 1.1em; }
 /* On small screens a dropdown names the current tab, in the same type as the tabs. */
 .fl-tabs .fl-menu-trigger { font-weight: 600; }
 
