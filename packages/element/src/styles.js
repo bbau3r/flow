@@ -50,16 +50,21 @@ ${CONTROLS_CSS}
 ::slotted(*) { pointer-events: auto; }
 /* Two rows by default, with the formatting controls leaning left on the second. */
 .fl-topbar {
+  position: relative;
   display: grid; align-items: center; gap: 6px 8px; padding: 8px 12px;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas: "start end" "format format";
 }
 .fl-topbar:has(> .fl-ribbon[hidden]) { row-gap: 0; }
-/* Folded away, the action center is only its toggle, which moves up beside the tabs when there's
-   room, so the page below can move up too. */
-.fl-topbar.fl-topbar-inline {
-  grid-template-columns: minmax(0, max-content) auto minmax(max-content, 1fr);
-  grid-template-areas: "start format end";
+/* Folded away on its own row, the action center is only its toggle, which stays where the row
+   was but floats over the page, so the page moves up by the whole row. */
+@container (max-width: 999.98px) {
+  .fl-topbar:has(> .fl-ribbon > .fl-action-pills[hidden]) { row-gap: 0; }
+  .fl-topbar:has(> .fl-ribbon > .fl-action-pills[hidden]) > .fl-ribbon {
+    /* Out of the grid, or its own area would be what it's placed against. */
+    grid-area: auto; position: absolute; top: calc(100% - 2px); left: 12px;
+    margin: 0; padding: 0; overflow: visible;
+  }
 }
 /* Stretched, so that the document and tabs pills always match in height. */
 .fl-topbar-start { grid-area: start; display: flex; align-items: stretch; gap: 8px; min-width: 0; }
@@ -101,7 +106,6 @@ ${CONTROLS_CSS}
     scrollbar-width: thin; scrollbar-color: ${token('scrollbar')} transparent;
     pointer-events: auto;
   }
-  .fl-topbar-inline > .fl-ribbon { margin: 0; padding: 0; overflow: visible; }
   .fl-ribbon > *, .fl-action-pills > * { flex: none; }
   .fl-action-pills { flex-wrap: nowrap; column-gap: 6px; }
   /* The row would clip a menu anchored inside it, so it anchors to the whole bar instead. */
@@ -112,7 +116,7 @@ ${CONTROLS_CSS}
 .fl-status { padding: 0 8px; color: var(--flow-muted); }
 .fl-spacer { flex: 1; }
 .fl-field { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
-.fl-field select { margin-left: auto; font: inherit; color: inherit; background: var(--flow-paper); border: 1px solid var(--flow-rule); border-radius: 4px; padding: 2px 4px; }
+.fl-field select { margin-left: auto; font: inherit; color: ${token('field-ink')}; background: ${token('field-bg')}; border: 1px solid ${token('field-border')}; border-radius: 4px; padding: 2px 4px; }
 
 /* Read-only pages */
 .fl-pages { display: flex; flex-direction: column; align-items: safe center; gap: 1.5em; padding: 1.5em 0; }
@@ -238,7 +242,7 @@ ${CONTROLS_CSS}
   margin: 1.5em auto; padding: 6em var(--fl-pad-right) 6em 9em; min-height: var(--fl-page-h);
 }
 .fl-editor-host .ProseMirror { outline: none; white-space: pre-wrap; word-wrap: break-word; caret-color: var(--flow-accent); }
-.fl-editor-host .ProseMirror ::selection { background: color-mix(in srgb, var(--flow-accent) 30%, transparent); }
+.fl-editor-host .ProseMirror ::selection { background: ${token('selection-bg')}; }
 /* A title page value's indent takes up no room. It stays as text with a font size, unlike a
    display: none marker, because on a value still empty it's all the cursor has to sit in. */
 .fl-line .fl-indent { letter-spacing: -0.6em; word-spacing: 0; tab-size: 0; opacity: 0; }
@@ -330,6 +334,7 @@ ${CONTROLS_CSS}
 .fl-outline-card:has(> .fl-outline-row :focus, > .fl-outline-children > .fl-outline-row :focus) > .fl-outline-row > .fl-outline-remove,
 .fl-outline-card:has(> .fl-outline-row :focus, > .fl-outline-children > .fl-outline-row :focus) > .fl-outline-children > .fl-outline-row > .fl-outline-remove,
 .fl-outline-remove:focus-visible { opacity: 1; pointer-events: auto; }
+.fl-outline-remove:hover:not(:disabled) { color: ${token('danger-hover')}; }
 /* Scenes and transitions can be moved here but only changed in the script. */
 .fl-outline-block {
   display: flex; align-items: flex-start; gap: 0.5em; min-width: 0; padding: 0.35em 0.75em 0.35em 0.35em;
@@ -352,8 +357,10 @@ ${CONTROLS_CSS}
 .fl-outline-number:hover { border-color: var(--flow-accent); }
 .fl-outline-number::placeholder { color: var(--flow-muted); opacity: 0.75; }
 .fl-outline-dragging { opacity: 0.45; }
-.fl-outline-drop { position: absolute; z-index: 5; height: 3px; margin-top: -1.5px; border-radius: 3px; background: var(--flow-accent); pointer-events: none; }
-.fl-outline-drop[hidden] { display: none; }
+.fl-outline-drop, .fl-outline-preview { position: absolute; z-index: 5; height: 3px; margin-top: -1.5px; border-radius: 3px; background: ${token('drop-line')}; pointer-events: none; }
+/* Where a tool in the action center would add its card, while the pointer rests on it. */
+.fl-outline-preview { background: ${token('preview-line')}; }
+.fl-outline-drop[hidden], .fl-outline-preview[hidden] { display: none; }
 .fl-outline-ghost {
   position: absolute; z-index: 6; left: 1em; right: 1em; display: flex; align-items: center; gap: 0.5em; padding: 0.4em 0.75em; overflow: hidden;
   background: var(--flow-paper); color: var(--flow-ink);
