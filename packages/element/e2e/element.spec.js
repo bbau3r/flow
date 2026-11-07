@@ -1791,6 +1791,57 @@ test.describe('outline tab', () => {
     await expect(selectedCards(page)).toHaveClass(/fl-outline-synopsis/);
   });
 
+  test('Act with a card inside an act selected splits the act there', async ({ page }) => {
+    await openOutline(page, '# X\n\n## A\n\n## B\n\n## C');
+    await fields(page).nth(2).click();
+    await tool(page, 'act').click();
+    await page.keyboard.type('Y');
+    expect(await value(page)).toBe('# X\n\n## A\n\n# Y\n\n## B\n\n## C');
+
+    // A synopsis at the top of an act goes with the new one too.
+    await setValue(page, '# X\n= s\n\n## A');
+    await page.locator('flow-script .fl-outline-synopsis .fl-outline-field').click();
+    await tool(page, 'act').click();
+    await page.keyboard.type('Y');
+    expect(await value(page)).toBe('# X\n\n# Y\n= s\n\n## A');
+
+    // An act selected at the top level still gets the new one after it.
+    await fields(page).first().click();
+    await tool(page, 'act').click();
+    await page.keyboard.type('Z');
+    expect(await value(page)).toBe('# X\n\n# Z\n\n# Y\n= s\n\n## A');
+  });
+
+  test('Sequence with a card inside a sequence selected splits the sequence there', async ({ page }) => {
+    await openOutline(page, '# X\n\n## A\n\nINT. ONE - DAY\n\nINT. TWO - DAY');
+    await block(page, 'INT. TWO').locator('.fl-outline-block-text').click();
+    await tool(page, 'sequence').click();
+    await page.keyboard.type('B');
+    expect(await value(page)).toBe('# X\n\n## A\n\nINT. ONE - DAY\n\n## B\n\nINT. TWO - DAY');
+
+    // A scene straight under an act isn't inside a sequence, so the sequence goes below it.
+    await setValue(page, '# X\n\nINT. ONE - DAY\n\nINT. TWO - DAY');
+    await block(page, 'INT. ONE').locator('.fl-outline-block-text').click();
+    await tool(page, 'sequence').click();
+    await page.keyboard.type('B');
+    expect(await value(page)).toBe('# X\n\nINT. ONE - DAY\n\n## B\n\nINT. TWO - DAY');
+  });
+
+  test('a tap that wanders a little is still a tap on a touch screen', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 760 }, hasTouch: true, baseURL: 'http://localhost:4178' });
+    const page = await context.newPage();
+    await openOutline(page, '# A');
+    const box = await tool(page, 'act').boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + 5, y: y + 6 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect.poll(() => value(page)).toBe('# A\n\n#');
+    await context.close();
+  });
+
   test('pressing between the cards, or Escape, selects nothing', async ({ page }) => {
     await openOutline(page, '# A\n\n# B');
     await fields(page).first().click();
