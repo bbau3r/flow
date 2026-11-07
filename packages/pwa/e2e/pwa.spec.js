@@ -646,7 +646,7 @@ test('a theme saved by an older version still loads', async ({ page }) => {
 });
 
 test.describe('editor bars', () => {
-  test('on one row, everything runs document, tabs, formatting, then export', async ({ page }) => {
+  test('on one row, everything runs document, tabs, formatting, export, then settings', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 700 });
     await newScript(page);
     const box = (locator) => locator.boundingBox();
@@ -656,10 +656,12 @@ test.describe('editor bars', () => {
     const exportPill = await box(page.locator('flow-script .fl-export'));
     expect(doc.x + doc.width).toBeLessThanOrEqual(tabs.x);
     expect(tabs.x + tabs.width).toBeLessThanOrEqual(format.x);
+    const settings = await box(page.locator('flow-script .fl-settings'));
     expect(format.x + format.width).toBeLessThanOrEqual(exportPill.x);
-    expect(exportPill.x + exportPill.width).toBeCloseTo(1268, 0);
+    expect(exportPill.x + exportPill.width).toBeLessThanOrEqual(settings.x);
+    expect(settings.x + settings.width).toBeCloseTo(1268, 0);
     const middle = doc.y + doc.height / 2;
-    for (const other of [tabs, format, exportPill]) expect(Math.abs(other.y + other.height / 2 - middle)).toBeLessThan(2);
+    for (const other of [tabs, format, exportPill, settings]) expect(Math.abs(other.y + other.height / 2 - middle)).toBeLessThan(2);
   });
 
   test('a very long title gives way before the row breaks', async ({ page }) => {

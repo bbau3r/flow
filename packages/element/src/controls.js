@@ -37,6 +37,8 @@ const ICONS = {
   zoom: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M11 8v6"/><path d="M8 11h6"/>',
   'page-jump': '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 15h7"/><path d="m12 12 3 3-3 3"/>',
   'chevron-right': '<path d="m9 6 6 6-6 6"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
   'page-break': '<path d="M6 8V4a1 1 0 0 1 1-1h7l4 4v1"/><path d="M6 16v4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-4"/><path d="M3 12h2"/><path d="M8 12h2"/><path d="M14 12h2"/><path d="M19 12h2"/>',
 };
 
@@ -277,17 +279,18 @@ export function tabs({ label, attrs, onSelect }, items) {
 /**
  * Actions, as a pill of icon buttons or, when space runs short, a vertical ... menu with
  * their names. Groups are lists of { label, title, icon, attrs, onClick }, and are kept apart
- * in both forms.
+ * in both forms. `menuGroups` join the menu only, for controls that have a pill of their own
+ * while there's room.
  */
-export function actionPill({ label, cls, attrs }, groups) {
+export function actionPill({ label, cls, attrs, menuGroups = [] }, groups) {
   const wide = pill({ cls, label }, ...groups.flatMap((group, i) => [
     ...(i ? [pillSep()] : []),
     ...group.map((action) => button({ ...action, iconOnly: true })),
   ]));
-  const actions = new Map(groups.flat().map((action) => [action.label, action]));
+  const actions = new Map([...groups, ...menuGroups].flat().map((action) => [action.label, action]));
   const menu = new Menu({
     caret: false,
-    sections: groups.map((group) => ({ plain: true, items: group.map(({ label: name, title, icon: iconName }) => ({ value: name, label: name, title, icon: iconName })) })),
+    sections: [...groups, ...menuGroups].map((group) => ({ plain: true, items: group.map(({ label: name, title, icon: iconName }) => ({ value: name, label: name, title, icon: iconName })) })),
     trigger: () => ({ label, content: [icon('more')] }),
     onSelect: (name) => actions.get(name).onClick(),
   });

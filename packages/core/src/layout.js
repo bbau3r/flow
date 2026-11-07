@@ -3,10 +3,9 @@
 // all three agree. Units are monospace columns (0.1in) and rows (1/6in).
 // Metrics follow afterwriting's print profiles.
 
-export const PROFILES = {
-  letter: { paper: 'letter', widthIn: 8.5, heightIn: 11, linesPerPage: 55, actionWidth: 61 },
-  a4: { paper: 'a4', widthIn: 8.27, heightIn: 11.7, linesPerPage: 57, actionWidth: 58 },
-};
+import { pageProfile, resolvePaper } from './settings.js';
+
+export { PROFILES } from './settings.js';
 export const COL = { action: 15, parenthetical: 30, character: 35, dialogue: 25 };
 export const WIDTH = { character: 33, parenthetical: 26, dialogue: 36 };
 
@@ -106,7 +105,7 @@ export function titlePositions(parsed, options = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const positions = new Map();
   if (!opts.titlePage) return positions;
-  for (const row of titleRows(parsed, PROFILES[opts.paper] ?? PROFILES.letter, { placeEmpty: true }) ?? []) {
+  for (const row of titleRows(parsed, pageProfile(resolvePaper(parsed, opts)), { placeEmpty: true }) ?? []) {
     if (!positions.has(row.line)) positions.set(row.line, row.y);
   }
   return positions;
@@ -362,7 +361,7 @@ function pageAnchor(lines, firstPrinted) {
 
 export function layout(parsed, options = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
-  const profile = PROFILES[opts.paper] ?? PROFILES.letter;
+  const profile = pageProfile(resolvePaper(parsed, opts));
   const pages = [];
   const title = opts.titlePage ? titleRows(parsed, profile) : null;
   if (title) pages.push({ kind: 'title', number: null, rows: title });

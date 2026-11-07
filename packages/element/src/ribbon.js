@@ -1,4 +1,4 @@
-// What sits above the script: the document, tabs and export controls, which an app fills
+// What sits above the script: the document, tabs, export and settings controls, which an app fills
 // through named slots, and the action center, which holds the current tab's commands, such as
 // the formatting controls that follow the line the cursor is on. They share a row when there's room. All of it goes inside the scrolling area, so that the
 // script can pass beneath it.
@@ -64,15 +64,24 @@ const cell = (className, ...children) => {
 
 function createTopBar(actions) {
   const pdf = { label: 'PDF', title: 'Export a PDF', icon: 'pdf', onClick: () => actions.openExport() };
-  const exportHolder = cell('fl-topbar-end fl-export-holder');
+  const openSettings = () => actions.openSettings();
+  // In the ... menu, beside Export's actions, it needs no more than its name.
+  const settingsAction = { label: 'Settings', title: 'Project settings', icon: 'settings', onClick: openSettings };
+  const exportHolder = cell('fl-export-holder');
+  // Once Export is a ... menu, settings go in it too.
   const setExportActions = (appActions) => {
-    exportHolder.replaceChildren(actionPill({ label: 'Export', cls: 'fl-export' }, appActions.length ? [appActions, [pdf]] : [[pdf]]));
+    exportHolder.replaceChildren(actionPill(
+      { label: 'Export', cls: 'fl-export', menuGroups: [[settingsAction]] },
+      appActions.length ? [appActions, [pdf]] : [[pdf]],
+    ));
   };
   setExportActions([]);
+  const settings = cell('fl-wide-only', pill({ label: 'Settings', cls: 'fl-settings' }, button({ label: 'Project settings', icon: 'settings', iconOnly: true, onClick: openSettings })));
+  const end = cell('fl-topbar-end', exportHolder, settings);
   const bar = document.createElement('div');
   bar.className = 'fl-topbar';
-  bar.append(cell('fl-topbar-start', slot('document'), cell('fl-topbar-tabs', slot('tabs'))), exportHolder);
-  return { bar, exportHolder, setExportActions };
+  bar.append(cell('fl-topbar-start', slot('document'), cell('fl-topbar-tabs', slot('tabs'))), end);
+  return { bar, end, setExportActions };
 }
 
 export function createRibbon(actions) {
@@ -147,7 +156,7 @@ export function createRibbon(actions) {
   const root = document.createElement('div');
   root.className = 'fl-chrome';
   const topBar = createTopBar(actions);
-  topBar.bar.insertBefore(center.root, topBar.exportHolder);
+  topBar.bar.insertBefore(center.root, topBar.end);
   root.append(topBar.bar);
 
   // The bundled font can replace a fallback after the badges were first measured.

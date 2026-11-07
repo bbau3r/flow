@@ -97,15 +97,30 @@ const isCommentTail = (line, index) => line.commentOnly && line.comments.every((
 // the blank line that separates them from the script takes up no room.
 function coverInfo(parsed, options) {
   const positions = titlePositions(parsed, options);
-  if (!positions.size) return { positions, last: -1, separator: -1 };
+  const hidden = hiddenLines(parsed);
+  if (!positions.size) return { positions, hidden, last: -1, separator: -1 };
   const last = Math.max(...parsed.titlePage.flatMap((entry) => entry.lines));
-  return { positions, last, separator: parsed.lines[last + 1]?.type === 'blank' ? last + 1 : -1 };
+  return { positions, hidden, last, separator: parsed.lines[last + 1]?.type === 'blank' ? last + 1 : -1 };
+}
+
+// The script's settings boneyard is out of sight but in Fountain view, where the file shows as
+// it is, as long as it has its lines to itself. Opening the script, it's followed by a blank
+// line that's hidden too, unless that's the last line and so the only place left to type.
+function hiddenLines(parsed) {
+  const block = parsed.settingsBlock;
+  if (!block?.whole) return new Set();
+  const { lineStart, lineEnd } = block.comment;
+  const hidden = new Set(Array.from({ length: lineEnd - lineStart + 1 }, (_, i) => lineStart + i));
+  const after = lineEnd + 1;
+  const opens = parsed.lines.slice(0, lineStart).every((l) => l.type === 'blank');
+  if (opens && parsed.lines[after]?.type === 'blank' && after < parsed.lines.length - 1) hidden.add(after);
+  return hidden;
 }
 
 // Everything a line's decorations depend on, so unchanged lines can be left alone.
 function lineSignature(line, index, cover) {
   const openingComments = line.comments.filter((c) => c.comment.lineStart === index).map((c) => c.comment.text);
-  return [line.raw, line.masked, lineClasses(line), isCommentTail(line, index), cover.positions.get(index), cover.separator === index, ...openingComments].join('\u0001');
+  return [line.raw, line.masked, lineClasses(line), isCommentTail(line, index), cover.positions.get(index), cover.separator === index, cover.hidden.has(index), ...openingComments].join('\u0001');
 }
 
 function openCommentAt(view, pos) {
@@ -119,7 +134,7 @@ function lineDecorations(node, pos, line, index, cover) {
   const decorations = [];
   const at = (offset) => pos + 1 + offset;
   const row = cover.positions.get(index);
-  const classes = [lineClasses(line), isCommentTail(line, index) && 'fl-comment-hidden', row !== undefined && 'fl-title-placed', cover.separator === index && 'fl-title-separator'];
+  const classes = [lineClasses(line), isCommentTail(line, index) && 'fl-comment-hidden', row !== undefined && 'fl-title-placed', cover.separator === index && 'fl-title-separator', cover.hidden.has(index) && 'fl-setting'];
   decorations.push(Decoration.node(pos, pos + node.nodeSize, {
     class: classes.filter(Boolean).join(' '),
     ...(row !== undefined ? { style: `--fl-title-y: ${row}` } : {}),
@@ -160,7 +175,7 @@ function computeScript(doc, options) {
     decorations.push(...lineDecorations(node, pos, parsed.lines[index], index, cover));
     index++;
   });
-  return { parsed, signatures, decorations: DecorationSet.create(doc, decorations) };
+  return { parsed, hidden: cover.hidden, signatures, decorations: DecorationSet.create(doc, decorations) };
 }
 
 // The lines a transaction touched, as an index range in the new document.
@@ -208,7 +223,7 @@ function updateScript(tr, prev, options) {
   });
   if (remove.length) decorations = decorations.remove(remove);
   if (add.length) decorations = decorations.add(tr.doc, add);
-  return { parsed, signatures, decorations };
+  return { parsed, hidden: cover.hidden, signatures, decorations };
 }
 
 function selectedLines(state) {
@@ -308,6 +323,30 @@ const FountainDecorations = Extension.create({
           },
         },
       }),
+      // Hidden lines can't hold the cursor, which goes on to the next line it was heading for.
+      new Plugin({
+        appendTransaction: (transactions, old, state) => {
+          if (showSource() || !transactions.some((tr) => tr.selectionSet || tr.docChanged)) return null;
+          const { selection, doc } = state;
+          const { hidden } = scriptKey.getState(state);
+          const index = selection.$from.index(0);
+          if (!selection.empty || !hidden.has(index)) return null;
+          const visible = (i) => i >= 0 && i < doc.childCount && !hidden.has(i);
+          const inside = (i) => i >= 0 && i < doc.childCount;
+          const step = index < old.selection.$from.index(0) ? -1 : 1;
+          let target = index;
+          while (inside(target) && !visible(target)) target += step;
+          let down = step > 0;
+          if (!visible(target)) {
+            for (target = index; inside(target) && !visible(target); target -= step);
+            down = !down;
+          }
+          if (!visible(target)) return null;
+          let pos = 0;
+          for (let i = 0; i < target; i++) pos += doc.child(i).nodeSize;
+          return state.tr.setSelection(TextSelection.create(doc, down ? pos + 1 : pos + doc.child(target).nodeSize - 1));
+        },
+      }),
       // A title page value's indent is out of sight, so the cursor doesn't stop inside it.
       new Plugin({
         appendTransaction: (transactions, _old, state) => {
@@ -359,7 +398,8 @@ export class FlowEditor {
       priority: 1000, // ahead of the default Enter
       addKeyboardShortcuts: () => ({
         Enter: () => self.titleEnter(),
-        Backspace: () => self.titleBackspace(),
+        Backspace: () => self.titleBackspace() || self.keepHidden(-1),
+        Delete: () => self.keepHidden(1),
         ArrowLeft: () => self.titleLeft(),
         ArrowUp: () => self.titleVertical(-1),
         ArrowDown: () => self.titleVertical(1),
@@ -407,6 +447,11 @@ export class FlowEditor {
 
   get value() {
     return docLines(this.editor.state.doc).join('\n');
+  }
+
+  /** The script as last parsed, which is up to date with every edit. */
+  get parsed() {
+    return scriptKey.getState(this.editor.state).parsed;
   }
 
   set value(text) {
@@ -524,6 +569,16 @@ export class FlowEditor {
     return true;
   }
 
+  // Joining a line with a hidden one would pull the settings into sight, or the script into
+  // the title page, so nothing happens at the edge of one.
+  keepHidden(direction) {
+    const { selection } = this.editor.state;
+    if (this.showSource() || !selection.empty) return false;
+    const { $from } = selection;
+    const atEdge = direction < 0 ? $from.parentOffset === 0 : $from.parentOffset === $from.parent.content.size;
+    return atEdge && scriptKey.getState(this.editor.state).hidden.has($from.index(0) + direction);
+  }
+
   // Left from where a value starts would only land in its hidden indent.
   titleLeft() {
     const current = this.titleCursor();
@@ -539,12 +594,17 @@ export class FlowEditor {
     const current = this.titleCursor();
     if (!current || !this.view.endOfTextblock(direction < 0 ? 'up' : 'down')) return false;
     const { index, line, offset } = current;
-    const target = scriptKey.getState(this.editor.state).parsed.lines[index + direction];
-    if (target?.type !== 'title') return false;
+    const { parsed, hidden } = scriptKey.getState(this.editor.state);
+    let next = index + direction;
+    while (hidden.has(next)) next += direction;
+    const target = parsed.lines[next];
+    // With only hidden lines beyond, the cursor stays where it is.
+    if (!target) return next !== index + direction;
+    if (target.type !== 'title') return false;
     const column = Math.max(0, offset - line.contentStart);
     const end = Math.max(target.contentStart, target.contentEnd);
     const { state } = this.editor;
-    const pos = this.lineStart(index + direction) + 1 + Math.min(target.contentStart + column, end);
+    const pos = this.lineStart(next) + 1 + Math.min(target.contentStart + column, end);
     this.view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, pos)).scrollIntoView());
     return true;
   }

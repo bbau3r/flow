@@ -3,7 +3,7 @@
 // Storage-agnostic on purpose: it takes text in and emits text out, so the Google
 // Drive plugin and the PWA can each supply their own persistence around it.
 
-import { parse, layout, scriptTitle, DEFAULT_OPTIONS, PROFILES } from '@flow/core';
+import { parse, layout, scriptTitle, DEFAULT_OPTIONS, formatDimensions, pageProfile, parseDimensions, resolvePaper, writeSetting } from '@flow/core';
 import { STYLES } from './styles.js';
 import { getTheme } from './themes.js';
 import { renderReadonly } from './readonly.js';
@@ -11,6 +11,7 @@ import { createRibbon } from './ribbon.js';
 import { createStatusbar, SCALE_MAX, SCALE_MIN, SCALE_STEP } from './statusbar.js';
 import { createOutline } from './outline.js';
 import { openExportDialog } from './export-dialog.js';
+import { openSettingsDialog } from './settings-dialog.js';
 
 let fontsRequested = false;
 
@@ -27,6 +28,11 @@ export class FlowScript extends HTMLElement {
   #value = '';
   #valueSet = false;
   #options = { ...DEFAULT_OPTIONS };
+  // The page size the export dialog last chose for PDFs, or null for the script's own.
+  #exportPaper = null;
+  // The size the settings dialog is trying out, shown until it saves or closes.
+  #previewPaper = null;
+  #shownPaper = '';
   #editor = null;
   #ribbon = null;
   #statusbar = null;
@@ -103,7 +109,7 @@ export class FlowScript extends HTMLElement {
     if (name === 'theme') this.applyTheme();
     if (name === 'scale') this.#applyScale();
     if (name === 'paper') {
-      this.#options.paper = PROFILES[newValue] ? newValue : 'letter';
+      this.#options.paper = parseDimensions(newValue) ?? 'letter';
       this.#applyPaper();
     }
     if (name === 'read-view') {
@@ -136,9 +142,13 @@ export class FlowScript extends HTMLElement {
     this.#value = parse(text).source;
     if (this.#editor) {
       this.#editor.value = this.#value;
+      this.#applyPaper();
       this.#showRead();
       this.#showOutline();
-    } else if (this.#started && !this.#loading) this.#render();
+    } else if (this.#started) {
+      this.#applyPaper();
+      if (!this.#loading) this.#render();
+    }
   }
 
   get readonly() {
@@ -223,7 +233,10 @@ export class FlowScript extends HTMLElement {
     return pages.filter((p) => p.kind === 'script').length;
   }
 
-  /** Print options: see DEFAULT_OPTIONS in @flow/core. Applies to page view and PDF. */
+  /**
+   * Print options: see DEFAULT_OPTIONS in @flow/core. Applies to page view and PDF. `paper`
+   * is the size for a script whose page settings name none.
+   */
   get printOptions() {
     return { ...this.#options };
   }
@@ -231,7 +244,10 @@ export class FlowScript extends HTMLElement {
   set printOptions(options) {
     this.#options = { ...this.#options, ...options };
     if (options.paper) {
-      if (this.getAttribute('paper') !== options.paper) this.setAttribute('paper', options.paper);
+      const size = parseDimensions(options.paper) ?? 'letter';
+      this.#options.paper = size;
+      const attr = typeof size === 'string' ? size : formatDimensions(size);
+      if (this.getAttribute('paper') !== attr) this.setAttribute('paper', attr);
       this.#applyPaper();
     }
     if (this.#editor) {
@@ -260,7 +276,8 @@ export class FlowScript extends HTMLElement {
 
   /**
    * Builds the PDF. Resolves to { blob, bytes, pageCount, unsupported }, where
-   * `unsupported` lists characters that couldn't be drawn and print as "?".
+   * `unsupported` lists characters that couldn't be drawn and print as "?". The page size is
+   * the script's own unless `paperOverride` names another.
    */
   async exportPdf(options = {}) {
     const [{ renderPdf }, { pdfFonts }] = await Promise.all([import('@flow/core/pdf'), import('./pdf-fonts.js')]);
@@ -295,10 +312,30 @@ export class FlowScript extends HTMLElement {
 
   // --- Internals ---
 
+  // The size pages show at: the script's own, or the default for a script that names none.
+  #scriptPaper() {
+    return resolvePaper(this.#editor ? this.#editor.parsed : parse(this.#value), this.#layoutOptions());
+  }
+
+  #layoutOptions() {
+    return this.#previewPaper ? { ...this.#options, paperOverride: this.#previewPaper } : this.#options;
+  }
+
+  #preview(size) {
+    this.#previewPaper = size;
+    this.#applyPaper();
+    if (!this.#editor) return;
+    this.#editor.relayout();
+    this.#showRead();
+    this.#trackPageSoon();
+  }
+
   #applyPaper() {
-    const attr = this.getAttribute('paper');
-    if (PROFILES[attr]) this.#options.paper = attr;
-    const profile = PROFILES[this.#options.paper] ?? PROFILES.letter;
+    const attr = parseDimensions(this.getAttribute('paper'));
+    if (attr) this.#options.paper = attr;
+    const paper = this.#scriptPaper();
+    this.#shownPaper = JSON.stringify(paper);
+    const profile = pageProfile(paper);
     this.style.setProperty('--fl-page-w', `${profile.widthIn * 6}em`);
     this.style.setProperty('--fl-page-h', `${profile.heightIn * 6}em`);
     this.style.setProperty('--fl-action-w', `${profile.actionWidth * 0.6}em`);
@@ -420,7 +457,7 @@ export class FlowScript extends HTMLElement {
     this.#read?.remove();
     this.#read = null;
     if (!reading) return;
-    this.#read = renderReadonly(this.#editor.value, { view: this.readView, options: this.#options });
+    this.#read = renderReadonly(this.#editor.value, { view: this.readView, options: this.#layoutOptions() });
     this.#read.classList.add('fl-read');
     this.#statusbar.root.before(this.#read);
     this.#trackPage();
@@ -532,10 +569,15 @@ export class FlowScript extends HTMLElement {
     this.#read = null;
     this.#editor = new FlowEditor(this.#surface, {
       value: this.#value,
-      getLayoutOptions: () => this.#options,
+      getLayoutOptions: () => this.#layoutOptions(),
       showSource: () => this.view === 'source',
       onChange: (value, outline) => {
         this.#value = value;
+        // Page settings are part of the text, so an edit or an undo can change the page size.
+        if (JSON.stringify(this.#scriptPaper()) !== this.#shownPaper) {
+          this.#applyPaper();
+          this.#showRead();
+        }
         this.#trackPageSoon();
         if (this.workspace === 'outline') this.#outline?.render(value);
         this.dispatchEvent(new CustomEvent('flow-change', { detail: { value, outline } }));
@@ -611,17 +653,36 @@ export class FlowScript extends HTMLElement {
       openExport: () => openExportDialog(this.shadowRoot, {
         getOptions: () => this.#options,
         setOption: (key, value) => { this.printOptions = { [key]: value }; },
+        getScriptPaper: () => this.#scriptPaper(),
+        getExportPaper: () => this.#exportPaper,
+        setExportPaper: (size) => { this.#exportPaper = size; },
         exportPdf: () => this.#exportFromDialog(),
         onClose: () => this.focus(),
       }),
+      openSettings: () => openSettingsDialog(this.shadowRoot, {
+        getDimensions: () => this.#scriptPaper(),
+        setDimensions: (size) => this.#setDimensions(size),
+        preview: (size) => this.#preview(size),
+        onClose: () => this.focus(),
+      }),
     });
+  }
+
+  // Writes the page size into the script's settings. A script that has none and keeps the size
+  // it already shows at stays as it is.
+  #setDimensions(size) {
+    this.#preview(null);
+    if (!this.#editor) return;
+    const { parsed } = this.#editor;
+    if (parsed.settings.dimensions === undefined && JSON.stringify(size) === JSON.stringify(this.#scriptPaper())) return;
+    this.#editor.commitFromOutline(writeSetting(parsed, 'Dimensions', formatDimensions(size)));
   }
 
   async #exportFromDialog() {
     const setStatus = (text) => this.#statusbar?.setStatus(text);
     setStatus('Building PDF…');
     try {
-      const { pageCount, unsupported } = await this.downloadPdf();
+      const { pageCount, unsupported } = await this.downloadPdf(this.#exportPaper ? { paperOverride: this.#exportPaper } : {});
       setStatus(unsupported.length
         ? `Exported, but "${unsupported.slice(0, 8).join('')}" can't be drawn and show as "?"`
         : `Exported ${pageCount} page${pageCount === 1 ? '' : 's'}`);

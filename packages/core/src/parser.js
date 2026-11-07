@@ -4,6 +4,7 @@
 // engine. Nothing here mutates or re-serializes the source.
 
 import { parseInline } from './inline.js';
+import { findSettings, readSettings } from './settings.js';
 
 export const SCENE_RE = /^(?:int\.?\/ext|i\/e|int|ext|est)[. ]/i;
 const TITLE_KEYS = new Set(['title', 'credit', 'author', 'authors', 'source', 'draft date', 'date', 'contact', 'copyright', 'notes', 'revision']);
@@ -278,7 +279,8 @@ export function parse(input) {
     if (l.type === 'character') l.name = l.text.replace(/\s*\(.*?\)/g, '').trim();
   }
 
-  return { source, lines, comments, titlePage, outline: buildOutline(lines) };
+  const settingsBlock = findSettings(comments, source);
+  return { source, lines, comments, titlePage, settingsBlock, settings: readSettings(settingsBlock), outline: buildOutline(lines) };
 }
 
 /** The script's title on one line, with a title on several lines joined by the separator. */
