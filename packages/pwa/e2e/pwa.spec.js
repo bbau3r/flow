@@ -602,7 +602,7 @@ test('the theme menu headings are bold on a contrasting background', async ({ pa
   for (const heading of await headings.all()) {
     await expect(heading).toHaveCSS('font-weight', '700');
     await expect(heading).toHaveCSS('background-color', 'rgb(151, 89, 44)');
-    await expect(heading).toHaveCSS('color', 'rgb(250, 242, 232)');
+    await expect(heading).toHaveCSS('color', 'rgb(252, 246, 238)');
   }
 });
 

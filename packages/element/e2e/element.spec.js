@@ -352,7 +352,7 @@ test('a pressed dual has a primary icon on the secondary color', async ({ page }
   const accent = 'rgb(151, 89, 44)';
   const badge = dual.locator('.fl-icon');
   await expect(badge).toHaveCSS('background-color', accent);
-  await expect(badge).toHaveCSS('color', 'rgb(250, 242, 232)');
+  await expect(badge).toHaveCSS('color', 'rgb(252, 246, 238)');
   const background = await dual.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(background).not.toBe(accent);
   expect(background).not.toBe('rgba(0, 0, 0, 0)');
@@ -1410,7 +1410,7 @@ test('properties set before the element is defined are honored', async ({ page }
 test('themes: presets, CSS variables and registered themes all apply', async ({ page }) => {
   await open(page);
   const paper = () => page.locator('flow-script .fl-sheet');
-  await expect(paper()).toHaveCSS('background-color', 'rgb(250, 242, 232)');
+  await expect(paper()).toHaveCSS('background-color', 'rgb(252, 246, 238)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'sand-dark'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(42, 39, 36)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'sea-light'));
@@ -1418,7 +1418,7 @@ test('themes: presets, CSS variables and registered themes all apply', async ({ 
   await host(page).evaluate((el) => el.setAttribute('theme', 'sea-dark'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(34, 40, 43)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'romance-light'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(247, 241, 232)');
+  await expect(paper()).toHaveCSS('background-color', 'rgb(250, 246, 239)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'romance-dark'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(43, 34, 38)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'forest-light'));
@@ -1440,7 +1440,7 @@ test('themes: presets, CSS variables and registered themes all apply', async ({ 
   await host(page).evaluate((el) => el.setAttribute('theme', 'sepia'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(244, 236, 216)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'sand-light'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(250, 242, 232)');
+  await expect(paper()).toHaveCSS('background-color', 'rgb(252, 246, 238)');
   await host(page).evaluate((el) => el.style.setProperty('--flow-paper', 'rgb(1, 2, 3)'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(1, 2, 3)');
 });
