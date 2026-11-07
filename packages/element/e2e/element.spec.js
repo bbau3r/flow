@@ -336,6 +336,18 @@ test('Ctrl with the wheel steps the scale, and a trackpad pinch follows the fing
   expect(await page.evaluate(() => window.visualViewport.scale)).toBe(1);
 });
 
+test('the chosen item in a dropdown sits on a faint wash of the accent', async ({ page }) => {
+  await open(page);
+  await page.mouse.move(0, 0);
+  await viewButton(page).click();
+  const chosen = statusbar(page).getByRole('menuitemradio', { name: 'Paged', exact: true });
+  const other = statusbar(page).getByRole('menuitemradio', { name: 'Seamless', exact: true });
+  await expect(chosen).toHaveAttribute('aria-checked', 'true');
+  await expect(other).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const wash = await chosen.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(Number(wash.match(/[\d.]+/g)[3])).toBeCloseTo(0.12, 2);
+});
+
 test('pinching scales the script, not the page, and the app hears the new scale', async ({ browser }) => {
   const context = await browser.newContext({ hasTouch: true, viewport: { width: 800, height: 900 } });
   const page = await context.newPage();
