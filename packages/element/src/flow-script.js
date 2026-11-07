@@ -39,6 +39,8 @@ export class FlowScript extends HTMLElement {
   #loading = null;
   #themeProps = [];
   #started = false;
+  #pageFrame = 0;
+  #pageTimer = 0;
 
   constructor() {
     super();
@@ -52,8 +54,10 @@ export class FlowScript extends HTMLElement {
     // fit a phone slightly too wide, so measure the room that's really there.
     new ResizeObserver(() => {
       this.style.setProperty('--fl-area-w', `${this.#scroll.clientWidth}px`);
+      this.#trackPage();
     }).observe(this.#scroll);
     this.#listenForPinch();
+    this.#scroll.addEventListener('scroll', () => this.#trackPage(), { passive: true });
   }
 
   connectedCallback() {
@@ -379,6 +383,7 @@ export class FlowScript extends HTMLElement {
     const { scale } = this;
     this.style.setProperty('--fl-scale', scale / 100);
     this.#statusbar?.setScale(scale);
+    this.#trackPage();
   }
 
   #render() {
@@ -389,6 +394,7 @@ export class FlowScript extends HTMLElement {
   #syncBars() {
     this.#ribbon?.setWorkspace(this.workspace);
     this.#statusbar?.setView(this.view, this.workspace, this.readView);
+    this.#trackPageSoon();
   }
 
   #scriptHidden() {
@@ -417,6 +423,53 @@ export class FlowScript extends HTMLElement {
     this.#read = renderReadonly(this.#editor.value, { view: this.readView, options: this.#options });
     this.#read.classList.add('fl-read');
     this.#statusbar.root.before(this.#read);
+    this.#trackPage();
+  }
+
+  // Where each numbered page starts on screen, in order, in Read's pages or the Write tab's
+  // Paged view. Neither counts the title page. While writing, a page starts below the gap
+  // before it, and page 1 at the top of the sheet unless a title page comes first.
+  #pageStarts() {
+    if (this.workspace === 'read') {
+      if (!this.#read?.classList.contains('fl-pages')) return [];
+      return [...this.#read.querySelectorAll('.fl-page')]
+        .filter((node) => node.dataset.page !== 'title')
+        .map((node) => node.getBoundingClientRect().top);
+    }
+    if (this.workspace !== 'write' || this.view !== 'page' || !this.#surface) return [];
+    const gaps = [...this.#surface.querySelectorAll('.fl-page-gap[data-page]')];
+    const starts = gaps.map((gap) => gap.getBoundingClientRect().bottom);
+    if (!gaps.some((gap) => gap.dataset.page === '1')) starts.unshift(this.#surface.getBoundingClientRect().top);
+    return starts;
+  }
+
+  // The page under the top of the room between the bars is the one being read.
+  #trackPage() {
+    if (this.#pageFrame || !this.#statusbar) return;
+    this.#pageFrame = requestAnimationFrame(() => {
+      this.#pageFrame = 0;
+      const starts = this.#pageStarts();
+      if (!starts.length) return;
+      const line = this.#scroll.getBoundingClientRect().top + (this.#ribbon?.root.offsetHeight ?? 0) + 24;
+      let current = 1;
+      starts.forEach((top, i) => { if (top <= line) current = i + 1; });
+      this.#statusbar.setPage(current, starts.length);
+    });
+  }
+
+  // The Write tab's page gaps follow a moment after the text or view settles.
+  #trackPageSoon() {
+    this.#trackPage();
+    clearTimeout(this.#pageTimer);
+    this.#pageTimer = setTimeout(() => this.#trackPage(), 300);
+  }
+
+  #goToPage(number) {
+    const top = this.#pageStarts()[number - 1];
+    if (top === undefined) return;
+    const area = this.#scroll.getBoundingClientRect().top + (this.#ribbon?.root.offsetHeight ?? 0);
+    this.#scroll.scrollTop += top - area - 12;
+    this.#trackPage();
   }
 
   // The outline sits there too, and its edits go through the editor to share its history.
@@ -483,6 +536,7 @@ export class FlowScript extends HTMLElement {
       showSource: () => this.view === 'source',
       onChange: (value, outline) => {
         this.#value = value;
+        this.#trackPageSoon();
         if (this.workspace === 'outline') this.#outline?.render(value);
         this.dispatchEvent(new CustomEvent('flow-change', { detail: { value, outline } }));
       },
@@ -541,6 +595,7 @@ export class FlowScript extends HTMLElement {
       redo: () => this.#editor?.redo({ focus: this.workspace === 'write' }),
       setView: (view) => { this.view = view; },
       setReadView: (view) => { this.readView = view; },
+      goToPage: (number) => this.#goToPage(number),
       setScale: (percent) => this.#chooseScale(percent),
     });
   }

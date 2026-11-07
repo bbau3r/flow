@@ -65,8 +65,8 @@ export function themePicker({ onChange, up } = {}) {
     up,
     cls: 'theme',
     sections: [
-      { label: 'Theme', items: Object.entries(PALETTES).map(([name, { label }]) => ({ value: paletteValue(name), label })) },
-      { label: 'Mode', items: MODES.map(([name, label]) => ({ value: modeValue(name), label })) },
+      { label: 'Theme', icon: 'palette', items: Object.entries(PALETTES).map(([name, { label }]) => ({ value: paletteValue(name), label })) },
+      { label: 'Mode', icon: 'contrast', items: MODES.map(([name, label]) => ({ value: modeValue(name), label })) },
     ],
     isChecked: (value) => value === paletteValue(theme.palette) || value === modeValue(theme.mode),
     trigger: () => {

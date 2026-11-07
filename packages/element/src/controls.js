@@ -32,6 +32,11 @@ const ICONS = {
   'chevron-left': '<path d="m15 6-6 6 6 6"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   more: '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
+  contrast: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>',
+  scaling: '<path d="M21 3 9 15"/><path d="M12 3H3v18h18v-9"/><path d="M16 3h5v5"/><path d="M14 15H9v-5"/>',
+  zoom: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M11 8v6"/><path d="M8 11h6"/>',
+  'page-jump': '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 15h7"/><path d="m12 12 3 3-3 3"/>',
+  'chevron-right': '<path d="m9 6 6 6-6 6"/>',
   'page-break': '<path d="M6 8V4a1 1 0 0 1 1-1h7l4 4v1"/><path d="M6 16v4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-4"/><path d="M3 12h2"/><path d="M8 12h2"/><path d="M14 12h2"/><path d="M19 12h2"/>',
 };
 
@@ -139,6 +144,77 @@ export function pill({ cls, label, attrs } = {}, ...children) {
   if (label) node.setAttribute('aria-label', label);
   setAttrs(node, attrs);
   return node;
+}
+
+/** A section heading in a dropdown, with an icon before its name when given one. */
+export function menuHeading(label, iconName) {
+  const heading = div('fl-menu-heading');
+  if (iconName) heading.append(icon(iconName));
+  const text = document.createElement('span');
+  text.textContent = label;
+  heading.append(text);
+  return heading;
+}
+
+/**
+ * A pill that folds to a single icon button on narrow screens. Opened, it shows a heading,
+ * then `value` (such as the scale or the page) and `actions` (its buttons) on rows of their
+ * own. On wider screens the value and buttons sit side by side in the pill, as usual.
+ * `align` places the dropdown over its button: 'center' (the default), 'start' or 'end'.
+ * `summary`, when given, shows beside the folded button's icon, such as the current value.
+ */
+export function foldingPill({ label, icon: iconName, title = label, cls, align = 'center', summary, value = [], actions = [] }) {
+  const body = div(
+    'fl-fold-body',
+    menuHeading(label, iconName),
+    div('fl-fold-value', ...value),
+    div('fl-fold-sep', pillSep()),
+    div('fl-fold-actions', ...actions),
+  );
+  const toggle = button({
+    label: `Show ${label.toLowerCase()}`,
+    title,
+    icon: iconName,
+    iconOnly: true,
+    cls: 'fl-fold-toggle',
+    attrs: { 'aria-expanded': 'false' },
+  });
+  if (summary) {
+    summary.classList.add('fl-fold-summary');
+    toggle.append(summary);
+  }
+  const node = pill({ label, cls: `fl-fold${cls ? ` ${cls}` : ''}`, attrs: { 'data-align': align } }, toggle, body);
+
+  // A centered dropdown near the screen's edge moves back onto it.
+  const keepOnScreen = () => {
+    body.style.removeProperty('--fl-fold-shift');
+    const box = body.getBoundingClientRect();
+    const shift = Math.max(0, MENU_MARGIN - box.left) - Math.max(0, box.right - (window.innerWidth - MENU_MARGIN));
+    if (shift) body.style.setProperty('--fl-fold-shift', `${shift}px`);
+  };
+
+  const onDocument = (event) => {
+    if (event.type === 'pointerdown' && !event.composedPath().includes(node)) close();
+    if (event.type === 'keydown' && event.key === 'Escape') {
+      close();
+      toggle.focus();
+    }
+  };
+  const open = () => {
+    node.classList.add('fl-fold-open');
+    toggle.setAttribute('aria-expanded', 'true');
+    keepOnScreen();
+    document.addEventListener('pointerdown', onDocument, true);
+    document.addEventListener('keydown', onDocument, true);
+  };
+  function close() {
+    node.classList.remove('fl-fold-open');
+    toggle.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('pointerdown', onDocument, true);
+    document.removeEventListener('keydown', onDocument, true);
+  }
+  toggle.addEventListener('click', () => (node.classList.contains('fl-fold-open') ? close() : open()));
+  return { root: node, close };
 }
 
 export function pillSep() {
@@ -257,9 +333,7 @@ export class Menu {
     this.popup.hidden = true;
     for (const section of sections) {
       if (section.label) {
-        const heading = div('fl-menu-heading');
-        heading.textContent = section.label;
-        this.popup.append(heading);
+        this.popup.append(menuHeading(section.label, section.icon));
       } else if (this.popup.childElementCount) {
         this.popup.append(div('fl-menu-rule'));
       }
@@ -535,6 +609,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
   background: ${token('menu-heading-bg')}; color: ${token('menu-heading-ink')};
   font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
 }
+.fl-menu-heading:has(> .fl-svg) { display: flex; align-items: center; gap: 6px; }
+.fl-menu-heading > .fl-svg { flex: none; width: 1.15em; height: 1.15em; }
 .fl-menu-item + .fl-menu-heading { margin-top: 5px; }
 .fl-menu-rule { flex: none; height: 1px; margin: 4px 2px; background: ${token('menu-border')}; }
 .fl-menu-item {
@@ -549,6 +625,33 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .fl-menu-item:disabled { opacity: 0.5; cursor: default; }
 .fl-menu-item[aria-checked="true"] { font-weight: 600; background: color-mix(in srgb, var(--flow-accent) 12%, transparent); }
 .fl-menu-item[aria-checked="true"] > .fl-svg:last-child { visibility: visible; }
+
+/* A folding pill shows its controls in place, and on narrow screens folds to its icon, which
+   opens them above it as a small dropdown: a heading, the value, then the buttons. */
+.fl-fold { position: relative; }
+.fl-fold-body, .fl-fold-value, .fl-fold-sep, .fl-fold-actions { display: contents; }
+.fl-fold-body > .fl-menu-heading, .fl-fold-toggle { display: none; }
+@container (max-width: 600px) {
+  .fl-fold-toggle { display: inline-flex; }
+  .fl-fold-sep { display: none; }
+  .fl-fold-body {
+    position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 30;
+    transform: translateX(var(--fl-fold-shift, 0px));
+    display: none; flex-direction: column; align-items: stretch; gap: 6px;
+    min-width: 9rem; padding: 6px;
+    background: ${token('menu-bg')}; color: ${token('menu-ink')};
+    border: 1px solid ${token('menu-border')}; border-radius: ${token('menu-radius')};
+    box-shadow: 0 6px 20px var(--flow-shadow);
+    font-size: 13px; white-space: nowrap;
+  }
+  .fl-fold[data-align="center"] > .fl-fold-body { left: 50%; transform: translateX(calc(-50% + var(--fl-fold-shift, 0px))); }
+  .fl-fold[data-align="end"] > .fl-fold-body { left: auto; right: 0; }
+  .fl-fold-body > .fl-menu-heading { display: flex; }
+  .fl-fold-value, .fl-fold-actions { display: flex; align-items: center; justify-content: center; gap: 4px; }
+  .fl-fold-actions > .fl-btn { flex: 1; --fl-control-size: 30px; }
+  .fl-fold-open > .fl-fold-body { display: flex; }
+  .fl-fold-open > .fl-fold-toggle { background: ${token('button-hover-bg')}; }
+}
 
 /* Space runs short in stages, measured from the bar the control sits in. */
 .fl-responsive, .fl-wide-only { display: contents; }
