@@ -145,7 +145,7 @@ test.describe('new scripts', () => {
     await page.reload();
     await expect(page.locator('flow-script .fl-flow')).toBeVisible();
     const bar = page.locator('flow-script .fl-statusbar');
-    await bar.locator('.fl-menu-trigger').click();
+    await bar.locator('.fl-menu-trigger:visible').click();
     await bar.getByRole('menuitemradio', { name: 'Paged', exact: true }).click();
     await expect(page.locator('flow-script .fl-sheet')).toBeVisible();
   });
@@ -882,7 +882,7 @@ test.describe('editor bars', () => {
     await expect(page.locator('flow-script .fl-outline-field').first()).toHaveValue('Kept');
   });
 
-  test('Read hides the action center, view and history, and only those', async ({ page }) => {
+  test('Read hides the action center, the Write view and history, and only those', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 700 });
     await newScript(page);
     const bar = page.locator('flow-script .fl-statusbar');
@@ -894,7 +894,9 @@ test.describe('editor bars', () => {
     await page.getByRole('tab', { name: 'Read' }).click();
     await expect(ribbon).toBeHidden();
     await expect(tabs).toBeVisible();
-    await expect(bar.locator('.fl-menu-trigger')).toBeHidden();
+    // Read has its own view menu, in place of Write's.
+    await expect(bar.getByRole('button', { name: 'View: Seamless' })).toBeHidden();
+    await expect(bar.getByRole('button', { name: 'View: Paged' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeHidden();
     await expect(page.locator('.doc-pill')).toBeVisible();
     await expect(exportPill).toBeVisible();
