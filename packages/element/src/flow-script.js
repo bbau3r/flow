@@ -30,7 +30,7 @@ export class FlowScript extends HTMLElement {
   #editor = null;
   #ribbon = null;
   #statusbar = null;
-  #preview = null;
+  #read = null;
   #outline = null;
   #exportActions = [];
   #barObserver = null;
@@ -123,7 +123,7 @@ export class FlowScript extends HTMLElement {
     this.#value = parse(text).source;
     if (this.#editor) {
       this.#editor.value = this.#value;
-      this.#showPreview();
+      this.#showRead();
       this.#showOutline();
     } else if (this.#started && !this.#loading) this.#render();
   }
@@ -137,13 +137,13 @@ export class FlowScript extends HTMLElement {
   }
 
   /**
-   * 'page' (standard script pages, the default), 'flow' (continuous, no pages),
-   * 'preview' (the pages as they print, with editing off) or 'source' (the Fountain
-   * text itself, with nothing hidden or formatted).
+   * How the Write tab shows the script: 'flow' (continuous, no pages, the default), 'page'
+   * (standard script pages) or 'source' (the Fountain text itself, with nothing hidden or
+   * formatted). Read-only shows pages unless this is set.
    */
   get view() {
     const view = this.getAttribute('view');
-    return view === 'flow' || view === 'preview' || view === 'source' ? view : 'page';
+    return view === 'page' || view === 'source' ? view : 'flow';
   }
 
   set view(v) {
@@ -151,11 +151,13 @@ export class FlowScript extends HTMLElement {
   }
 
   /**
-   * 'write' (the script itself, the default) or 'outline' (its acts, sequences, scenes and
-   * transitions as cards and blocks, which edit the same text). Takes the place of the view while it's showing.
+   * 'write' (the script itself, the default), 'outline' (its acts, sequences, scenes and
+   * transitions as cards and blocks, which edit the same text) or 'read' (the pages as they
+   * print, with editing off). Outline and Read take the place of the view while they're showing.
    */
   get workspace() {
-    return this.getAttribute('workspace') === 'outline' ? 'outline' : 'write';
+    const workspace = this.getAttribute('workspace');
+    return workspace === 'outline' || workspace === 'read' ? workspace : 'write';
   }
 
   set workspace(w) {
@@ -209,13 +211,13 @@ export class FlowScript extends HTMLElement {
     }
     if (this.#editor) {
       this.#editor.relayout();
-      this.#showPreview();
+      this.#showRead();
     } else if (this.#started && !this.#loading) this.#render();
   }
 
   focus() {
     if (this.workspace === 'outline') this.#outline?.focus();
-    else this.#editor?.focus();
+    else if (this.workspace === 'write') this.#editor?.focus();
   }
 
   scrollToLine(line) {
@@ -289,13 +291,12 @@ export class FlowScript extends HTMLElement {
   }
 
   #syncBars() {
-    const outlining = this.workspace === 'outline';
-    this.#ribbon?.setView(this.view, outlining);
-    this.#statusbar?.setView(this.view, outlining);
+    this.#ribbon?.setWorkspace(this.workspace);
+    this.#statusbar?.setView(this.view, this.workspace);
   }
 
   #scriptHidden() {
-    return this.view === 'preview' || this.workspace === 'outline';
+    return this.workspace !== 'write';
   }
 
   #restyleEditor() {
@@ -304,19 +305,22 @@ export class FlowScript extends HTMLElement {
     this.#surface.hidden = this.#scriptHidden();
     this.#syncBars();
     this.#editor.relayout();
-    this.#showPreview();
+    this.#showRead();
     this.#showOutline();
     if (wasHidden && !this.#surface.hidden) this.#editor.focus();
   }
 
-  // Preview sits beside the hidden editor rather than replacing it, which is what
-  // keeps undo history and the cursor when returning to edit.
-  #showPreview() {
-    this.#preview?.remove();
-    this.#preview = null;
-    if (this.view !== 'preview' || this.workspace === 'outline') return;
-    this.#preview = renderReadonly(this.#editor.value, { view: 'page', options: this.#options });
-    this.#statusbar.root.before(this.#preview);
+  // The Read tab's pages sit beside the hidden editor rather than replacing it, which is what
+  // keeps undo history and the cursor when returning to write.
+  #showRead() {
+    const reading = this.workspace === 'read';
+    if (reading && !this.#read) this.#scroll.scrollTop = 0;
+    this.#read?.remove();
+    this.#read = null;
+    if (!reading) return;
+    this.#read = renderReadonly(this.#editor.value, { view: 'page', options: this.#options });
+    this.#read.classList.add('fl-read');
+    this.#statusbar.root.before(this.#read);
   }
 
   // The outline sits there too, and its edits go through the editor to share its history.
@@ -343,8 +347,10 @@ export class FlowScript extends HTMLElement {
     this.#outline?.destroy();
     this.#outline = null;
     this.#destroyBars();
-    this.#preview = null;
-    this.#scroll.replaceChildren(renderReadonly(this.#value, { view: this.view, options: this.#options }));
+    this.#read = null;
+    // Read-only is for reading, so like the Read tab it shows pages unless asked otherwise.
+    const view = this.hasAttribute('view') ? this.view : 'page';
+    this.#scroll.replaceChildren(renderReadonly(this.#value, { view, options: this.#options }));
     this.dispatchEvent(new CustomEvent('flow-ready'));
   }
 
@@ -371,8 +377,10 @@ export class FlowScript extends HTMLElement {
       undo: () => this.#editor.undo({ focus: false }),
       redo: () => this.#editor.redo({ focus: false }),
     });
+    this.#ribbon.setActions('outline', { label: 'Outline', pills: this.#outline.tools });
+    this.#syncBars();
     this.#scroll.replaceChildren(this.#ribbon.root, this.#surface, this.#outline.root, this.#statusbar.root);
-    this.#preview = null;
+    this.#read = null;
     this.#editor = new FlowEditor(this.#surface, {
       value: this.#value,
       getLayoutOptions: () => this.#options,
@@ -389,7 +397,7 @@ export class FlowScript extends HTMLElement {
       },
     });
     this.#applyInsets();
-    this.#showPreview();
+    this.#showRead();
     this.#showOutline();
     this.dispatchEvent(new CustomEvent('flow-ready'));
   }
@@ -433,8 +441,8 @@ export class FlowScript extends HTMLElement {
 
   #buildStatusbar() {
     return createStatusbar({
-      undo: () => this.#editor?.undo({ focus: this.workspace !== 'outline' }),
-      redo: () => this.#editor?.redo({ focus: this.workspace !== 'outline' }),
+      undo: () => this.#editor?.undo({ focus: this.workspace === 'write' }),
+      redo: () => this.#editor?.redo({ focus: this.workspace === 'write' }),
       setView: (view) => { this.view = view; },
       setScale: (percent) => {
         this.scale = percent;

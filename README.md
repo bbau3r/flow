@@ -27,7 +27,7 @@ npm run build:pwa  # writes packages/pwa/dist
 ```html
 <script type="module" src="flow-script.bundle.js"></script>
 
-<flow-script theme="amber-dark">
+<flow-script theme="sage-dark">
   <script type="text/fountain">
     INT. HOUSE - DAY
 
@@ -46,10 +46,10 @@ The build produces two forms:
 | Attribute | Values | Default |
 | --- | --- | --- |
 | `readonly` | present or absent. Renders without Tiptap. | absent |
-| `view` | `page` (standard script pages), `flow` (continuous), `preview` (the pages as they print, with editing off and the formatting row and tabs hidden) or `source` (the Fountain text itself, with nothing hidden or formatted, and still editable) | `page` |
-| `workspace` | `write` (the script) or `outline` (its acts, sequences, scenes and transitions as cards and blocks, which edit the same text) | `write` |
+| `view` | How the Write tab shows the script: `flow` (Seamless, continuous), `page` (standard script pages) or `source` (the Fountain text itself, with nothing hidden or formatted, and still editable). Read-only mode shows pages unless it's set. | `flow` |
+| `workspace` | `write` (the script), `outline` (its acts, sequences, scenes and transitions as cards and blocks, which edit the same text) or `read` (the pages as they print, with editing off) | `write` |
 | `scale` | How large the script is shown, as a percentage from 50 to 200 | `100` |
-| `theme` | `amber`, `ocean`, `volcano`, `forest` or `tulip` followed by `-light`, `-dark` or `-auto`; plain `auto`, which means `amber-auto`; or a registered name | `amber-light` |
+| `theme` | `sage`, `sand`, `sea`, `romance`, `forest`, `lavender` or `graphite` followed by `-light`, `-dark` or `-auto`; plain `auto`, which means `sage-auto`; or a registered name | `sage-light` |
 | `paper` | `letter` or `a4` | `letter` |
 
 ### Properties and methods
@@ -76,12 +76,12 @@ The build produces two forms:
 
 ### Slots
 
-The editor has a top row, formatting controls that join it when there is room, and a row of pills along the bottom, all floating over the script. Apps add their own controls to them with named slots, and read-only mode shows none of them.
+The editor has a top row, the action center that joins it when there is room, and a row of pills along the bottom, all floating over the script. The action center holds the current tab's commands: formatting in Write, and Act, Sequence and Synopsis in Outline. Read has none. Folded away, it shrinks to its toggle, which moves up beside the tabs when the top row has room. Apps add their own controls with named slots, and read-only mode shows none of them.
 
 | Slot | Where it goes |
 | --- | --- |
 | `document` | Top row, left |
-| `tabs` | Top row, after `document`. Hidden in preview. |
+| `tabs` | Top row, after `document` |
 | `status-end` | Right end of the bottom row |
 
 ### Shared controls
@@ -99,10 +99,13 @@ Syntax markers such as `**`, `.` or `@` show only on the line you're on. Everywh
 - **Comments.** `[[notes]]` appear as bubbles. In the editor, clicking one opens it for editing. In read-only mode it expands in place.
 - **Boneyard.** `/* cut text */` is separate from comments. In the editor it stays readable in place, dimmed and struck through. It never appears in read-only pages or PDFs. The strikethrough S button cuts the selection, or the current line, and restores it when pressed again.
 - **Outlining.** `#` and `##` sections and `= synopses` are visible while editing but never appear in read-only pages or PDFs, and they take no page space. They're available through `outline` for future navigation features.
-- **Outline tab.** Plan a script as cards, in order with its scenes and transitions. A scene and a transition next to each other share a card, and two of the same kind don't. Each scene shows its number, which is the one thing about it you can edit here. The main + adds an act (a `#` line) at the end of the script, and each card's buttons add a synopsis (`=`) or a sequence (`##`). Drag a card by its handle, or use the arrow keys on the handle, to move it with all the script text it holds. Scenes and transitions can be moved here but only edited or deleted in the script. A synopsis shows when it's joined to the line above it, and it can be moved among the cards too. Removing an act takes it and its sequences out of the script, leaves scenes and dialogue alone, and keeps their synopses in the file, out of the outline until a new `#` or `##` line is typed directly above them. Undo works across both tabs. In the app, the address records the tab as `#/edit/<id>?tab=outline`, so a reload stays on it.
+- **Outline tab.** Plan a script as cards, in order with its scenes and transitions. A scene and a transition next to each other share a card, and two of the same kind don't. Each scene shows its number, which is the one thing about it you can edit here. The action center's Act, Sequence and Synopsis add a `#`, `##` or `=` line. Click one to add below the selected card, or at the end of the script with nothing selected, or drag it to where it should go. A card is selected by clicking or focusing it, and clicking between cards or pressing Escape clears that. Drag a card by its handle, or use the arrow keys on the handle, to move it with all the script text it holds. Scenes and transitions can be moved here but only edited or deleted in the script. The outline follows the file: synopses and sequences can sit above the first act, and anything below an act is part of it. Every synopsis shows, wherever it is. Removing an act takes it and its sequences out of the script, and leaves its scenes, dialogue and synopses to the card above. Undo works across the tabs.
+- **Read tab.** The pages as they print, with editing off, whichever view Write is in.
+- **Opening files.** Installed on a desktop with Chrome or Edge, the app opens `.fountain` and `.spmd` files from the file manager, in the window that's already open. A file already in the recent list reopens there, refreshed from disk unless it has unsaved changes. Android doesn't support this yet.
+- **Tabs in the app.** The address records the tab as `#/edit/<id>?tab=outline` or `?tab=read`, so a reload stays on it.
 - **Title page.** After a key with nothing beside it, such as `Contact:`, Enter indents the next line and keeps doing so down its values. A second Enter on an empty one stops. A value on the same line as its key gets an ordinary new line. Values can be indented with a tab or two or more spaces, as long as all of a key's values match, and the key shows from any of them. The indent is out of sight in Seamless and Paged views, where the arrow keys and Backspace behave as if it weren't there, and it's on show in Fountain view.
 
-Paged view numbers every page, including page 1. Preview and PDFs follow the screenplay standard and leave page 1 unnumbered.
+Paged view numbers every page, including page 1. The Read tab and PDFs follow the screenplay standard and leave page 1 unnumbered.
 
 ## Theming
 
@@ -114,7 +117,7 @@ flow-script { --flow-paper: #fff; --flow-ink: #111; }
 ```
 
 ```js
-// 2. Register a named theme. Colors you leave out fall back to amber light.
+// 2. Register a named theme. Colors you leave out fall back to sage light.
 import { registerTheme } from './flow-script.js';
 registerTheme('sepia', { paper: '#f4ecd8', ink: '#3b2f1e' });
 ```

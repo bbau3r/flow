@@ -26,6 +26,16 @@ async function chooseView(page, name) {
   await statusbar(page).getByRole('menuitemradio', { name, exact: true }).click();
 }
 
+// The Read tab, or a view of the Write tab, by the name it goes by.
+async function show(page, name) {
+  if (name === 'Read') {
+    await host(page).evaluate((el) => el.setAttribute('workspace', 'read'));
+    return;
+  }
+  await host(page).evaluate((el) => el.setAttribute('workspace', 'write'));
+  await chooseView(page, name);
+}
+
 async function openExport(page) {
   await page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true }).click();
   const dialog = page.locator('flow-script dialog');
@@ -33,9 +43,11 @@ async function openExport(page) {
   return dialog;
 }
 
-async function open(page) {
+// Most of these tests are about pages, so they start in paged view rather than the default.
+async function open(page, { view = 'page' } = {}) {
   await page.goto(url);
   await expect(editor(page)).toBeVisible();
+  if (view) await host(page).evaluate((el, v) => el.setAttribute('view', v), view);
 }
 
 // document.fonts.ready can resolve before Flow has registered its font, and machines
@@ -143,7 +155,7 @@ test('page break has its own pill just before comments', async ({ page }) => {
   await open(page);
   await setValue(page, 'words here');
   await lineWith(page, 'words').click();
-  const labels = await page.locator('flow-script .fl-format-pills > .fl-pill').evaluateAll((pills) => pills.map((p) => p.getAttribute('aria-label')));
+  const labels = await page.locator('flow-script .fl-action-pills > .fl-pill').evaluateAll((pills) => pills.map((p) => p.getAttribute('aria-label')));
   expect(labels.indexOf('Page break')).toBe(labels.indexOf('Comments') - 1);
   await expect(rib(page, 'Page break').locator('.fl-svg')).toBeVisible();
   await rib(page, 'Page break').click();
@@ -168,9 +180,9 @@ test('topics carry their fountain character, grouped as related', async ({ page 
   ]);
   const badge = page.locator('flow-script .fl-menu-item .fl-icon').first();
   await expect(badge).toHaveCSS('border-top-left-radius', '3px');
-  await expect(badge).toHaveCSS('color', 'rgb(180, 83, 9)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'amber-dark'));
-  await expect(badge).toHaveCSS('color', 'rgb(255, 176, 0)');
+  await expect(badge).toHaveCSS('color', 'rgb(82, 121, 111)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sage-dark'));
+  await expect(badge).toHaveCSS('color', 'rgb(132, 169, 140)');
   // A period sits on the baseline, so centering its ink has to lift it.
   const lift = await page.locator('flow-script .fl-menu-item .fl-icon-glyph').first().evaluate((g) => new DOMMatrix(getComputedStyle(g).transform).m42);
   expect(lift).toBeLessThan(0);
@@ -178,8 +190,8 @@ test('topics carry their fountain character, grouped as related', async ({ page 
   expect(Math.abs(box.width - box.height)).toBeLessThan(3);
 });
 
-const formatPills = (page) => page.locator('flow-script .fl-format-pills');
-const collapseToggle = (page) => page.locator('flow-script .fl-format-toggle');
+const formatPills = (page) => page.locator('flow-script .fl-action-pills');
+const collapseToggle = (page) => page.locator('flow-script .fl-action-toggle');
 
 test('the arrow animates the formatting away, turns around, and brings it back', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
@@ -227,11 +239,11 @@ test('the arrow animates the formatting away, turns around, and brings it back',
 test('each format action has its own shadow, tight enough to stay separate', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
   await open(page);
-  const pills = page.locator('flow-script .fl-format-pills > .fl-pill:not([hidden])');
+  const pills = page.locator('flow-script .fl-action-pills > .fl-pill:not([hidden])');
   const shadows = await pills.evaluateAll((els) => els.map((el) => getComputedStyle(el).boxShadow));
   expect(shadows.length).toBeGreaterThan(2);
   for (const shadow of shadows) expect(shadow).not.toBe('none');
-  await expect(page.locator('flow-script .fl-format-pills')).toHaveCSS('box-shadow', 'none');
+  await expect(page.locator('flow-script .fl-action-pills')).toHaveCSS('box-shadow', 'none');
   await expect(page.locator('flow-script .fl-ribbon')).toHaveCSS('box-shadow', 'none');
 
   // No layer reaches far enough to blend with the neighboring pill's.
@@ -244,7 +256,7 @@ test('each format action has its own shadow, tight enough to stay separate', asy
 
   // Collapsing fades each pill by itself, and never clips or fades the group.
   await collapseToggle(page).click();
-  const group = page.locator('flow-script .fl-format-pills');
+  const group = page.locator('flow-script .fl-action-pills');
   expect(await group.evaluate((el) => getComputedStyle(el).overflowX)).toBe('visible');
   const running = await group.evaluate((el) => ({
     group: el.getAnimations().flatMap((a) => a.effect.getKeyframes()).some((k) => 'opacity' in k),
@@ -289,10 +301,10 @@ test('collapsing keeps the rest of the row in place, and keeps up with quick cli
   expect(after.x).toBeCloseTo(before.x, 0);
   expect(after.y).toBeCloseTo(before.y, 0);
 
-  // Going through preview doesn't lose the choice.
-  await chooseView(page, 'Preview');
+  // Going through Read doesn't lose the choice.
+  await show(page, 'Read');
   await expect(toggle).toBeHidden();
-  await chooseView(page, 'Paged');
+  await show(page, 'Paged');
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await expect(formatPills(page)).toBeHidden();
 });
@@ -337,15 +349,15 @@ test('a pressed dual has a primary icon on the secondary color', async ({ page }
   await lineWith(page, 'Hi.').click();
   const dual = rib(page, 'Dual');
   await expect(dual).toHaveAttribute('aria-pressed', 'true');
-  const accent = 'rgb(180, 83, 9)';
+  const accent = 'rgb(82, 121, 111)';
   const badge = dual.locator('.fl-icon');
   await expect(badge).toHaveCSS('background-color', accent);
-  await expect(badge).toHaveCSS('color', 'rgb(255, 250, 240)');
+  await expect(badge).toHaveCSS('color', 'rgb(246, 248, 244)');
   const background = await dual.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(background).not.toBe(accent);
   expect(background).not.toBe('rgba(0, 0, 0, 0)');
   // The label stays in the normal text color, not on primary.
-  await expect(dual.locator('.fl-label')).toHaveCSS('color', 'rgb(61, 44, 16)');
+  await expect(dual.locator('.fl-label')).toHaveCSS('color', 'rgb(47, 62, 70)');
 
   // Other pressed buttons keep the full primary look.
   await page.keyboard.press('Home');
@@ -431,8 +443,8 @@ test.describe('at phone width', () => {
     // The thin scrollbar uses the primary color.
     await expect(row).toHaveCSS('scrollbar-width', 'thin');
     const accent = await rib(page, 'Bold').evaluate((el) => getComputedStyle(el).getPropertyValue('--flow-accent').trim());
-    expect(accent).toBe('#b45309');
-    expect(await row.evaluate((el) => getComputedStyle(el).scrollbarColor)).toContain('rgb(180, 83, 9)');
+    expect(accent).toBe('#52796f');
+    expect(await row.evaluate((el) => getComputedStyle(el).scrollbarColor)).toContain('rgb(82, 121, 111)');
 
     // Everything can be reached and used once scrolled to.
     await setValue(page, 'word');
@@ -488,7 +500,7 @@ test('page break and comment sit just after the topic dropdown, as icons at ever
   for (const width of [1400, 800, 390]) {
     await page.setViewportSize({ width, height: 800 });
     await open(page);
-    const labels = await page.locator('flow-script .fl-format-pills > .fl-pill').evaluateAll((pills) => pills.map((p) => p.getAttribute('aria-label')));
+    const labels = await page.locator('flow-script .fl-action-pills > .fl-pill').evaluateAll((pills) => pills.map((p) => p.getAttribute('aria-label')));
     expect(labels.slice(1, 4)).toEqual(['Topic', 'Page break', 'Comments']);
     for (const name of ['Page break', 'Comment']) {
       await expect(rib(page, name).locator('.fl-svg')).toBeVisible();
@@ -513,9 +525,9 @@ test('undo and redo sit at the bottom right, and follow what can be undone', asy
   await expect(historyButton(page, 'Redo')).toBeDisabled();
   await historyButton(page, 'Undo').click();
   await expect(historyButton(page, 'Redo')).toBeEnabled();
-  await chooseView(page, 'Preview');
+  await show(page, 'Read');
   await expect(historyButton(page, 'Undo')).toBeHidden();
-  await chooseView(page, 'Paged');
+  await show(page, 'Paged');
   await expect(historyButton(page, 'Undo')).toBeVisible();
 });
 
@@ -577,8 +589,8 @@ test('the bottom pills are separate, and float over the page with clicks passing
 
   // A short script still leaves them at the bottom, in every view.
   await setValue(page, 'Short.');
-  for (const view of ['Seamless', 'Fountain', 'Preview', 'Paged']) {
-    await chooseView(page, view);
+  for (const view of ['Seamless', 'Fountain', 'Read', 'Paged']) {
+    await show(page, view);
     await host(page).evaluate((el) => { el.scale = 50; });
     await expect.poll(async () => { const box = await statusbar(page).boundingBox(); return Math.round(box.y + box.height); }).toBe(700);
   }
@@ -608,12 +620,12 @@ for (const view of ['Paged', 'Seamless', 'Fountain']) {
   });
 }
 
-for (const view of ['Paged', 'Seamless', 'Fountain', 'Preview']) {
-  test(`a long script keeps both bars pinned while scrolling all the way in ${view} view`, async ({ page }) => {
+for (const view of ['Paged', 'Seamless', 'Fountain', 'Read']) {
+  test(`a long script keeps both bars pinned while scrolling all the way in ${view}`, async ({ page }) => {
     await page.setViewportSize({ width: 1000, height: 600 });
     await open(page);
     await setValue(page, Array.from({ length: 200 }, (_, i) => `Beat ${i}.`).join('\n\n'));
-    await chooseView(page, view);
+    await show(page, view);
     const scroll = page.locator('flow-script .fl-scroll');
     const pdf = page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true });
     const scale = page.locator('flow-script .fl-scale');
@@ -632,7 +644,7 @@ for (const view of ['Paged', 'Seamless', 'Fountain', 'Preview']) {
     const lastBox = await last.boundingBox();
     expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(barTop);
     // A printed page keeps its blank space below the text, so there it's the page's end that shows.
-    if (view === 'Preview') {
+    if (view === 'Read') {
       const page2 = await page.locator('flow-script .fl-page').last().boundingBox();
       expect(page2.y + page2.height).toBeLessThanOrEqual(barTop);
     } else {
@@ -735,7 +747,7 @@ test('the formatting row starts above the page, then floats over it on scrolling
   expect(hit.gap).toContain('fl-sheet');
   expect(hit.pill).toContain('fl-pill');
   const background = await page.locator('flow-script .fl-ribbon .fl-pill').first().evaluate((p) => getComputedStyle(p).backgroundColor);
-  expect(background).toBe('rgb(253, 243, 220)');
+  expect(background).toBe('rgb(238, 241, 234)');
 
   // Formatting still works while floating.
   await lineWith(page, 'Beat 50.').click();
@@ -882,14 +894,15 @@ test('the PDF button opens a modal of options that stays usable when small', asy
   await expect(page.locator('flow-script dialog').getByRole('button', { name: 'Export PDF' })).toBeInViewport({ ratio: 1 });
 });
 
-test('preview shows the printed pages with editing off, then returns intact', async ({ page }) => {
+test('Read shows the printed pages with editing off, then returns intact', async ({ page }) => {
   await open(page);
   await setValue(page, 'Hello [[private]] world.\n\n/* cut */\n\nEnd.');
   await lineWith(page, 'End').click();
   await page.keyboard.press('End');
   await page.keyboard.type('X');
-  await chooseView(page, 'Preview');
-  await expect(host(page)).toHaveAttribute('view', 'preview');
+  await show(page, 'Read');
+  await expect(host(page)).toHaveAttribute('workspace', 'read');
+  await expect(host(page)).toHaveAttribute('view', 'page');
   await expect(editor(page)).toBeHidden();
   await expect(page.locator('flow-script .fl-page').first()).toBeVisible();
   await expect(page.locator('flow-script .fl-pages')).toContainText('End.X');
@@ -899,12 +912,12 @@ test('preview shows the printed pages with editing off, then returns intact', as
   expect(await value(page)).toContain('End.X');
   expect(await value(page)).not.toContain('Y');
 
-  // Options and values keep the preview current.
+  // Options and values keep the pages current.
   await setValue(page, 'Replaced.');
   await expect(page.locator('flow-script .fl-pages')).toContainText('Replaced.');
   await setValue(page, 'Hello.');
 
-  await chooseView(page, 'Paged');
+  await show(page, 'Paged');
   await expect(editor(page)).toBeVisible();
   await expect(page.locator('flow-script .fl-pages')).toHaveCount(0);
   await expect(rib(page, 'Bold')).toBeVisible();
@@ -913,14 +926,14 @@ test('preview shows the printed pages with editing off, then returns intact', as
   expect(await value(page)).toContain('Z');
 });
 
-test('preview keeps undo history', async ({ page }) => {
+test('Read keeps undo history', async ({ page }) => {
   await open(page);
   await setValue(page, 'Hello.');
   await lineWith(page, 'Hello').click();
   await page.keyboard.press('End');
   await page.keyboard.type('A');
-  await chooseView(page, 'Preview');
-  await chooseView(page, 'Paged');
+  await show(page, 'Read');
+  await show(page, 'Paged');
   await expect(historyButton(page, 'Undo')).toBeEnabled();
   await historyButton(page, 'Undo').click();
   expect(await value(page)).toBe('Hello.');
@@ -961,11 +974,25 @@ test('the Fountain view shows the file exactly as written, and stays editable', 
   expect(await value(page)).toBe(text);
 });
 
-test('the view menu lists Fountain above Preview', async ({ page }) => {
-  await open(page);
+test('the view menu lists Seamless, Paged and Fountain, and Seamless is the default', async ({ page }) => {
+  await open(page, { view: null });
+  await expect(viewButton(page)).toHaveAttribute('aria-label', 'View: Seamless');
+  await expect(page.locator('flow-script .fl-flow')).toBeVisible();
   await viewButton(page).click();
   const names = await statusbar(page).getByRole('menuitemradio').evaluateAll((items) => items.map((i) => i.getAttribute('aria-label')));
-  expect(names).toEqual(['Seamless', 'Paged', 'Fountain', 'Preview']);
+  expect(names).toEqual(['Seamless', 'Paged', 'Fountain']);
+});
+
+test('Read shows pages whichever view Write is in, and keeps that view', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await open(page, { view: 'flow' });
+  await setValue(page, 'Hello.');
+  await show(page, 'Read');
+  expect((await page.locator('flow-script .fl-page').first().boundingBox()).width).toBeCloseTo(816, 0);
+  await expect(viewButton(page)).toBeHidden();
+  await host(page).evaluate((el) => el.setAttribute('workspace', 'write'));
+  await expect(page.locator('flow-script .fl-flow')).toBeVisible();
+  await expect(page.locator('flow-script .fl-read')).toHaveCount(0);
 });
 
 test('the Fountain view works read-only and follows the page scale', async ({ page }) => {
@@ -995,9 +1022,9 @@ test('page scale resizes every view and stops at its limits', async ({ page }) =
   expect((await sheet.boundingBox()).width).toBeCloseTo(816 * 1.1, 0);
   expect(await page.evaluate(() => window.scales)).toEqual([110]);
 
-  await chooseView(page, 'Preview');
+  await show(page, 'Read');
   expect((await page.locator('flow-script .fl-page').first().boundingBox()).width).toBeCloseTo(816 * 1.1, 0);
-  await chooseView(page, 'Seamless');
+  await show(page, 'Seamless');
   await expect(page.locator('flow-script .fl-flow')).toHaveCSS('font-size', '17.6px');
 
   await host(page).evaluate((el) => { el.scale = 60; });
@@ -1028,7 +1055,7 @@ test('clicking the percentage resets the page scale', async ({ page }) => {
 test('a page too big for the window can still be scrolled to both edges', async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 800 });
   await open(page);
-  await host(page).evaluate((el) => { el.scale = 200; el.view = 'preview'; });
+  await host(page).evaluate((el) => { el.scale = 200; el.workspace = 'read'; });
   const scroll = page.locator('flow-script .fl-scroll');
   const first = page.locator('flow-script .fl-page').first();
   await expect(first).toBeVisible();
@@ -1383,29 +1410,37 @@ test('properties set before the element is defined are honored', async ({ page }
 test('themes: presets, CSS variables and registered themes all apply', async ({ page }) => {
   await open(page);
   const paper = () => page.locator('flow-script .fl-sheet');
-  await expect(paper()).toHaveCSS('background-color', 'rgb(255, 250, 240)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'amber-dark'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(41, 39, 36)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'ocean-light'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(247, 252, 254)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'ocean-dark'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(36, 39, 41)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'volcano-light'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(255, 249, 246)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'volcano-dark'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(41, 37, 36)');
+  await expect(paper()).toHaveCSS('background-color', 'rgb(246, 248, 244)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sage-dark'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(38, 41, 40)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sea-light'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sea-dark'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(34, 40, 43)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'romance-light'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(250, 246, 239)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'romance-dark'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(43, 34, 38)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'forest-light'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(251, 248, 239)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'forest-dark'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(41, 40, 36)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'tulip-light'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(253, 250, 255)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'tulip-dark'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(39, 36, 41)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sand-light'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(252, 246, 238)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sand-dark'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(42, 39, 36)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'lavender-light'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(248, 243, 240)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'lavender-dark'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(38, 37, 44)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'graphite-light'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(247, 247, 248)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'graphite-dark'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(34, 35, 38)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'sepia'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(244, 236, 216)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'amber-light'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(255, 250, 240)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sage-light'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(246, 248, 244)');
   await host(page).evaluate((el) => el.style.setProperty('--flow-paper', 'rgb(1, 2, 3)'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(1, 2, 3)');
 });
@@ -1414,17 +1449,17 @@ test('auto themes follow the system setting', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await open(page);
   const paper = page.locator('flow-script .fl-sheet');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'ocean-auto'));
-  await expect(paper).toHaveCSS('background-color', 'rgb(36, 39, 41)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sea-auto'));
+  await expect(paper).toHaveCSS('background-color', 'rgb(34, 40, 43)');
   await page.emulateMedia({ colorScheme: 'light' });
-  await expect(paper).toHaveCSS('background-color', 'rgb(247, 252, 254)');
+  await expect(paper).toHaveCSS('background-color', 'rgb(255, 255, 255)');
 });
 
 test('component tokens can be overridden from CSS or a registered theme', async ({ page }) => {
   await open(page);
   const pillEl = page.locator('flow-script .fl-ribbon .fl-pill').first();
   const tabsOrExport = page.locator('flow-script .fl-export');
-  await expect(pillEl).toHaveCSS('background-color', 'rgb(253, 243, 220)');
+  await expect(pillEl).toHaveCSS('background-color', 'rgb(238, 241, 234)');
   await expect(pillEl).toHaveCSS('border-top-left-radius', '999px');
 
   // Tokens set from the page's own CSS reach inside the shadow root.
@@ -1540,10 +1575,10 @@ test('paged view numbers page 1 on screen, while print leaves it unnumbered', as
   await expect(number).toBeHidden();
   await chooseView(page, 'Fountain');
   await expect(number).toHaveCount(0);
-  await chooseView(page, 'Preview');
+  await show(page, 'Read');
   await expect(page.locator('flow-script .fl-page[data-page="1"] .fl-page-number')).toHaveCount(0);
   await expect(page.locator('flow-script .fl-page[data-page="2"] .fl-page-number')).toHaveCount(1);
-  await chooseView(page, 'Paged');
+  await show(page, 'Paged');
 
   // With a title page, it's in the break after the cover, like every later number.
   await setValue(page, `Title: BIG\n\n${body}`);
@@ -1659,12 +1694,12 @@ test('screenshots for visual review', async ({ page }) => {
   await lineWith(page, 'very').click();
   await page.locator('flow-script .fl-scroll').evaluate((s) => { s.scrollTop = 420; });
   await page.screenshot({ path: `${out}/edit-page-light.png` });
-  await host(page).evaluate((el) => el.setAttribute('theme', 'amber-dark'));
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sage-dark'));
   await page.screenshot({ path: `${out}/edit-page-dark.png` });
   await chooseView(page, 'Seamless');
   await page.waitForTimeout(200);
   await page.screenshot({ path: `${out}/edit-flow-dark.png` });
-  await host(page).evaluate((el) => { el.setAttribute('theme', 'amber-light'); el.view = 'page'; el.readonly = true; });
+  await host(page).evaluate((el) => { el.setAttribute('theme', 'sage-light'); el.view = 'page'; el.readonly = true; });
   await page.waitForTimeout(200);
   await page.locator('flow-script .fl-scroll').evaluate((s) => { s.scrollTop = 1100; });
   await page.screenshot({ path: `${out}/read-page.png` });
@@ -1678,56 +1713,126 @@ test('screenshots for visual review', async ({ page }) => {
 });
 
 test.describe('outline tab', () => {
-  const addHeader = (page) => page.locator('flow-script .fl-outline-plus');
+  const tool = (page, name) => page.locator('flow-script .fl-ribbon').getByRole('button', { name: `Add ${name}`, exact: true });
   const fields = (page) => page.locator('flow-script .fl-outline-field');
+  const selectedCards = (page) => page.locator('flow-script .fl-outline-selected');
   const setWorkspace = (page, workspace) => host(page).evaluate((el, w) => el.setAttribute('workspace', w), workspace);
   const openOutline = async (page, script = '') => {
     await open(page);
     await setValue(page, script);
     await setWorkspace(page, 'outline');
-    await expect(addHeader(page)).toBeVisible();
+    await expect(tool(page, 'act')).toBeVisible();
   };
+  const block = (page, text) => page.locator('flow-script .fl-outline-block', { hasText: text });
+  const dragHandle = async (page, handle, target, edge = 'top') => {
+    const from = await handle.boundingBox();
+    const to = await target.boundingBox();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + 8);
+    await page.mouse.move(to.x + 40, edge === 'top' ? to.y - 2 : to.y + to.height + 2, { steps: 6 });
+    return { drop: () => page.mouse.up() };
+  };
+  // The outline's own padding, where there's no card.
+  const pressBetweenCards = (page) => page.locator('flow-script .fl-outline').click({ position: { x: 4, y: 4 } });
 
-  test('the main + writes an act, and the card buttons a synopsis and sequence', async ({ page }) => {
+  test('the tools add an act, then a synopsis and a sequence below what was just added', async ({ page }) => {
     await openOutline(page);
-    await expect(page.locator('flow-script .fl-outline-hint')).toBeVisible();
-    await addHeader(page).click();
+    await expect(page.locator('flow-script .fl-outline-hint')).toContainText('Outline your screenplay here.');
+    await expect(page.locator('flow-script .fl-outline-hint')).toContainText('drag');
+    await tool(page, 'act').click();
     await expect(page.locator('flow-script .fl-outline-hint')).toBeHidden();
     await page.keyboard.type('Act One');
-    await page.getByRole('button', { name: 'Add synopsis' }).click();
+    await tool(page, 'synopsis').click();
     await page.keyboard.type('The setup');
-    await page.getByRole('button', { name: 'Add sequence' }).last().click();
+    await tool(page, 'sequence').click();
     await page.keyboard.type('Morning');
     expect(await value(page)).toBe('# Act One\n= The setup\n\n## Morning');
     await expect(page.locator('flow-script .fl-outline-card .fl-outline-card')).toHaveCount(1);
   });
 
-  test('sequences offer a synopsis but no deeper level', async ({ page }) => {
-    await openOutline(page, '# A\n\n## B\n\n# C');
-    const inner = page.locator('flow-script .fl-outline-card .fl-outline-card');
-    await expect(inner.getByRole('button', { name: 'Add synopsis' })).toBeVisible();
-    await expect(inner.getByRole('button', { name: 'Add sequence' })).toHaveCount(0);
-    await expect(inner.getByRole('button', { name: 'Add act after this one' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Add act after this one' })).toHaveCount(1);
+  test('with nothing selected, each tool adds at the very end', async ({ page }) => {
+    await openOutline(page, '# A\n\nINT. X - DAY\n\n# B\n\nINT. Y - DAY');
+    await expect(selectedCards(page)).toHaveCount(0);
+    await tool(page, 'synopsis').click();
+    await page.keyboard.type('s');
+    await pressBetweenCards(page);
+    await tool(page, 'sequence').click();
+    await page.keyboard.type('S');
+    expect(await value(page)).toBe('# A\n\nINT. X - DAY\n\n# B\n\nINT. Y - DAY\n= s\n\n## S');
   });
 
-  test('every act but the last offers a new act after it, and each has one set of buttons', async ({ page }) => {
-    await openOutline(page, '# A\n= a\n\nINT. X - DAY\n\nINT. Y - DAY\n\n# B');
-    const acts = page.locator('flow-script .fl-outline-list > .fl-outline-card');
-    await expect(acts.first().locator('.fl-outline-actions')).toHaveCount(1);
-    await expect(acts.first().locator('.fl-outline-actions').getByRole('button')).toHaveText(['Synopsis', 'Sequence', 'Act']);
-    await expect(acts.last().locator('.fl-outline-actions').getByRole('button')).toHaveText(['Synopsis', 'Sequence']);
-    await acts.first().getByRole('button', { name: 'Add act after this one' }).click();
+  test('a new act goes after the selected act, and a sequence or synopsis under it, past its synopses', async ({ page }) => {
+    await openOutline(page, '# A\n= a\n\nINT. X - DAY\n\n# B');
+    await fields(page).first().click();
+    await expect(selectedCards(page)).toHaveCount(1);
+    await tool(page, 'act').click();
     await page.keyboard.type('New');
-    expect(await value(page)).toBe('# A\n= a\n\nINT. X - DAY\n\nINT. Y - DAY\n\n# New\n\n# B');
-    await expect(acts).toHaveCount(3);
+    expect(await value(page)).toBe('# A\n= a\n\nINT. X - DAY\n\n# New\n\n# B');
+
+    await fields(page).first().click();
+    await tool(page, 'sequence').click();
+    await page.keyboard.type('S');
+    expect(await value(page)).toBe('# A\n= a\n\n## S\n\nINT. X - DAY\n\n# New\n\n# B');
+
+    await fields(page).first().click();
+    await tool(page, 'synopsis').click();
+    await page.keyboard.type('b');
+    expect(await value(page)).toBe('# A\n= a\n= b\n\n## S\n\nINT. X - DAY\n\n# New\n\n# B');
   });
 
-  test('a synopsis added from the buttons goes with those at the top of the card', async ({ page }) => {
-    await openOutline(page, '# A\n= a\n\nINT. X - DAY');
-    await page.getByRole('button', { name: 'Add synopsis' }).click();
-    await page.keyboard.type('b');
-    expect(await value(page)).toBe('# A\n= a\n= b\n\nINT. X - DAY');
+  test('a selected scene gets the new card right below it', async ({ page }) => {
+    await openOutline(page, '# A\n\nINT. X - DAY\n\nINT. Y - DAY');
+    await block(page, 'INT. X').locator('.fl-outline-block-text').click();
+    await expect(block(page, 'INT. X')).toHaveClass(/fl-outline-selected/);
+    await tool(page, 'synopsis').click();
+    await page.keyboard.type('x');
+    expect(await value(page)).toBe('# A\n\nINT. X - DAY\n= x\n\nINT. Y - DAY');
+    await expect(selectedCards(page)).toHaveClass(/fl-outline-synopsis/);
+  });
+
+  test('pressing between the cards, or Escape, selects nothing', async ({ page }) => {
+    await openOutline(page, '# A\n\n# B');
+    await fields(page).first().click();
+    await expect(selectedCards(page)).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(selectedCards(page)).toHaveCount(0);
+    await fields(page).first().click();
+    await expect(selectedCards(page)).toHaveCount(1);
+    await pressBetweenCards(page);
+    await expect(selectedCards(page)).toHaveCount(0);
+    await tool(page, 'act').click();
+    await page.keyboard.type('C');
+    expect(await value(page)).toBe('# A\n\n# B\n\n# C');
+  });
+
+  test('a tool dragged into the outline adds its card where it lands, and not over the bar', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const script = '# A\n\nINT. X - DAY\n\n# B';
+    await openOutline(page, script);
+
+    // A drag that never leaves the action center adds nothing, and isn't a click either.
+    const act = await tool(page, 'act').boundingBox();
+    await page.mouse.move(act.x + act.width / 2, act.y + act.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(act.x + act.width / 2 + 40, act.y + act.height / 2, { steps: 4 });
+    await expect(page.locator('flow-script .fl-outline-drop')).toBeHidden();
+    await page.mouse.up();
+    expect(await value(page)).toBe(script);
+
+    const firstCard = page.locator('flow-script .fl-outline-list > .fl-outline-card').first();
+    const { drop } = await dragHandle(page, tool(page, 'synopsis'), firstCard);
+    await expect(page.locator('flow-script .fl-outline-drop')).toBeVisible();
+    await expect(page.locator('flow-script .fl-outline-ghost')).toContainText('New synopsis');
+    await drop();
+    await page.keyboard.type('Top');
+    expect(await value(page)).toBe('= Top\n\n# A\n\nINT. X - DAY\n\n# B');
+    await expect(page.locator('flow-script .fl-outline-list > .fl-outline-synopsis')).toHaveCount(1);
+
+    const { drop: dropSequence } = await dragHandle(page, tool(page, 'sequence'), block(page, 'INT. X'));
+    await dropSequence();
+    await page.keyboard.type('S');
+    expect(await value(page)).toBe('= Top\n\n# A\n\n## S\n\nINT. X - DAY\n\n# B');
   });
 
   test('typing keeps the cursor in its card, including across spaces', async ({ page }) => {
@@ -1739,23 +1844,25 @@ test.describe('outline tab', () => {
     expect(await value(page)).toBe('# Act one is here\n\nAction.');
   });
 
-  test('removing an act leaves the script, and its synopsis returns under a retyped #', async ({ page }) => {
+  test('removing an act leaves the script, and its synopsis joins the act above', async ({ page }) => {
     await openOutline(page, '# Keep\n\n# Gone\n= Survives\n\nINT. HOUSE - DAY\n\nAction.');
     await fields(page).nth(1).hover();
     await page.getByRole('button', { name: 'Remove act' }).nth(1).click();
     expect(await value(page)).toBe('# Keep\n\n= Survives\n\nINT. HOUSE - DAY\n\nAction.');
-    await expect(fields(page)).toHaveCount(1);
+    await expect(fields(page)).toHaveCount(2);
     await expect(fields(page).first()).toHaveValue('Keep');
-    await expect(addHeader(page)).toBeFocused();
+    await expect(page.locator('flow-script .fl-outline-card .fl-outline-synopsis .fl-outline-field')).toHaveValue('Survives');
+    await expect(page.locator('flow-script .fl-outline')).toBeFocused();
+    await expect(selectedCards(page)).toHaveCount(0);
+  });
 
-    await setWorkspace(page, 'write');
-    await lineWith(page, 'Survives').click();
-    await page.keyboard.press('ArrowUp');
-    await page.keyboard.type('# Back');
-    await setWorkspace(page, 'outline');
-    await expect(fields(page)).toHaveCount(3);
-    await expect(fields(page).nth(1)).toHaveValue('Back');
-    await expect(fields(page).nth(2)).toHaveValue('Survives');
+  test('synopses and sequences above the first act stay at the top level', async ({ page }) => {
+    await openOutline(page, '= My synopsis\n## A sequence\n# My act\n= Of the act');
+    const top = page.locator('flow-script .fl-outline-list > *');
+    await expect(top).toHaveCount(3);
+    await expect(top.nth(0)).toHaveClass(/fl-outline-synopsis/);
+    await expect(top.nth(1).locator('.fl-outline-field').first()).toHaveValue('A sequence');
+    await expect(top.nth(2).locator('.fl-outline-synopsis .fl-outline-field')).toHaveValue('Of the act');
   });
 
   test('undo and redo work across both tabs, from the keyboard and the footer', async ({ page }) => {
@@ -1784,7 +1891,7 @@ test.describe('outline tab', () => {
     await page.keyboard.press('Enter');
     await expect(fields(page).nth(1)).toBeFocused();
     await page.keyboard.press('Enter');
-    await expect(addHeader(page)).toBeFocused();
+    await expect(tool(page, 'act')).toBeFocused();
     await fields(page).nth(1).evaluate((el) => {
       el.value = 'one\ntwo';
       el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1802,15 +1909,18 @@ test.describe('outline tab', () => {
     expect(content).toBeLessThanOrEqual(box + 1);
   });
 
-  test('formatting and view controls step aside, and come back with the script', async ({ page }) => {
+  test('the action center swaps formatting for the tools, and the view steps aside', async ({ page }) => {
     await open(page);
     await setWorkspace(page, 'outline');
-    await expect(page.locator('flow-script .fl-ribbon')).toBeHidden();
+    await expect(rib(page, 'Bold')).toHaveCount(0);
+    await expect(tool(page, 'act')).toBeVisible();
+    await expect(page.locator('flow-script .fl-ribbon')).toHaveAttribute('aria-label', 'Outline');
     await expect(viewButton(page)).toBeHidden();
     await expect(editor(page)).toBeHidden();
     await expect(historyButton(page, 'Undo')).toBeVisible();
     await setWorkspace(page, 'write');
-    await expect(page.locator('flow-script .fl-ribbon')).toBeVisible();
+    await expect(rib(page, 'Bold')).toBeVisible();
+    await expect(tool(page, 'act')).toHaveCount(0);
     await expect(viewButton(page)).toBeVisible();
     await expect(editor(page)).toBeVisible();
     await expect(page.locator('flow-script .fl-outline')).toBeHidden();
@@ -1822,17 +1932,6 @@ test.describe('outline tab', () => {
     await expect(fields(page)).toHaveCount(2);
     await expect(fields(page).first()).toHaveValue('B');
   });
-
-  const block = (page, text) => page.locator('flow-script .fl-outline-block', { hasText: text });
-  const dragHandle = async (page, handle, target, edge = 'top') => {
-    const from = await handle.boundingBox();
-    const to = await target.boundingBox();
-    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + 8);
-    await page.mouse.move(to.x + 40, edge === 'top' ? to.y - 2 : to.y + to.height + 2, { steps: 6 });
-    return { drop: () => page.mouse.up() };
-  };
 
   test('shows scenes and transitions in order, without editing or removing them', async ({ page }) => {
     await openOutline(page, 'INT. ONE - DAY\n\nCUT TO:\n\n# A\n\nINT. TWO - DAY\n\n> FADE OUT.');
@@ -1906,14 +2005,12 @@ test.describe('outline tab', () => {
     expect(transition).toBeGreaterThan(icon.x + icon.width - 1);
   });
 
-  test('the add buttons read Synopsis and Sequence, with a soft border', async ({ page }) => {
-    await openOutline(page, '# A');
-    const synopsis = page.getByRole('button', { name: 'Add synopsis' }).last();
-    const sequence = page.getByRole('button', { name: 'Add sequence' }).last();
-    await expect(synopsis).toHaveText('Synopsis');
-    await expect(sequence).toHaveText('Sequence');
-    await expect(synopsis).toHaveCSS('border-top-style', 'solid');
-    await expect(sequence).toHaveCSS('border-top-style', 'solid');
+  test('the tools read Act, Sequence and Synopsis, each in its own pill, and cards hold no add buttons', async ({ page }) => {
+    await openOutline(page, '# A\n\n## S');
+    const pills = page.locator('flow-script .fl-action-pills > .fl-pill');
+    await expect(pills).toHaveCount(3);
+    await expect(pills).toHaveText(['Act', 'Sequence', 'Synopsis']);
+    await expect(page.locator('flow-script .fl-outline').getByRole('button', { name: /^Add/ })).toHaveCount(0);
   });
 
   test('a scene card can move above a synopsis, and a synopsis can move on its own', async ({ page }) => {
@@ -1923,7 +2020,7 @@ test.describe('outline tab', () => {
     const first = await dragHandle(page, block(page, 'INT. X').getByRole('button', { name: 'Move scene' }), synopsisRow);
     await first.drop();
     expect(await value(page)).toBe('# A\n\nINT. X - DAY\n\nText.\n= Plan\n\nINT. Y - DAY');
-    await expect(page.locator('flow-script .fl-outline-children > :not(.fl-outline-actions)').nth(1)).toHaveClass(/fl-outline-synopsis/);
+    await expect(page.locator('flow-script .fl-outline-children > *').nth(1)).toHaveClass(/fl-outline-synopsis/);
     await expect(block(page, 'INT. X')).toContainText('INT. X - DAY');
 
     const handle = synopsisRow.getByRole('button', { name: 'Move synopsis', exact: true });

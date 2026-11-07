@@ -34,9 +34,12 @@ export function timeAgo(when) {
 
 const MODES = [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']];
 const THEME_KEY = 'flow-theme';
-const DEFAULT_THEME = { palette: 'amber', mode: 'auto' };
+const DEFAULT_THEME = { palette: 'sage', mode: 'auto' };
 
-// Stored as a theme name such as ocean-dark. Older versions also stored plain "auto".
+// Palettes that have been renamed, so that a choice saved under the old name still holds.
+const RENAMED = { amber: 'sand', ocean: 'sea', tulip: 'lavender', volcano: 'romance' };
+
+// Stored as a theme name such as sea-dark. Older versions also stored plain "auto".
 function readTheme() {
   let stored = null;
   try {
@@ -44,7 +47,8 @@ function readTheme() {
   } catch {
     // Private browsing can refuse storage, which just means the default.
   }
-  const [palette, mode] = (stored ?? '').split('-');
+  const [saved, mode] = (stored ?? '').split('-');
+  const palette = RENAMED[saved] ?? saved;
   return PALETTES[palette] && MODES.some(([value]) => value === mode) ? { palette, mode } : DEFAULT_THEME;
 }
 

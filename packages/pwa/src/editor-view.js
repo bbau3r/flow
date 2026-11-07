@@ -33,14 +33,19 @@ function chooseProvider() {
   });
 }
 
-// The tab lives in the address as #/edit/<id>?tab=outline, so reloading or going back keeps it.
-// Write is the default and adds nothing.
-const tabInAddress = () => new URLSearchParams(location.hash.split('?')[1]).get('tab') === 'outline' ? 'Outline' : 'Write';
+// The tab lives in the address as #/edit/<id>?tab=outline or ?tab=read, so reloading or going
+// back keeps it. Write is the default and adds nothing.
+const TABS = ['Write', 'Outline', 'Read'];
+
+const tabInAddress = () => {
+  const tab = new URLSearchParams(location.hash.split('?')[1]).get('tab');
+  return TABS.find((name) => name.toLowerCase() === tab) ?? 'Write';
+};
 
 const setTabInAddress = (tab) => {
   const [route] = location.hash.split('?');
   // Replacing the entry doesn't fire hashchange, which would reopen the script.
-  history.replaceState(history.state, '', tab === 'Outline' ? `${route}?tab=outline` : route);
+  history.replaceState(history.state, '', tab === 'Write' ? route : `${route}?tab=${tab.toLowerCase()}`);
 };
 
 const readScale = () => {
@@ -56,8 +61,6 @@ export function renderEditor(root, doc) {
   const openTab = tabInAddress();
   script.setAttribute('workspace', openTab.toLowerCase());
   script.setAttribute('theme', currentTheme());
-  // A whole page shrunk to fit a phone is too small to write on.
-  if (window.matchMedia('(max-width: 700px)').matches) script.setAttribute('view', 'flow');
   const scale = readScale();
   if (scale) script.setAttribute('scale', scale);
   script.addEventListener('flow-scale', (event) => {
@@ -189,8 +192,9 @@ export function renderEditor(root, doc) {
         setTabInAddress(tab);
       },
     }, [
-      { label: 'Write', selected: openTab === 'Write' },
-      { label: 'Outline', title: 'Plan the script with acts, sequences and synopses', selected: openTab === 'Outline' },
+      { label: 'Write', icon: 'write', selected: openTab === 'Write' },
+      { label: 'Outline', icon: 'outline', title: 'Plan the script with acts, sequences and synopses', selected: openTab === 'Outline' },
+      { label: 'Read', icon: 'read', title: 'The pages as they print, with editing off', selected: openTab === 'Read' },
     ]),
     pill({ label: 'Appearance', attrs: { slot: 'status-end' } }, themePicker({
       up: true,

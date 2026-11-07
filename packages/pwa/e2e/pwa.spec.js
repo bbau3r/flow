@@ -138,9 +138,9 @@ test.describe('new scripts', () => {
     await page.waitForFunction(() => [...document.fonts].filter((f) => f.family.includes('Roboto') && f.status === 'loaded').length === 3);
   });
 
-  test('open as pages on a big screen and continuous text on a phone', async ({ page }) => {
+  test('open as continuous text on any screen, with pages a choice away', async ({ page }) => {
     await newScript(page);
-    await expect(page.locator('flow-script .fl-sheet')).toBeVisible();
+    await expect(page.locator('flow-script .fl-flow')).toBeVisible();
     await page.setViewportSize({ width: 390, height: 780 });
     await page.reload();
     await expect(page.locator('flow-script .fl-flow')).toBeVisible();
@@ -435,6 +435,65 @@ test.describe('local files without direct saving, as on iOS', () => {
   });
 });
 
+test.describe('files opened from the system', () => {
+  // The operating system hands files over through launchQueue, which a test can't trigger, so
+  // this stands in for it. The handles and everything after them are real.
+  const fakeLaunchQueue = () => {
+    Object.defineProperty(window, 'launchQueue', {
+      value: { setConsumer(consumer) { window.launchFiles = (handles) => consumer({ files: handles }); } },
+    });
+    window.launchFile = async (name, text) => {
+      const root = await navigator.storage.getDirectory();
+      const handle = await root.getFileHandle(name, { create: true });
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      await window.launchFiles([handle]);
+    };
+  };
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(fakePickers);
+    await page.addInitScript(fakeLaunchQueue);
+  });
+
+  test('a launched file opens in the editor and saves straight back to it', async ({ page }) => {
+    await page.goto(HOME);
+    await page.evaluate(() => window.launchFile('launched.fountain', 'INT. DOCK - NIGHT\r\n\r\nWaves.'));
+    await expect(editor(page)).toBeVisible();
+    await expect(page.locator('.doc-name')).toHaveText('launched.fountain');
+    await expect(page.locator('.doc-state')).toHaveText('Saved');
+    expect(await value(page)).toBe('INT. DOCK - NIGHT\n\nWaves.');
+
+    await lineWith(page, 'Waves').click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' More.');
+    await page.locator('#save').click();
+    await expect(page.locator('.doc-state')).toHaveText('Saved');
+    expect(await page.evaluate(() => window.readFile('launched.fountain'))).toContain('Waves. More.');
+  });
+
+  test('opening the same file again reuses its script, refreshed unless it has unsaved work', async ({ page }) => {
+    await page.goto(HOME);
+    await page.evaluate(() => window.launchFile('again.fountain', 'First.'));
+    await expect(editor(page)).toBeVisible();
+    const firstUrl = page.url();
+
+    await page.evaluate(() => window.launchFile('again.fountain', 'Changed on disk.'));
+    await expect.poll(() => value(page)).toBe('Changed on disk.');
+    expect(page.url()).toBe(firstUrl);
+
+    await lineWith(page, 'Changed on disk').click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('!');
+    await expect(page.locator('.doc-state')).toHaveText('Unsaved changes');
+    await page.evaluate(() => window.launchFile('again.fountain', 'Disk again.'));
+    await expect.poll(() => value(page)).toBe('Changed on disk.!');
+
+    await page.locator('.home-link').click();
+    await expect(page.locator('.recent-name', { hasText: 'again.fountain' })).toHaveCount(1);
+  });
+});
+
 test.describe('installable and offline', () => {
   test('has a valid manifest and icons, relative to where it is hosted', async ({ page, request }) => {
     await page.goto(HOME);
@@ -447,6 +506,9 @@ test.describe('installable and offline', () => {
     expect(manifest.start_url).toBe('./');
     expect(manifest.icons.map((i) => i.sizes)).toEqual(expect.arrayContaining(['192x192', '512x512']));
     expect(manifest.icons.some((i) => i.purpose === 'maskable')).toBe(true);
+    // Installed on a desktop, it opens Fountain files from the file manager, in the open window.
+    expect(manifest.file_handlers).toEqual([{ action: './', accept: { 'text/plain': ['.fountain', '.spmd'] } }]);
+    expect(manifest.launch_handler).toEqual({ client_mode: 'focus-existing' });
     for (const icon of manifest.icons) {
       const response = await request.get(new URL(icon.src, manifestUrl).href);
       expect(response.status(), icon.src).toBe(200);
@@ -503,26 +565,26 @@ async function chooseTheme(page, name) {
 
 test('theme choice applies to the app and script, and persists', async ({ page }) => {
   await newScript(page);
-  await chooseTheme(page, 'Ocean');
+  await chooseTheme(page, 'Sea');
   await chooseTheme(page, 'Dark');
-  await expect(page.locator('flow-script')).toHaveAttribute('theme', 'ocean-dark');
-  await expect(page.locator('.doc-pill')).toHaveCSS('color', 'rgb(191, 230, 245)');
+  await expect(page.locator('flow-script')).toHaveAttribute('theme', 'sea-dark');
+  await expect(page.locator('.doc-pill')).toHaveCSS('color', 'rgb(225, 229, 242)');
   await page.reload();
   await expect(editor(page)).toBeVisible();
-  await expect(page.locator('flow-script')).toHaveAttribute('theme', 'ocean-dark');
+  await expect(page.locator('flow-script')).toHaveAttribute('theme', 'sea-dark');
   await page.goBack();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'ocean-dark');
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(26, 29, 30)');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sea-dark');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(24, 28, 30)');
   await page.locator('.theme .fl-menu-trigger').click();
-  await expect(themeItem(page, 'Ocean')).toHaveAttribute('aria-checked', 'true');
+  await expect(themeItem(page, 'Sea')).toHaveAttribute('aria-checked', 'true');
   await expect(themeItem(page, 'Dark')).toHaveAttribute('aria-checked', 'true');
-  await expect(themeItem(page, 'Amber')).toHaveAttribute('aria-checked', 'false');
+  await expect(themeItem(page, 'Sage')).toHaveAttribute('aria-checked', 'false');
 });
 
 test('every theme can be chosen from the menu and fits the screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 500 });
   await newScript(page);
-  for (const [name, theme] of [['Amber', 'amber'], ['Ocean', 'ocean'], ['Volcano', 'volcano'], ['Forest', 'forest'], ['Tulip', 'tulip']]) {
+  for (const [name, theme] of [['Sage', 'sage'], ['Sand', 'sand'], ['Sea', 'sea'], ['Romance', 'romance'], ['Forest', 'forest'], ['Lavender', 'lavender'], ['Graphite', 'graphite']]) {
     await chooseTheme(page, name);
     await expect(page.locator('flow-script')).toHaveAttribute('theme', `${theme}-auto`);
     await page.locator('.theme .fl-menu-trigger').click();
@@ -539,8 +601,8 @@ test('the theme menu headings are bold on a contrasting background', async ({ pa
   await expect(headings).toHaveText(['Theme', 'Mode']);
   for (const heading of await headings.all()) {
     await expect(heading).toHaveCSS('font-weight', '700');
-    await expect(heading).toHaveCSS('background-color', 'rgb(180, 83, 9)');
-    await expect(heading).toHaveCSS('color', 'rgb(255, 250, 240)');
+    await expect(heading).toHaveCSS('background-color', 'rgb(82, 121, 111)');
+    await expect(heading).toHaveCSS('color', 'rgb(246, 248, 244)');
   }
 });
 
@@ -550,7 +612,7 @@ test('on a small screen the theme shows only its palette icon', async ({ page })
   const trigger = page.locator('.theme .fl-menu-trigger');
   const name = trigger.locator('.fl-compact-hide');
   const palette = trigger.locator('.fl-svg').first();
-  await expect(name).toHaveText('Amber');
+  await expect(name).toHaveText('Sage');
   await expect(name).toBeVisible();
   await expect(palette).toBeVisible();
 
@@ -559,12 +621,12 @@ test('on a small screen the theme shows only its palette icon', async ({ page })
   await expect(palette).toBeVisible();
   await expect(trigger.locator('.fl-swatch')).toHaveCount(0);
   // The name stays available to screen readers and the tooltip.
-  await expect(trigger).toHaveAttribute('aria-label', /Amber/);
-  await expect(trigger).toHaveAttribute('title', /Amber/);
+  await expect(trigger).toHaveAttribute('aria-label', /Sage/);
+  await expect(trigger).toHaveAttribute('title', /Sage/);
 
   // The menu still lists every name, and the home page does the same.
   await trigger.click();
-  await expect(themeItem(page, 'Tulip')).toBeVisible();
+  await expect(themeItem(page, 'Lavender')).toBeVisible();
   await page.keyboard.press('Escape');
   await page.locator('.home-link').click();
   await expect(page.locator('#new-script')).toBeVisible();
@@ -577,10 +639,10 @@ test('a theme saved by an older version still loads', async ({ page }) => {
   await page.goto(HOME);
   await page.evaluate(() => localStorage.setItem('flow-theme', 'auto'));
   await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'amber-auto');
-  await page.evaluate(() => localStorage.setItem('flow-theme', 'amber-dark'));
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sage-auto');
+  await page.evaluate(() => localStorage.setItem('flow-theme', 'sage-dark'));
   await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'amber-dark');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sage-dark');
 });
 
 test.describe('editor bars', () => {
@@ -712,7 +774,7 @@ test.describe('editor bars', () => {
   test('the document and tabs are separate secondary pills, leaning left', async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 700 });
     await newScript(page);
-    const accent = 'rgb(180, 83, 9)';
+    const accent = 'rgb(82, 121, 111)';
     const doc = page.locator('.doc-pill');
     const tabs = page.getByRole('tablist', { name: 'Workspace' });
     const docBox = await doc.boundingBox();
@@ -721,7 +783,7 @@ test.describe('editor bars', () => {
     // Side by side at the left, with a gap between, even with room left over.
     expect(tabsBox.x).toBeGreaterThan(docBox.x + docBox.width);
     expect(tabsBox.x - (docBox.x + docBox.width)).toBeLessThan(12);
-    expect(tabsBox.x + tabsBox.width).toBeLessThan(450);
+    expect(tabsBox.x + tabsBox.width).toBeLessThan(520);
 
     // Both are the same lighter tint, with the current tab in primary.
     const background = (locator) => locator.evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -739,12 +801,10 @@ test.describe('editor bars', () => {
     await expect(small).toBeVisible();
     expect(await small.evaluate((el) => getComputedStyle(el.closest('.fl-pill')).backgroundColor)).toBe(tint);
 
-    // Preview hides the tabs, leaving the document.
+    // Read is a tab like the others, so the tabs stay.
     await page.setViewportSize({ width: 1280, height: 700 });
-    const bar = page.locator('flow-script .fl-statusbar');
-    await bar.locator('.fl-menu-trigger').click();
-    await bar.getByRole('menuitemradio', { name: 'Preview', exact: true }).click();
-    await expect(tabs).toBeHidden();
+    await page.getByRole('tab', { name: 'Read' }).click();
+    await expect(tabs).toBeVisible();
     await expect(doc).toBeVisible();
   });
 
@@ -784,10 +844,10 @@ test.describe('editor bars', () => {
     await expect(page.locator('.doc-name')).toHaveText('The Long · Way Home!');
   });
 
-  test('Write comes first, and the address remembers the tab through a reload', async ({ page }) => {
+  test('Write comes first and Read last, and the address remembers the tab through a reload', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 700 });
     await newScript(page);
-    await expect(page.getByRole('tab')).toHaveText(['Write', 'Outline']);
+    await expect(page.getByRole('tab')).toHaveText(['Write', 'Outline', 'Read']);
     expect(page.url()).not.toContain('tab=');
 
     await page.getByRole('tab', { name: 'Outline' }).click();
@@ -796,6 +856,12 @@ test.describe('editor bars', () => {
     await expect(page.getByRole('tab', { name: 'Outline' })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByRole('button', { name: 'Add act', exact: true })).toBeVisible();
     await expect(page.locator('flow-script .ProseMirror')).toBeHidden();
+
+    await page.getByRole('tab', { name: 'Read' }).click();
+    expect(page.url()).toMatch(/#\/edit\/[^?]+\?tab=read$/);
+    await page.reload();
+    await expect(page.getByRole('tab', { name: 'Read' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('flow-script .fl-read')).toBeVisible();
 
     await page.getByRole('tab', { name: 'Write' }).click();
     expect(page.url()).not.toContain('tab=');
@@ -816,7 +882,7 @@ test.describe('editor bars', () => {
     await expect(page.locator('flow-script .fl-outline-field').first()).toHaveValue('Kept');
   });
 
-  test('preview hides the formatting controls and tabs, and only those', async ({ page }) => {
+  test('Read hides the action center, view and history, and only those', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 700 });
     await newScript(page);
     const bar = page.locator('flow-script .fl-statusbar');
@@ -824,14 +890,12 @@ test.describe('editor bars', () => {
     const tabs = page.getByRole('tablist', { name: 'Workspace' });
     const exportPill = page.locator('flow-script .fl-export');
     const saveBefore = await page.locator('#save').boundingBox();
-    const chooseView = async (name) => {
-      await bar.locator('.fl-menu-trigger').click();
-      await bar.getByRole('menuitemradio', { name, exact: true }).click();
-    };
 
-    await chooseView('Preview');
+    await page.getByRole('tab', { name: 'Read' }).click();
     await expect(ribbon).toBeHidden();
-    await expect(tabs).toBeHidden();
+    await expect(tabs).toBeVisible();
+    await expect(bar.locator('.fl-menu-trigger')).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeHidden();
     await expect(page.locator('.doc-pill')).toBeVisible();
     await expect(exportPill).toBeVisible();
     await expect(bar).toBeVisible();
@@ -839,11 +903,11 @@ test.describe('editor bars', () => {
     expect((await page.locator('#save').boundingBox()).x).toBeCloseTo(saveBefore.x, 0);
 
     await page.setViewportSize({ width: 390, height: 700 });
-    await expect(page.getByRole('button', { name: 'Workspace: Write' })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Workspace: Read' })).toBeVisible();
     await expect(page.locator('flow-script .fl-export-holder').getByRole('button', { name: 'Export', exact: true })).toBeInViewport({ ratio: 1 });
 
     await page.setViewportSize({ width: 1280, height: 700 });
-    await chooseView('Paged');
+    await page.getByRole('tab', { name: 'Write' }).click();
     await expect(ribbon).toBeVisible();
     await expect(tabs).toBeVisible();
     await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeVisible();

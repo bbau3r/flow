@@ -24,8 +24,12 @@ export default defineConfig({
         start_url: './',
         scope: './',
         display: 'standalone',
-        background_color: '#efe4cb',
-        theme_color: '#b45309',
+        background_color: '#e6e9ec',
+        theme_color: '#4a5a6a',
+        // Installed on a desktop, Flow can open these straight from the file manager. A window
+        // that's already open takes the file rather than a second one opening.
+        file_handlers: [{ action: './', accept: { 'text/plain': ['.fountain', '.spmd'] } }],
+        launch_handler: { client_mode: 'focus-existing' },
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
