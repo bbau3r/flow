@@ -76,8 +76,8 @@ ${CONTROLS_CSS}
 .fl-action-pills[hidden] { display: none; }
 .fl-action-animating { flex-wrap: nowrap; }
 .fl-action-animating > * { flex: none; }
-/* A bare icon over the page, unlike the pills around it, until the pointer finds it. */
-.fl-action-toggle { pointer-events: auto; color: var(--flow-ink); }
+/* Lighter than the pills around it: a faint wash of their background, so it reads over the page. */
+.fl-action-toggle { pointer-events: auto; color: var(--flow-ink); background: color-mix(in srgb, ${token('pill-bg')} 20%, transparent); }
 .fl-action-toggle .fl-svg { transition: transform 220ms ease; }
 .fl-action-toggle[aria-expanded="false"] .fl-svg { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .fl-action-toggle .fl-svg { transition: none; } }
