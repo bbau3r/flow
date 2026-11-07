@@ -26,7 +26,7 @@ for (const view of ['Paged', 'Read', 'Seamless', 'Fountain']) {
       await page.getByRole('tab', { name: 'Read' }).click();
     } else {
       const bar = page.locator('flow-script .fl-statusbar');
-      await bar.locator('.fl-menu-trigger').click();
+      await bar.locator('.fl-menu-trigger:visible').click();
       await bar.getByRole('menuitemradio', { name: view, exact: true }).click();
     }
     for (const width of [1280, 900, 700, 600, 500, 420, 390, 320]) {
