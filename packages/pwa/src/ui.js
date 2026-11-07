@@ -34,7 +34,7 @@ export function timeAgo(when) {
 
 const MODES = [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']];
 const THEME_KEY = 'flow-theme';
-const DEFAULT_THEME = { palette: 'sand', mode: 'auto' };
+const DEFAULT_THEME = { palette: 'sage', mode: 'auto' };
 
 // Palettes that have been renamed, so that a choice saved under the old name still holds.
 const RENAMED = { amber: 'sand', ocean: 'sea', tulip: 'lavender', volcano: 'romance' };

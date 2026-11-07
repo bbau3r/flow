@@ -578,13 +578,13 @@ test('theme choice applies to the app and script, and persists', async ({ page }
   await page.locator('.theme .fl-menu-trigger').click();
   await expect(themeItem(page, 'Sea')).toHaveAttribute('aria-checked', 'true');
   await expect(themeItem(page, 'Dark')).toHaveAttribute('aria-checked', 'true');
-  await expect(themeItem(page, 'Sand')).toHaveAttribute('aria-checked', 'false');
+  await expect(themeItem(page, 'Sage')).toHaveAttribute('aria-checked', 'false');
 });
 
 test('every theme can be chosen from the menu and fits the screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 500 });
   await newScript(page);
-  for (const [name, theme] of [['Sand', 'sand'], ['Sea', 'sea'], ['Romance', 'romance'], ['Forest', 'forest'], ['Sage', 'sage'], ['Lavender', 'lavender'], ['Graphite', 'graphite']]) {
+  for (const [name, theme] of [['Sage', 'sage'], ['Sand', 'sand'], ['Sea', 'sea'], ['Romance', 'romance'], ['Forest', 'forest'], ['Lavender', 'lavender'], ['Graphite', 'graphite']]) {
     await chooseTheme(page, name);
     await expect(page.locator('flow-script')).toHaveAttribute('theme', `${theme}-auto`);
     await page.locator('.theme .fl-menu-trigger').click();
@@ -601,8 +601,8 @@ test('the theme menu headings are bold on a contrasting background', async ({ pa
   await expect(headings).toHaveText(['Theme', 'Mode']);
   for (const heading of await headings.all()) {
     await expect(heading).toHaveCSS('font-weight', '700');
-    await expect(heading).toHaveCSS('background-color', 'rgb(151, 89, 44)');
-    await expect(heading).toHaveCSS('color', 'rgb(252, 246, 238)');
+    await expect(heading).toHaveCSS('background-color', 'rgb(82, 121, 111)');
+    await expect(heading).toHaveCSS('color', 'rgb(246, 248, 244)');
   }
 });
 
@@ -612,7 +612,7 @@ test('on a small screen the theme shows only its palette icon', async ({ page })
   const trigger = page.locator('.theme .fl-menu-trigger');
   const name = trigger.locator('.fl-compact-hide');
   const palette = trigger.locator('.fl-svg').first();
-  await expect(name).toHaveText('Sand');
+  await expect(name).toHaveText('Sage');
   await expect(name).toBeVisible();
   await expect(palette).toBeVisible();
 
@@ -621,8 +621,8 @@ test('on a small screen the theme shows only its palette icon', async ({ page })
   await expect(palette).toBeVisible();
   await expect(trigger.locator('.fl-swatch')).toHaveCount(0);
   // The name stays available to screen readers and the tooltip.
-  await expect(trigger).toHaveAttribute('aria-label', /Sand/);
-  await expect(trigger).toHaveAttribute('title', /Sand/);
+  await expect(trigger).toHaveAttribute('aria-label', /Sage/);
+  await expect(trigger).toHaveAttribute('title', /Sage/);
 
   // The menu still lists every name, and the home page does the same.
   await trigger.click();
@@ -639,10 +639,10 @@ test('a theme saved by an older version still loads', async ({ page }) => {
   await page.goto(HOME);
   await page.evaluate(() => localStorage.setItem('flow-theme', 'auto'));
   await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sand-auto');
-  await page.evaluate(() => localStorage.setItem('flow-theme', 'sand-dark'));
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sage-auto');
+  await page.evaluate(() => localStorage.setItem('flow-theme', 'sage-dark'));
   await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sand-dark');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sage-dark');
 });
 
 test.describe('editor bars', () => {
@@ -774,7 +774,7 @@ test.describe('editor bars', () => {
   test('the document and tabs are separate secondary pills, leaning left', async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 700 });
     await newScript(page);
-    const accent = 'rgb(151, 89, 44)';
+    const accent = 'rgb(82, 121, 111)';
     const doc = page.locator('.doc-pill');
     const tabs = page.getByRole('tablist', { name: 'Workspace' });
     const docBox = await doc.boundingBox();

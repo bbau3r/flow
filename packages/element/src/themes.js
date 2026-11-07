@@ -3,9 +3,43 @@
 // or by registering a named theme here.
 //
 // Each palette comes as <name>-light, <name>-dark and <name>-auto, which follows the
-// system setting. Plain "auto" is sand-auto.
+// system setting. Plain "auto" is sage-auto.
 
 export const PALETTES = {
+  // Deep teal and charcoal blue on pale ash by day, muted teal on near-grey by night.
+  sage: {
+    label: 'Sage',
+    light: {
+      desk: '#dfe4db',
+      paper: '#f6f8f4',
+      ink: '#2f3e46',
+      muted: '#4c6662',
+      accent: '#52796f',
+      'accent-ink': '#f6f8f4',
+      rule: '#cad2c5',
+      'ribbon-bg': '#eef1ea',
+      'ribbon-ink': '#2f3e46',
+      'bubble-bg': '#d5e3d5',
+      'bubble-ink': '#354f52',
+      shadow: 'rgb(47 62 70 / 0.22)',
+      scheme: 'light',
+    },
+    dark: {
+      desk: '#1c1e1d',
+      paper: '#262928',
+      ink: '#e3e8e0',
+      muted: '#a9bcb0',
+      accent: '#84a98c',
+      'accent-ink': '#262928',
+      rule: '#3d4644',
+      'ribbon-bg': '#212423',
+      'ribbon-ink': '#e3e8e0',
+      'bubble-bg': '#354f52',
+      'bubble-ink': '#e3e8e0',
+      shadow: 'rgb(0 0 0 / 0.6)',
+      scheme: 'dark',
+    },
+  },
   // Warm paper halfway between amber and linen, with caramel controls and a soft gold in the dark.
   sand: {
     label: 'Sand',
@@ -141,40 +175,6 @@ export const PALETTES = {
       scheme: 'dark',
     },
   },
-  // Deep teal and charcoal blue on pale ash by day, muted teal on near-grey by night.
-  sage: {
-    label: 'Sage',
-    light: {
-      desk: '#dfe4db',
-      paper: '#f6f8f4',
-      ink: '#2f3e46',
-      muted: '#4c6662',
-      accent: '#52796f',
-      'accent-ink': '#f6f8f4',
-      rule: '#cad2c5',
-      'ribbon-bg': '#eef1ea',
-      'ribbon-ink': '#2f3e46',
-      'bubble-bg': '#d5e3d5',
-      'bubble-ink': '#354f52',
-      shadow: 'rgb(47 62 70 / 0.22)',
-      scheme: 'light',
-    },
-    dark: {
-      desk: '#1c1e1d',
-      paper: '#262928',
-      ink: '#e3e8e0',
-      muted: '#a9bcb0',
-      accent: '#84a98c',
-      'accent-ink': '#262928',
-      rule: '#3d4644',
-      'ribbon-bg': '#212423',
-      'ribbon-ink': '#e3e8e0',
-      'bubble-bg': '#354f52',
-      'bubble-ink': '#e3e8e0',
-      shadow: 'rgb(0 0 0 / 0.6)',
-      scheme: 'dark',
-    },
-  },
   // Space indigo and dusty grape on parchment, with lilac and almond between, and almond on
   // indigo-tinted grey by night.
   lavender: {
@@ -259,13 +259,13 @@ function themeRules(base, select) {
     `@media (prefers-color-scheme: dark) { ${rule(name, dark)} }`,
   ];
   return [
-    `${base} { ${toCss(PALETTES.sand.light)} }`,
+    `${base} { ${toCss(PALETTES.sage.light)} }`,
     ...Object.entries(PALETTES).flatMap(([name, palette]) => [
       rule(`${name}-light`, palette.light),
       rule(`${name}-dark`, palette.dark),
       ...auto(`${name}-auto`, palette),
     ]),
-    ...auto('auto', PALETTES.sand),
+    ...auto('auto', PALETTES.sage),
   ].join('\n');
 }
 
@@ -277,7 +277,7 @@ export const PAGE_THEME_CSS = themeRules(':root', (name) => `:root[data-theme="$
 const registry = new Map();
 
 // registerTheme('sepia', { paper: '#f4ecd8', ink: '#3b2f1e' }) then <flow-script theme="sepia">.
-// Any color left out falls back to sand light.
+// Any color left out falls back to sage light.
 export function registerTheme(name, colors) {
   registry.set(name, colors);
   document.querySelectorAll(`flow-script[theme="${CSS.escape(name)}"]`).forEach((el) => el.applyTheme());

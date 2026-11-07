@@ -180,9 +180,9 @@ test('topics carry their fountain character, grouped as related', async ({ page 
   ]);
   const badge = page.locator('flow-script .fl-menu-item .fl-icon').first();
   await expect(badge).toHaveCSS('border-top-left-radius', '3px');
-  await expect(badge).toHaveCSS('color', 'rgb(151, 89, 44)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'sand-dark'));
-  await expect(badge).toHaveCSS('color', 'rgb(234, 182, 88)');
+  await expect(badge).toHaveCSS('color', 'rgb(82, 121, 111)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sage-dark'));
+  await expect(badge).toHaveCSS('color', 'rgb(132, 169, 140)');
   // A period sits on the baseline, so centering its ink has to lift it.
   const lift = await page.locator('flow-script .fl-menu-item .fl-icon-glyph').first().evaluate((g) => new DOMMatrix(getComputedStyle(g).transform).m42);
   expect(lift).toBeLessThan(0);
@@ -349,15 +349,15 @@ test('a pressed dual has a primary icon on the secondary color', async ({ page }
   await lineWith(page, 'Hi.').click();
   const dual = rib(page, 'Dual');
   await expect(dual).toHaveAttribute('aria-pressed', 'true');
-  const accent = 'rgb(151, 89, 44)';
+  const accent = 'rgb(82, 121, 111)';
   const badge = dual.locator('.fl-icon');
   await expect(badge).toHaveCSS('background-color', accent);
-  await expect(badge).toHaveCSS('color', 'rgb(252, 246, 238)');
+  await expect(badge).toHaveCSS('color', 'rgb(246, 248, 244)');
   const background = await dual.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(background).not.toBe(accent);
   expect(background).not.toBe('rgba(0, 0, 0, 0)');
   // The label stays in the normal text color, not on primary.
-  await expect(dual.locator('.fl-label')).toHaveCSS('color', 'rgb(60, 46, 29)');
+  await expect(dual.locator('.fl-label')).toHaveCSS('color', 'rgb(47, 62, 70)');
 
   // Other pressed buttons keep the full primary look.
   await page.keyboard.press('Home');
@@ -443,8 +443,8 @@ test.describe('at phone width', () => {
     // The thin scrollbar uses the primary color.
     await expect(row).toHaveCSS('scrollbar-width', 'thin');
     const accent = await rib(page, 'Bold').evaluate((el) => getComputedStyle(el).getPropertyValue('--flow-accent').trim());
-    expect(accent).toBe('#97592c');
-    expect(await row.evaluate((el) => getComputedStyle(el).scrollbarColor)).toContain('rgb(151, 89, 44)');
+    expect(accent).toBe('#52796f');
+    expect(await row.evaluate((el) => getComputedStyle(el).scrollbarColor)).toContain('rgb(82, 121, 111)');
 
     // Everything can be reached and used once scrolled to.
     await setValue(page, 'word');
@@ -747,7 +747,7 @@ test('the formatting row starts above the page, then floats over it on scrolling
   expect(hit.gap).toContain('fl-sheet');
   expect(hit.pill).toContain('fl-pill');
   const background = await page.locator('flow-script .fl-ribbon .fl-pill').first().evaluate((p) => getComputedStyle(p).backgroundColor);
-  expect(background).toBe('rgb(245, 240, 226)');
+  expect(background).toBe('rgb(238, 241, 234)');
 
   // Formatting still works while floating.
   await lineWith(page, 'Beat 50.').click();
@@ -1410,9 +1410,9 @@ test('properties set before the element is defined are honored', async ({ page }
 test('themes: presets, CSS variables and registered themes all apply', async ({ page }) => {
   await open(page);
   const paper = () => page.locator('flow-script .fl-sheet');
-  await expect(paper()).toHaveCSS('background-color', 'rgb(252, 246, 238)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'sand-dark'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(42, 39, 36)');
+  await expect(paper()).toHaveCSS('background-color', 'rgb(246, 248, 244)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sage-dark'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(38, 41, 40)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'sea-light'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'sea-dark'));
@@ -1425,10 +1425,10 @@ test('themes: presets, CSS variables and registered themes all apply', async ({ 
   await expect(paper()).toHaveCSS('background-color', 'rgb(251, 248, 239)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'forest-dark'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(41, 40, 36)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'sage-light'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(246, 248, 244)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'sage-dark'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(38, 41, 40)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sand-light'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(252, 246, 238)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sand-dark'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(42, 39, 36)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'lavender-light'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(248, 243, 240)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'lavender-dark'));
@@ -1439,8 +1439,8 @@ test('themes: presets, CSS variables and registered themes all apply', async ({ 
   await expect(paper()).toHaveCSS('background-color', 'rgb(34, 35, 38)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'sepia'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(244, 236, 216)');
-  await host(page).evaluate((el) => el.setAttribute('theme', 'sand-light'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(252, 246, 238)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sage-light'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(246, 248, 244)');
   await host(page).evaluate((el) => el.style.setProperty('--flow-paper', 'rgb(1, 2, 3)'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(1, 2, 3)');
 });
@@ -1459,7 +1459,7 @@ test('component tokens can be overridden from CSS or a registered theme', async 
   await open(page);
   const pillEl = page.locator('flow-script .fl-ribbon .fl-pill').first();
   const tabsOrExport = page.locator('flow-script .fl-export');
-  await expect(pillEl).toHaveCSS('background-color', 'rgb(245, 240, 226)');
+  await expect(pillEl).toHaveCSS('background-color', 'rgb(238, 241, 234)');
   await expect(pillEl).toHaveCSS('border-top-left-radius', '999px');
 
   // Tokens set from the page's own CSS reach inside the shadow root.
@@ -1694,12 +1694,12 @@ test('screenshots for visual review', async ({ page }) => {
   await lineWith(page, 'very').click();
   await page.locator('flow-script .fl-scroll').evaluate((s) => { s.scrollTop = 420; });
   await page.screenshot({ path: `${out}/edit-page-light.png` });
-  await host(page).evaluate((el) => el.setAttribute('theme', 'sand-dark'));
+  await host(page).evaluate((el) => el.setAttribute('theme', 'sage-dark'));
   await page.screenshot({ path: `${out}/edit-page-dark.png` });
   await chooseView(page, 'Seamless');
   await page.waitForTimeout(200);
   await page.screenshot({ path: `${out}/edit-flow-dark.png` });
-  await host(page).evaluate((el) => { el.setAttribute('theme', 'sand-light'); el.view = 'page'; el.readonly = true; });
+  await host(page).evaluate((el) => { el.setAttribute('theme', 'sage-light'); el.view = 'page'; el.readonly = true; });
   await page.waitForTimeout(200);
   await page.locator('flow-script .fl-scroll').evaluate((s) => { s.scrollTop = 1100; });
   await page.screenshot({ path: `${out}/read-page.png` });
