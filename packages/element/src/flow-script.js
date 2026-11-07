@@ -53,6 +53,7 @@ export class FlowScript extends HTMLElement {
     new ResizeObserver(() => {
       this.style.setProperty('--fl-area-w', `${this.#scroll.clientWidth}px`);
     }).observe(this.#scroll);
+    this.#listenForPinch();
   }
 
   connectedCallback() {
@@ -279,6 +280,49 @@ export class FlowScript extends HTMLElement {
     this.style.setProperty('--fl-action-w', `${profile.actionWidth * 0.6}em`);
   }
 
+  // Two fingers drive the page scale, as the 100% − + pill does, instead of zooming the whole
+  // app: the bars stay put and the script reflows at its new size.
+  #listenForPinch() {
+    const spread = (touches) => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+    let pinch = null;
+    let frame = 0;
+    const end = () => {
+      if (!pinch) return;
+      cancelAnimationFrame(frame);
+      frame = 0;
+      if (pinch.next !== null && pinch.next !== pinch.scale) this.#chooseScale(pinch.next);
+      pinch = null;
+    };
+    this.#scroll.addEventListener('touchstart', (event) => {
+      if (event.touches.length !== 2) return end();
+      pinch = { distance: spread(event.touches) || 1, scale: this.scale, next: null };
+    }, { passive: true });
+    // Not passive, so it can keep the browser from zooming or scrolling while it scales.
+    this.#scroll.addEventListener('touchmove', (event) => {
+      if (!pinch || event.touches.length !== 2) return;
+      event.preventDefault();
+      const raw = pinch.scale * (spread(event.touches) / pinch.distance);
+      pinch.next = Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round(raw)));
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (pinch?.next != null) this.scale = pinch.next;
+      });
+    }, { passive: false });
+    this.#scroll.addEventListener('touchend', (event) => { if (event.touches.length < 2) end(); });
+    this.#scroll.addEventListener('touchcancel', end);
+    // Safari's own pinch arrives as gesture events, which touch-action alone doesn't stop.
+    for (const type of ['gesturestart', 'gesturechange']) {
+      this.#scroll.addEventListener(type, (event) => event.preventDefault(), { passive: false });
+    }
+  }
+
+  // A scale the person picked, which the app may want to remember.
+  #chooseScale(percent) {
+    this.scale = percent;
+    this.dispatchEvent(new CustomEvent('flow-scale', { detail: { scale: this.scale } }));
+  }
+
   #applyScale() {
     const { scale } = this;
     this.style.setProperty('--fl-scale', scale / 100);
@@ -444,10 +488,7 @@ export class FlowScript extends HTMLElement {
       undo: () => this.#editor?.undo({ focus: this.workspace === 'write' }),
       redo: () => this.#editor?.redo({ focus: this.workspace === 'write' }),
       setView: (view) => { this.view = view; },
-      setScale: (percent) => {
-        this.scale = percent;
-        this.dispatchEvent(new CustomEvent('flow-scale', { detail: { scale: this.scale } }));
-      },
+      setScale: (percent) => this.#chooseScale(percent),
     });
   }
 

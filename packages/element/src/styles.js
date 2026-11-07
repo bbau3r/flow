@@ -23,7 +23,7 @@ ${CONTROLS_CSS}
 :host([hidden]) { display: none; }
 * { box-sizing: border-box; }
 
-.fl-scroll { flex: 1; min-height: 0; overflow: auto; container-type: inline-size; scroll-padding-top: var(--fl-inset-top, 0px); scroll-padding-bottom: var(--fl-inset-bottom, 0px); }
+.fl-scroll { flex: 1; min-height: 0; overflow: auto; touch-action: pan-x pan-y; container-type: inline-size; scroll-padding-top: var(--fl-inset-top, 0px); scroll-padding-bottom: var(--fl-inset-bottom, 0px); }
 /* geometricPrecision keeps character widths fractional. Without it, Linux browsers at
    standard density round 9.6px up to 10px, which breaks every column on the page. */
 .fl-script { font-family: var(--fl-script-font); font-variant-ligatures: none; line-height: 1; text-rendering: geometricPrecision; }
@@ -76,8 +76,8 @@ ${CONTROLS_CSS}
 .fl-action-pills[hidden] { display: none; }
 .fl-action-animating { flex-wrap: nowrap; }
 .fl-action-animating > * { flex: none; }
-/* A bare icon over the page, unlike the pills around it, until the pointer finds it. */
-.fl-action-toggle { pointer-events: auto; color: var(--flow-ink); }
+/* Lighter than the pills around it: a faint wash of their background, so it reads over the page. */
+.fl-action-toggle { pointer-events: auto; color: var(--flow-ink); background: color-mix(in srgb, ${token('pill-bg')} 20%, transparent); }
 .fl-action-toggle .fl-svg { transition: transform 220ms ease; }
 .fl-action-toggle[aria-expanded="false"] .fl-svg { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .fl-action-toggle .fl-svg { transition: none; } }

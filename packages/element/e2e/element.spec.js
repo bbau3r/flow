@@ -266,22 +266,51 @@ test('each format action has its own shadow, tight enough to stay separate', asy
   for (const count of running.pills) expect(count).toBe(1);
 });
 
-test('the arrow is a bare icon, with a background only under the pointer', async ({ page }) => {
+test('the arrow sits on a faint wash of the pill color, stronger under the pointer', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
   await open(page);
   const toggle = collapseToggle(page);
   await expect(toggle.locator('xpath=ancestor::*[contains(@class, "fl-pill")]')).toHaveCount(0);
   await page.mouse.move(0, 0);
-  await expect(toggle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const alpha = (color) => Number(color.match(/[\d.]+/g)[3] ?? 1);
+  const resting = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(alpha(resting)).toBeCloseTo(0.2, 2);
   await expect(toggle).toHaveCSS('box-shadow', 'none');
   await toggle.hover();
   const hovered = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(hovered).not.toBe('rgba(0, 0, 0, 0)');
+  expect(hovered).not.toBe(resting);
   await page.mouse.move(0, 0);
   await toggle.click();
   await expect(formatPills(page)).toBeHidden();
   await page.mouse.move(0, 0);
-  await expect(toggle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(toggle).toHaveCSS('background-color', resting);
+});
+
+test('pinching scales the script, not the page, and the app hears the new scale', async ({ browser }) => {
+  const context = await browser.newContext({ hasTouch: true, viewport: { width: 800, height: 900 } });
+  const page = await context.newPage();
+  await open(page);
+  const heard = host(page).evaluate((el) => new Promise((resolve) => {
+    el.addEventListener('flow-scale', (event) => resolve(event.detail.scale), { once: true });
+  }));
+  const scroller = page.locator('flow-script .fl-scroll');
+  await expect(scroller).toHaveCSS('touch-action', 'pan-x pan-y');
+  const box = await scroller.boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const fingers = (gap) => [{ x: cx - gap / 2, y: cy, id: 1 }, { x: cx + gap / 2, y: cy, id: 2 }];
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: fingers(100) });
+  for (const gap of [120, 150, 200]) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: fingers(gap) });
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  expect(await heard).toBe(200);
+  await expect(host(page)).toHaveAttribute('scale', '200');
+  await expect(statusbar(page).locator('.fl-scale')).toHaveText('200%');
+  expect(await page.evaluate(() => window.visualViewport.scale)).toBe(1);
+  await context.close();
 });
 
 test('collapsing keeps the rest of the row in place, and keeps up with quick clicks', async ({ page }) => {
