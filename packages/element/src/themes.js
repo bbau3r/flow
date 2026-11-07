@@ -210,6 +210,40 @@ export const PALETTES = {
       scheme: 'dark',
     },
   },
+  // Greys and near-blacks, cool with a touch of blue, and a touch of red in the comments.
+  graphite: {
+    label: 'Graphite',
+    light: {
+      desk: '#e2e3e6',
+      paper: '#f7f7f8',
+      ink: '#1d1e22',
+      muted: '#55575e',
+      accent: '#33353b',
+      'accent-ink': '#f7f7f8',
+      rule: '#cfd1d6',
+      'ribbon-bg': '#efeff1',
+      'ribbon-ink': '#1d1e22',
+      'bubble-bg': '#ece2e2',
+      'bubble-ink': '#5a2e30',
+      shadow: 'rgb(20 22 28 / 0.22)',
+      scheme: 'light',
+    },
+    dark: {
+      desk: '#18191b',
+      paper: '#222326',
+      ink: '#e6e7ea',
+      muted: '#a4a6ad',
+      accent: '#c9cbd1',
+      'accent-ink': '#222326',
+      rule: '#3a3c41',
+      'ribbon-bg': '#1d1e21',
+      'ribbon-ink': '#e6e7ea',
+      'bubble-bg': '#3d2c2e',
+      'bubble-ink': '#f0dcdc',
+      shadow: 'rgb(0 0 0 / 0.6)',
+      scheme: 'dark',
+    },
+  },
 };
 
 const toCss = (theme) =>

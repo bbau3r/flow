@@ -49,7 +49,7 @@ The build produces two forms:
 | `view` | How the Write tab shows the script: `flow` (Seamless, continuous), `page` (standard script pages) or `source` (the Fountain text itself, with nothing hidden or formatted, and still editable). Read-only mode shows pages unless it's set. | `flow` |
 | `workspace` | `write` (the script), `outline` (its acts, sequences, scenes and transitions as cards and blocks, which edit the same text) or `read` (the pages as they print, with editing off) | `write` |
 | `scale` | How large the script is shown, as a percentage from 50 to 200 | `100` |
-| `theme` | `sand`, `sea`, `romance`, `forest`, `sage` or `lavender` followed by `-light`, `-dark` or `-auto`; plain `auto`, which means `sand-auto`; or a registered name | `sand-light` |
+| `theme` | `sand`, `sea`, `romance`, `forest`, `sage`, `lavender` or `graphite` followed by `-light`, `-dark` or `-auto`; plain `auto`, which means `sand-auto`; or a registered name | `sand-light` |
 | `paper` | `letter` or `a4` | `letter` |
 
 ### Properties and methods

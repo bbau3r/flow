@@ -1433,6 +1433,10 @@ test('themes: presets, CSS variables and registered themes all apply', async ({ 
   await expect(paper()).toHaveCSS('background-color', 'rgb(248, 243, 240)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'lavender-dark'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(38, 37, 44)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'graphite-light'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(247, 247, 248)');
+  await host(page).evaluate((el) => el.setAttribute('theme', 'graphite-dark'));
+  await expect(paper()).toHaveCSS('background-color', 'rgb(34, 35, 38)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'sepia'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(244, 236, 216)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'sand-light'));

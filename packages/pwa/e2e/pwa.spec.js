@@ -522,7 +522,7 @@ test('theme choice applies to the app and script, and persists', async ({ page }
 test('every theme can be chosen from the menu and fits the screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 500 });
   await newScript(page);
-  for (const [name, theme] of [['Sand', 'sand'], ['Sea', 'sea'], ['Romance', 'romance'], ['Forest', 'forest'], ['Sage', 'sage'], ['Lavender', 'lavender']]) {
+  for (const [name, theme] of [['Sand', 'sand'], ['Sea', 'sea'], ['Romance', 'romance'], ['Forest', 'forest'], ['Sage', 'sage'], ['Lavender', 'lavender'], ['Graphite', 'graphite']]) {
     await chooseTheme(page, name);
     await expect(page.locator('flow-script')).toHaveAttribute('theme', `${theme}-auto`);
     await page.locator('.theme .fl-menu-trigger').click();
