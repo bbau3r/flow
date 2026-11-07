@@ -547,7 +547,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .fl-menu-item:hover:not(:disabled) { background: ${token('button-hover-bg')}; }
 .fl-menu-item > .fl-svg:last-child { visibility: hidden; width: 1em; height: 1em; color: var(--flow-accent); }
 .fl-menu-item:disabled { opacity: 0.5; cursor: default; }
-.fl-menu-item[aria-checked="true"] { font-weight: 600; }
+.fl-menu-item[aria-checked="true"] { font-weight: 600; background: color-mix(in srgb, var(--flow-accent) 12%, transparent); }
 .fl-menu-item[aria-checked="true"] > .fl-svg:last-child { visibility: visible; }
 
 /* Space runs short in stages, measured from the bar the control sits in. */

@@ -27,7 +27,7 @@ ${CONTROLS_CSS}
 /* geometricPrecision keeps character widths fractional. Without it, Linux browsers at
    standard density round 9.6px up to 10px, which breaks every column on the page. */
 .fl-script { font-family: var(--fl-script-font); font-variant-ligatures: none; line-height: 1; text-rendering: geometricPrecision; }
-:host([view="page"]) .fl-script, .fl-read { font-size: calc(min(16px, var(--fl-area-w, 100cqw) / 52.5) * var(--fl-scale, 1)); }
+:host([view="page"]) .fl-script:not(.fl-read), .fl-read.fl-pages { font-size: calc(min(16px, var(--fl-area-w, 100cqw) / 52.5) * var(--fl-scale, 1)); }
 
 /* With the bars, the script fills the room between them when short, so they rest at the top
    and bottom, and grows past them when long. A grid would confine each to its own row. */
@@ -77,7 +77,7 @@ ${CONTROLS_CSS}
 .fl-action-animating { flex-wrap: nowrap; }
 .fl-action-animating > * { flex: none; }
 /* Lighter than the pills around it: a faint wash of their background, so it reads over the page. */
-.fl-action-toggle { pointer-events: auto; color: var(--flow-ink); background: color-mix(in srgb, ${token('pill-bg')} 20%, transparent); }
+.fl-action-toggle { pointer-events: auto; color: var(--flow-ink); background: color-mix(in srgb, ${token('pill-bg')} 65%, transparent); }
 .fl-action-toggle .fl-svg { transition: transform 220ms ease; }
 .fl-action-toggle[aria-expanded="false"] .fl-svg { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .fl-action-toggle .fl-svg { transition: none; } }

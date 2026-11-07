@@ -8,7 +8,7 @@ import { STYLES } from './styles.js';
 import { getTheme } from './themes.js';
 import { renderReadonly } from './readonly.js';
 import { createRibbon } from './ribbon.js';
-import { createStatusbar, SCALE_MAX, SCALE_MIN } from './statusbar.js';
+import { createStatusbar, SCALE_MAX, SCALE_MIN, SCALE_STEP } from './statusbar.js';
 import { createOutline } from './outline.js';
 import { openExportDialog } from './export-dialog.js';
 
@@ -22,7 +22,7 @@ export function loadFonts() {
 }
 
 export class FlowScript extends HTMLElement {
-  static observedAttributes = ['readonly', 'view', 'workspace', 'theme', 'paper', 'scale'];
+  static observedAttributes = ['readonly', 'view', 'read-view', 'workspace', 'theme', 'paper', 'scale'];
 
   #value = '';
   #valueSet = false;
@@ -60,7 +60,7 @@ export class FlowScript extends HTMLElement {
     if (this.#started) return;
     // Properties set before this element was defined sit on the instance and would
     // shadow the accessors, so reapply them through the class.
-    for (const prop of ['value', 'readonly', 'view', 'workspace', 'printOptions', 'exportActions']) {
+    for (const prop of ['value', 'readonly', 'view', 'readView', 'workspace', 'printOptions', 'exportActions']) {
       if (Object.hasOwn(this, prop)) {
         const pending = this[prop];
         delete this[prop];
@@ -101,6 +101,14 @@ export class FlowScript extends HTMLElement {
     if (name === 'paper') {
       this.#options.paper = PROFILES[newValue] ? newValue : 'letter';
       this.#applyPaper();
+    }
+    if (name === 'read-view') {
+      this.#syncBars();
+      if (this.#editor && this.workspace === 'read') {
+        this.#scroll.scrollTop = 0;
+        this.#showRead();
+      }
+      return;
     }
     if (name === 'readonly') {
       this.#render();
@@ -149,6 +157,18 @@ export class FlowScript extends HTMLElement {
 
   set view(v) {
     this.setAttribute('view', v);
+  }
+
+  /**
+   * How the Read tab shows the script: 'page' (the pages as they print, the default) or
+   * 'flow' (continuous, with no pages).
+   */
+  get readView() {
+    return this.getAttribute('read-view') === 'flow' ? 'flow' : 'page';
+  }
+
+  set readView(v) {
+    this.setAttribute('read-view', v);
   }
 
   /**
@@ -280,12 +300,23 @@ export class FlowScript extends HTMLElement {
     this.style.setProperty('--fl-action-w', `${profile.actionWidth * 0.6}em`);
   }
 
-  // Two fingers drive the page scale, as the 100% − + pill does, instead of zooming the whole
-  // app: the bars stay put and the script reflows at its new size.
+  // Pinching drives the page scale, as the 100% − + pill does, instead of zooming the whole
+  // app: the bars stay put and the script reflows at its new size. That's two fingers on a
+  // touch screen, a pinch on a trackpad, or Ctrl with the mouse wheel, which is how browsers
+  // report a trackpad pinch too.
   #listenForPinch() {
-    const spread = (touches) => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+    const clamp = (raw) => Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round(raw)));
     let pinch = null;
     let frame = 0;
+    const begin = () => { pinch = { scale: this.scale, next: null }; };
+    const move = (raw) => {
+      pinch.next = clamp(raw);
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (pinch?.next != null) this.scale = pinch.next;
+      });
+    };
     const end = () => {
       if (!pinch) return;
       cancelAnimationFrame(frame);
@@ -293,28 +324,49 @@ export class FlowScript extends HTMLElement {
       if (pinch.next !== null && pinch.next !== pinch.scale) this.#chooseScale(pinch.next);
       pinch = null;
     };
+
+    const spread = (touches) => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+    let distance = 1;
     this.#scroll.addEventListener('touchstart', (event) => {
       if (event.touches.length !== 2) return end();
-      pinch = { distance: spread(event.touches) || 1, scale: this.scale, next: null };
+      begin();
+      distance = spread(event.touches) || 1;
     }, { passive: true });
     // Not passive, so it can keep the browser from zooming or scrolling while it scales.
     this.#scroll.addEventListener('touchmove', (event) => {
       if (!pinch || event.touches.length !== 2) return;
       event.preventDefault();
-      const raw = pinch.scale * (spread(event.touches) / pinch.distance);
-      pinch.next = Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round(raw)));
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        if (pinch?.next != null) this.scale = pinch.next;
-      });
+      move(pinch.scale * (spread(event.touches) / distance));
     }, { passive: false });
     this.#scroll.addEventListener('touchend', (event) => { if (event.touches.length < 2) end(); });
     this.#scroll.addEventListener('touchcancel', end);
-    // Safari's own pinch arrives as gesture events, which touch-action alone doesn't stop.
-    for (const type of ['gesturestart', 'gesturechange']) {
-      this.#scroll.addEventListener(type, (event) => event.preventDefault(), { passive: false });
-    }
+
+    // The wheel has no end of its own, so a pause settles the scale. Browsers report a
+    // trackpad pinch as small deltas of -100·ln(scale), which this undoes to follow the
+    // fingers exactly. A mouse notch is a large whole number, or lines or pages, and steps
+    // 10% like the pill's buttons.
+    let settle = 0;
+    this.#scroll.addEventListener('wheel', (event) => {
+      if (!event.ctrlKey || !event.deltaY) return;
+      event.preventDefault();
+      if (!pinch) begin();
+      const from = pinch.next ?? pinch.scale;
+      const notch = event.deltaMode !== 0 || (Math.abs(event.deltaY) >= 50 && Number.isInteger(event.deltaY));
+      move(notch ? from - Math.sign(event.deltaY) * SCALE_STEP : from * Math.exp(-event.deltaY / 100));
+      clearTimeout(settle);
+      settle = setTimeout(end, 250);
+    }, { passive: false });
+
+    // Safari reports a pinch, on a trackpad or a touch screen, as gesture events.
+    this.#scroll.addEventListener('gesturestart', (event) => {
+      event.preventDefault();
+      if (!pinch) begin();
+    }, { passive: false });
+    this.#scroll.addEventListener('gesturechange', (event) => {
+      event.preventDefault();
+      if (pinch && Number.isFinite(event.scale)) move(pinch.scale * event.scale);
+    }, { passive: false });
+    this.#scroll.addEventListener('gestureend', end);
   }
 
   // A scale the person picked, which the app may want to remember.
@@ -336,7 +388,7 @@ export class FlowScript extends HTMLElement {
 
   #syncBars() {
     this.#ribbon?.setWorkspace(this.workspace);
-    this.#statusbar?.setView(this.view, this.workspace);
+    this.#statusbar?.setView(this.view, this.workspace, this.readView);
   }
 
   #scriptHidden() {
@@ -362,7 +414,7 @@ export class FlowScript extends HTMLElement {
     this.#read?.remove();
     this.#read = null;
     if (!reading) return;
-    this.#read = renderReadonly(this.#editor.value, { view: 'page', options: this.#options });
+    this.#read = renderReadonly(this.#editor.value, { view: this.readView, options: this.#options });
     this.#read.classList.add('fl-read');
     this.#statusbar.root.before(this.#read);
   }
@@ -488,6 +540,7 @@ export class FlowScript extends HTMLElement {
       undo: () => this.#editor?.undo({ focus: this.workspace === 'write' }),
       redo: () => this.#editor?.redo({ focus: this.workspace === 'write' }),
       setView: (view) => { this.view = view; },
+      setReadView: (view) => { this.readView = view; },
       setScale: (percent) => this.#chooseScale(percent),
     });
   }

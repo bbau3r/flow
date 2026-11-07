@@ -13,7 +13,7 @@ const lineWith = (page, text) => page.locator('flow-script .fl-line', { hasText:
 const rib = (page, name) => page.locator('flow-script .fl-ribbon').getByRole('button', { name, exact: true });
 const topicButton = (page) => page.locator('flow-script .fl-topics .fl-menu-trigger');
 const statusbar = (page) => page.locator('flow-script .fl-statusbar');
-const viewButton = (page) => statusbar(page).locator('.fl-menu-trigger');
+const viewButton = (page) => statusbar(page).locator('.fl-menu-trigger:visible');
 const historyButton = (page, name) => statusbar(page).getByRole('button', { name, exact: true });
 
 async function chooseTopic(page, name) {
@@ -274,7 +274,7 @@ test('the arrow sits on a faint wash of the pill color, stronger under the point
   await page.mouse.move(0, 0);
   const alpha = (color) => Number(color.match(/[\d.]+/g)[3] ?? 1);
   const resting = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(alpha(resting)).toBeCloseTo(0.2, 2);
+  expect(alpha(resting)).toBeCloseTo(0.65, 2);
   await expect(toggle).toHaveCSS('box-shadow', 'none');
   await toggle.hover();
   const hovered = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -284,6 +284,68 @@ test('the arrow sits on a faint wash of the pill color, stronger under the point
   await expect(formatPills(page)).toBeHidden();
   await page.mouse.move(0, 0);
   await expect(toggle).toHaveCSS('background-color', resting);
+});
+
+test('Read has its own views, Paged by default and Seamless on request, apart from Write', async ({ page }) => {
+  await open(page, { view: 'flow' });
+  await show(page, 'Read');
+  const read = page.locator('flow-script .fl-read');
+  await expect(read).toHaveClass(/fl-pages/);
+  await expect(viewButton(page)).toHaveCount(1);
+  await expect(statusbar(page).getByRole('button', { name: 'View: Paged' })).toBeVisible();
+  await expect(statusbar(page).getByRole('button', { name: 'View: Seamless' })).toBeHidden();
+  await statusbar(page).getByRole('button', { name: 'View: Paged' }).click();
+  await expect(statusbar(page).getByRole('menuitemradio')).toHaveCount(2);
+  await statusbar(page).getByRole('menuitemradio', { name: 'Seamless', exact: true }).click();
+  await expect(host(page)).toHaveAttribute('read-view', 'flow');
+  await expect(read).toHaveClass(/fl-flow/);
+  await expect(read.locator('.fl-line.fl-scene').first()).toBeVisible();
+  // Write keeps its own view, and Read keeps its choice coming back.
+  await host(page).evaluate((el) => { el.workspace = 'write'; });
+  await expect(host(page)).toHaveAttribute('view', 'flow');
+  await expect(page.locator('flow-script .fl-read')).toHaveCount(0);
+  await host(page).evaluate((el) => { el.workspace = 'read'; });
+  await expect(page.locator('flow-script .fl-read')).toHaveClass(/fl-flow/);
+  expect(await host(page).evaluate((el) => el.readView)).toBe('flow');
+});
+
+test('Ctrl with the wheel steps the scale, and a trackpad pinch follows the fingers', async ({ page }) => {
+  await open(page);
+  const scroller = page.locator('flow-script .fl-scroll');
+  const box = await scroller.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const heard = () => host(page).evaluate((el) => new Promise((resolve) => {
+    el.addEventListener('flow-scale', (event) => resolve(event.detail.scale), { once: true });
+  }));
+  let next = heard();
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -100);
+  await page.mouse.wheel(0, -100);
+  await page.keyboard.up('Control');
+  expect(await next).toBe(120);
+  await expect(statusbar(page).locator('.fl-scale')).toHaveText('120%');
+  // A pinch arrives as small ctrl-wheel deltas, which together make the fingers' spread.
+  next = heard();
+  await scroller.evaluate((el) => {
+    for (let i = 0; i < 10; i++) el.dispatchEvent(new WheelEvent('wheel', { deltaY: -10 * Math.log(1.5), ctrlKey: true, bubbles: true, cancelable: true }));
+  });
+  expect(await next).toBe(180);
+  // Without Ctrl, the wheel still scrolls.
+  await page.mouse.wheel(0, 300);
+  await expect(host(page)).toHaveAttribute('scale', '180');
+  expect(await page.evaluate(() => window.visualViewport.scale)).toBe(1);
+});
+
+test('the chosen item in a dropdown sits on a faint wash of the accent', async ({ page }) => {
+  await open(page);
+  await page.mouse.move(0, 0);
+  await viewButton(page).click();
+  const chosen = statusbar(page).getByRole('menuitemradio', { name: 'Paged', exact: true });
+  const other = statusbar(page).getByRole('menuitemradio', { name: 'Seamless', exact: true });
+  await expect(chosen).toHaveAttribute('aria-checked', 'true');
+  await expect(other).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const wash = await chosen.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(Number(wash.match(/[\d.]+/g)[3])).toBeCloseTo(0.12, 2);
 });
 
 test('pinching scales the script, not the page, and the app hears the new scale', async ({ browser }) => {
@@ -633,8 +695,8 @@ test('the bottom pills are separate, and float over the page with clicks passing
   await setValue(page, Array.from({ length: 200 }, (_, i) => `Beat ${i}.`).join('\n\n'));
   const labels = await page.locator('flow-script .fl-statusbar > .fl-pill').evaluateAll((pills) => pills.filter((p) => !p.hidden).map((p) => p.getAttribute('aria-label')));
   expect(labels).toEqual(['View', 'Page scale', 'History']);
-  const scaleBox = await page.locator('flow-script .fl-statusbar > .fl-pill').nth(1).boundingBox();
-  const viewBox = await page.locator('flow-script .fl-statusbar > .fl-pill').nth(0).boundingBox();
+  const scaleBox = await page.locator('flow-script .fl-statusbar > .fl-pill:visible').nth(1).boundingBox();
+  const viewBox = await page.locator('flow-script .fl-statusbar > .fl-pill:visible').nth(0).boundingBox();
   expect(scaleBox.x).toBeGreaterThan(viewBox.x + viewBox.width);
 
   const sheet = page.locator('flow-script .fl-sheet');
@@ -894,7 +956,7 @@ test('menus stay on screen wherever their button lands', async ({ page }) => {
     expect(box.y + box.height, label).toBeLessThanOrEqual(viewport.height);
   };
   const topicsPopup = page.locator('flow-script .fl-topics .fl-menu-popup');
-  const viewPopup = statusbar(page).locator('.fl-menu-popup');
+  const viewPopup = statusbar(page).locator('.fl-pill:not([hidden]) .fl-menu-popup');
   for (const width of [1300, 900, 600, 390, 280]) {
     await page.setViewportSize({ width, height: 800 });
     await topicButton(page).click();
@@ -1050,13 +1112,14 @@ test('the view menu lists Seamless, Paged and Fountain, and Seamless is the defa
   expect(names).toEqual(['Seamless', 'Paged', 'Fountain']);
 });
 
-test('Read shows pages whichever view Write is in, and keeps that view', async ({ page }) => {
+test('Read shows pages whichever view Write is in, and Write keeps its view', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await open(page, { view: 'flow' });
   await setValue(page, 'Hello.');
   await show(page, 'Read');
   expect((await page.locator('flow-script .fl-page').first().boundingBox()).width).toBeCloseTo(816, 0);
-  await expect(viewButton(page)).toBeHidden();
+  // Only Read's own view menu shows, set to Paged.
+  await expect(viewButton(page)).toHaveAttribute('aria-label', 'View: Paged');
   await host(page).evaluate((el) => el.setAttribute('workspace', 'write'));
   await expect(page.locator('flow-script .fl-flow')).toBeVisible();
   await expect(page.locator('flow-script .fl-read')).toHaveCount(0);
