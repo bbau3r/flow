@@ -1428,7 +1428,7 @@ test('themes: presets, CSS variables and registered themes all apply', async ({ 
   await host(page).evaluate((el) => el.setAttribute('theme', 'sage-light'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(246, 248, 244)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'sage-dark'));
-  await expect(paper()).toHaveCSS('background-color', 'rgb(37, 43, 42)');
+  await expect(paper()).toHaveCSS('background-color', 'rgb(38, 41, 40)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'lavender-light'));
   await expect(paper()).toHaveCSS('background-color', 'rgb(248, 243, 240)');
   await host(page).evaluate((el) => el.setAttribute('theme', 'lavender-dark'));
