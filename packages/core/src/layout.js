@@ -72,9 +72,7 @@ const blankRow = (line) => ({ cells: [], line, type: 'blank', notes: [] });
 
 // A value line with only its indent so far has a place on screen for the cursor, but prints nothing.
 function titleRows(parsed, profile, { placeEmpty = false } = {}) {
-  const { lines } = parsed;
-  // Settings never print, so a title page holding only them makes no page.
-  const titlePage = parsed.titlePage.filter((e) => e.key !== 'settings');
+  const { titlePage, lines } = parsed;
   if (!titlePage.length) return null;
   const rows = [];
   const shown = (i) => placeEmpty || lines[i].raw.trim() !== '';

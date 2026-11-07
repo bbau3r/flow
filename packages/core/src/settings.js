@@ -1,8 +1,11 @@
-// A script's own settings, kept on its title page as a Settings: key with one name: value
-// pair per indented line. They never print, and the editor shows them only in Fountain view.
+// A script's own settings, kept in a boneyard at the bottom of its title page, with one
+// name: value pair per line. Being a boneyard, they never print, here or in any other
+// Fountain app, and the editor shows them only in Fountain view.
 //
+//   /*
 //   Settings:
 //       Dimensions: A4
+//   */
 //
 // Dimensions is US Letter, A4, or a width and height in inches, centimetres or millimetres,
 // such as 6in x 9in, 6" x 9", 15cm x 23cm or 150 x 230 mm.
@@ -96,54 +99,61 @@ export function resolvePaper(parsed, { paper, paperOverride } = {}) {
 }
 
 const SETTING_RE = /^[ \t]*([^:]+?)[ \t]*:[ \t]*(.*?)[ \t]*$/;
+const OPENING_RE = /^\s*settings[ \t]*:[ \t]*/i;
 
-/** The Settings block's values, keyed by lower-case name. Used by the parser. */
-export function readSettings(titlePage, lines) {
-  const settings = {};
-  const entry = titlePage.find((e) => e.key === 'settings');
-  if (!entry) return settings;
-  entry.lines.forEach((i, n) => {
-    const text = n === 0 ? lines[i].visible.slice(lines[i].contentStart) : lines[i].visible;
-    const pair = SETTING_RE.exec(text);
-    if (pair) settings[pair[1].toLowerCase()] = pair[2];
-  });
-  return settings;
+/**
+ * The script's Settings block: the first boneyard that opens with "Settings:", as
+ * { comment, values, whole }. `values` maps each lower-case name to { label, value }, and
+ * `whole` says whether the boneyard has its lines to itself. Used by the parser.
+ */
+export function findSettings(comments, source) {
+  const comment = comments.find((c) => c.type === 'boneyard' && OPENING_RE.test(source.slice(c.start + 2, c.end - 2)));
+  if (!comment) return null;
+  const values = {};
+  const body = source.slice(comment.start + 2, comment.end - 2).replace(OPENING_RE, '');
+  for (const line of body.split('\n')) {
+    const pair = SETTING_RE.exec(line);
+    if (pair) values[pair[1].toLowerCase()] = { label: pair[1], value: pair[2] };
+  }
+  const lineStartAt = source.lastIndexOf('\n', comment.start - 1) + 1;
+  const lineEndAt = source.indexOf('\n', comment.end);
+  const whole = !source.slice(lineStartAt, comment.start).trim() && !source.slice(comment.end, lineEndAt < 0 ? source.length : lineEndAt).trim();
+  return { comment, values, whole };
+}
+
+/** The Settings block's values, keyed by lower-case name. */
+export function readSettings(block) {
+  return Object.fromEntries(Object.entries(block?.values ?? {}).map(([key, { value }]) => [key, value]));
+}
+
+// Kept in a boneyard so that other Fountain apps leave it out, as Flow's own pages do.
+function settingsBlock(entries, indent = '    ') {
+  return ['/*', 'Settings:', ...entries.map(([label, value]) => `${indent}${label}: ${value}`), '*/'];
 }
 
 /**
  * Sets one setting, such as ('Dimensions', 'A4'), and returns the script's new lines. A
- * script without a Settings block gets one at the top of its title page, or a title page
- * holding only that when it has none.
+ * script without a Settings block gets one at the bottom of its title page, or at the top
+ * when it has none.
  */
 export function writeSetting(parsed, name, value) {
   const lines = parsed.lines.map((l) => l.raw);
-  const entry = parsed.titlePage.find((e) => e.key === 'settings');
-  if (!entry) {
-    const at = parsed.titlePage.length ? parsed.titlePage[0].lines[0] : 0;
-    const block = ['Settings:', `    ${name}: ${value}`];
-    // A title page ends at the first blank line, which keeps it apart from the script.
-    if (!parsed.titlePage.length && (lines[0] ?? '').trim() !== '') block.push('');
-    lines.splice(at, 0, ...block);
+  const block = parsed.settingsBlock;
+  if (!block) {
+    const at = parsed.titlePage.length ? Math.max(...parsed.titlePage.flatMap((e) => e.lines)) + 1 : 0;
+    const added = settingsBlock([[name, value]]);
+    // A blank line keeps it apart from the script that follows.
+    if (!parsed.titlePage.length && (lines[0] ?? '').trim() !== '') added.push('');
+    lines.splice(at, 0, ...added);
     return lines;
   }
-  const wanted = name.toLowerCase();
-  const values = entry.lines.slice(1);
-  const existing = values.find((i) => SETTING_RE.exec(lines[i])?.[1].toLowerCase() === wanted);
-  if (existing !== undefined) {
-    const [, indent] = /^([ \t]*)/.exec(lines[existing]);
-    lines[existing] = `${indent}${SETTING_RE.exec(lines[existing])[1]}: ${value}`;
-    return lines;
-  }
-  const keyLine = entry.lines[0];
-  const inline = SETTING_RE.exec(parsed.lines[keyLine].visible.slice(parsed.lines[keyLine].contentStart));
-  if (inline && inline[1].toLowerCase() === wanted) {
-    lines[keyLine] = `${lines[keyLine].slice(0, parsed.lines[keyLine].contentStart)}${inline[1]}: ${value}`;
-    return lines;
-  }
-  const indent = values.length ? /^[ \t]*/.exec(lines[values[0]])[0] : '    ';
-  // An empty value line, left while typing, takes the setting rather than staying above it.
-  const last = entry.lines[entry.lines.length - 1];
-  if (values.length && !lines[last].trim()) lines[last] = `${indent}${name}: ${value}`;
-  else lines.splice(last + 1, 0, `${indent}${name}: ${value}`);
-  return lines;
+  const { source } = parsed;
+  const { comment, values } = block;
+  const entries = Object.values(values).map(({ label, value: v }) => [label, v]);
+  const existing = Object.keys(values).indexOf(name.toLowerCase());
+  if (existing >= 0) entries[existing][1] = value;
+  else entries.push([name, value]);
+  const indent = /\n([ \t]+)\S/.exec(source.slice(comment.start, comment.end))?.[1];
+  const text = source.slice(0, comment.start) + settingsBlock(entries, indent).join('\n') + source.slice(comment.end);
+  return text.split('\n');
 }

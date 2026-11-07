@@ -103,15 +103,17 @@ function coverInfo(parsed, options) {
   return { positions, hidden, last, separator: parsed.lines[last + 1]?.type === 'blank' ? last + 1 : -1 };
 }
 
-// The script's settings are out of sight but in Fountain view, where the file shows as it is.
-// With nothing else on the title page, so is the blank line that ends it, unless it's the
-// last line and so the only place left to type.
+// The script's settings boneyard is out of sight but in Fountain view, where the file shows as
+// it is, as long as it has its lines to itself. Opening the script, it's followed by a blank
+// line that's hidden too, unless that's the last line and so the only place left to type.
 function hiddenLines(parsed) {
-  const entry = parsed.titlePage.find((e) => e.key === 'settings');
-  if (!entry) return new Set();
-  const hidden = new Set(entry.lines);
-  const after = entry.lines[entry.lines.length - 1] + 1;
-  if (parsed.titlePage.length === 1 && parsed.lines[after]?.type === 'blank' && after < parsed.lines.length - 1) hidden.add(after);
+  const block = parsed.settingsBlock;
+  if (!block?.whole) return new Set();
+  const { lineStart, lineEnd } = block.comment;
+  const hidden = new Set(Array.from({ length: lineEnd - lineStart + 1 }, (_, i) => lineStart + i));
+  const after = lineEnd + 1;
+  const opens = parsed.lines.slice(0, lineStart).every((l) => l.type === 'blank');
+  if (opens && parsed.lines[after]?.type === 'blank' && after < parsed.lines.length - 1) hidden.add(after);
   return hidden;
 }
 

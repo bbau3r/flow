@@ -4,10 +4,10 @@
 // engine. Nothing here mutates or re-serializes the source.
 
 import { parseInline } from './inline.js';
-import { readSettings } from './settings.js';
+import { findSettings, readSettings } from './settings.js';
 
 export const SCENE_RE = /^(?:int\.?\/ext|i\/e|int|ext|est)[. ]/i;
-const TITLE_KEYS = new Set(['title', 'credit', 'author', 'authors', 'source', 'draft date', 'date', 'contact', 'copyright', 'notes', 'revision', 'settings']);
+const TITLE_KEYS = new Set(['title', 'credit', 'author', 'authors', 'source', 'draft date', 'date', 'contact', 'copyright', 'notes', 'revision']);
 const MASK = '\0';
 // A title page value's indent: two or more spaces or a tab, whatever else follows them.
 export const TITLE_INDENT = /^(?: {2}|\t)[ \t]*/;
@@ -279,7 +279,8 @@ export function parse(input) {
     if (l.type === 'character') l.name = l.text.replace(/\s*\(.*?\)/g, '').trim();
   }
 
-  return { source, lines, comments, titlePage, settings: readSettings(titlePage, lines), outline: buildOutline(lines) };
+  const settingsBlock = findSettings(comments, source);
+  return { source, lines, comments, titlePage, settingsBlock, settings: readSettings(settingsBlock), outline: buildOutline(lines) };
 }
 
 /** The script's title on one line, with a title on several lines joined by the separator. */

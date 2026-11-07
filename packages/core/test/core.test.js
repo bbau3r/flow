@@ -581,35 +581,43 @@ describe('settings', () => {
     expect([metric.linesPerPage, metric.actionWidth]).toEqual([letter.linesPerPage, letter.actionWidth]);
     expect(pageProfile('nonsense')).toBe(letter);
   });
-  it('reads the Settings block from the title page', () => {
-    const p = parse('Title: BIG\nSettings:\n    Dimensions: A4\n    Other: x\n\nAction.');
+  const S = '/*\nSettings:\n    Dimensions: A4\n*/';
+  it('reads the Settings boneyard, wherever it is', () => {
+    const p = parse('Title: BIG\n/*\nSettings:\n    Dimensions: A4\n    Other: x\n*/\n\nAction.');
     expect(p.settings).toEqual({ dimensions: 'A4', other: 'x' });
-    expect(p.lines[5].type).toBe('action');
-    expect(parse('Settings: Dimensions: 8in x 10in\n\nAction.').settings).toEqual({ dimensions: '8in x 10in' });
+    expect(p.titlePage.map((e) => e.key)).toEqual(['title']);
+    expect(p.lines[7].type).toBe('action');
+    expect(p.settingsBlock.whole).toBe(true);
+    expect(parse('/* Settings: Dimensions: 8in x 10in */\n\nAction.').settings).toEqual({ dimensions: '8in x 10in' });
+    expect(parse('Action.\n\n/* cut */\n\n/*\nsettings:\n  dimensions: a4\n*/').settings).toEqual({ dimensions: 'a4' });
+    expect(parse('Action. /* Settings: Dimensions: A4 */').settingsBlock.whole).toBe(false);
+    expect(parse('Action.\n\n/* Some notes:\n  Dimensions: A4 */').settings).toEqual({});
     expect(parse('Action.').settings).toEqual({});
   });
   it('picks the size to lay out: an override, then the script, then the default', () => {
-    const p = parse('Settings:\n  Dimensions: A4\n\nAction.');
+    const p = parse(`${S}\n\nAction.`);
     expect(resolvePaper(p, { paper: 'letter' })).toBe('a4');
     expect(resolvePaper(p, { paper: 'letter', paperOverride: 'letter' })).toBe('letter');
     expect(resolvePaper(parse('Action.'), { paper: 'a4' })).toBe('a4');
     expect(layout(p, { paper: 'letter' }).profile.paper).toBe('a4');
   });
   it('makes no title page from settings alone, and never prints them', () => {
-    expect(layout(parse('Settings:\n  Dimensions: A4\n\nAction.')).pages.map((pg) => pg.kind)).toEqual(['script']);
-    const titled = layout(parse('Title: BIG\nSettings:\n  Dimensions: A4\n\nAction.'));
+    expect(layout(parse(`${S}\n\nAction.`)).pages.map((pg) => pg.kind)).toEqual(['script']);
+    const titled = layout(parse(`Title: BIG\nContact:\n    me\n${S}\n\nAction.`));
     expect(titled.pages[0].kind).toBe('title');
-    expect(pageText(titled.pages[0]).join('\n')).not.toMatch(/Dimensions|A4/);
+    expect(pageText(titled.pages[0]).join('\n')).toMatch(/me/);
+    expect(titled.pages.map(pageText).join('\n')).not.toMatch(/Settings|Dimensions|A4/);
   });
   it('writes a setting into the script', () => {
     const write = (src, value = 'A4') => writeSetting(parse(src), 'Dimensions', value).join('\n');
-    expect(write('Action.')).toBe('Settings:\n    Dimensions: A4\n\nAction.');
-    expect(write('')).toBe('Settings:\n    Dimensions: A4\n');
-    expect(write('\nAction.')).toBe('Settings:\n    Dimensions: A4\n\nAction.');
-    expect(write('Title: BIG\n\nAction.')).toBe('Settings:\n    Dimensions: A4\nTitle: BIG\n\nAction.');
-    expect(write('Settings:\n\tdimensions: letter\nTitle: BIG', '8in x 10in')).toBe('Settings:\n\tdimensions: 8in x 10in\nTitle: BIG');
-    expect(write('Settings:\n  Other: x\nTitle: BIG')).toBe('Settings:\n  Other: x\n  Dimensions: A4\nTitle: BIG');
-    expect(write('Settings: Dimensions: letter\n\nAction.')).toBe('Settings: Dimensions: A4\n\nAction.');
+    expect(write('Action.')).toBe(`${S}\n\nAction.`);
+    expect(write('')).toBe(`${S}\n`);
+    expect(write('\nAction.')).toBe(`${S}\n\nAction.`);
+    expect(write('Title: BIG\n\nAction.')).toBe(`Title: BIG\n${S}\n\nAction.`);
+    expect(write('Title: BIG\nContact:\n    me')).toBe(`Title: BIG\nContact:\n    me\n${S}`);
+    expect(write(`Title: BIG\n/*\nSettings:\n\tdimensions: letter\n*/\n\nAction.`, '8in x 10in')).toBe('Title: BIG\n/*\nSettings:\n\tdimensions: 8in x 10in\n*/\n\nAction.');
+    expect(write('/*\nSettings:\n  Other: x\n*/')).toBe('/*\nSettings:\n  Other: x\n  Dimensions: A4\n*/');
+    expect(write('/* Settings: Dimensions: letter */\n\nAction.')).toBe(`${S}\n\nAction.`);
   });
 });
 
@@ -1066,8 +1074,21 @@ describe('pdf', () => {
     expect(doc.getTitle()).toBeTruthy();
     expect(unsupported).toEqual([]);
   });
+  it('prints a title page that ends in settings without them', async () => {
+    const src = 'Title: BIG\nContact:\n    me\n/*\nSettings:\n    Dimensions: A4\n*/\n\nINT. HOUSE - DAY\n\nAction.';
+    const { bytes, pageCount } = await renderPdf(src);
+    const doc = await PDFDocument.load(bytes);
+    expect(pageCount).toBe(2);
+    expect(doc.getPageCount()).toBe(2);
+    expect(doc.getTitle()).toBe('BIG');
+    expect(doc.getPage(1).getSize()).toEqual({ width: 8.27 * 72, height: 11.7 * 72 });
+    const [cover, script] = layout(parse(src)).pages;
+    const printed = (p) => pageText(p).join('\n');
+    expect(printed(cover)).not.toMatch(/Settings|Dimensions|A4/);
+    expect(printed(script)).toMatch(/^INT\. HOUSE - DAY/);
+  });
   it("uses the script's page size unless the export names another", async () => {
-    const src = 'Settings:\n    Dimensions: 8in x 10in\n\nAction.';
+    const src = '/*\nSettings:\n    Dimensions: 8in x 10in\n*/\n\nAction.';
     const size = async (options) => (await PDFDocument.load((await renderPdf(src, options)).bytes)).getPage(0).getSize();
     expect(await size()).toEqual({ width: 576, height: 720 });
     expect(await size({ paperOverride: 'a4' })).toEqual({ width: 8.27 * 72, height: 11.7 * 72 });

@@ -104,14 +104,17 @@ Syntax markers such as `**`, `.` or `@` show only on the line you're on. Everywh
 - **Read tab.** The script with editing off, as Paged (the pages as they print, the default) or Seamless, chosen from its own view menu whichever view Write is in.
 - **Opening files.** Installed on a desktop with Chrome or Edge, the app opens `.fountain` and `.spmd` files from the file manager, in the window that's already open. A file already in the recent list reopens there, refreshed from disk unless it has unsaved changes. Android doesn't support this yet.
 - **Tabs in the app.** The address records the tab as `#/edit/<id>?tab=outline` or `?tab=read`, so a reload stays on it.
-- **Project settings.** The gear at the right end of the top row, or Settings in the ... menu on a phone, opens them. Dimensions is US Letter, A4 or Custom, a width and height in inches, centimetres or millimetres. The page shows each choice as it's made, with a drawing of the sheet and its measurements in the dialog, and Save writes it into the script, as a `Settings:` key at the top of its title page:
+- **Project settings.** The gear at the right end of the top row, or Settings in the ... menu on a phone, opens them. Dimensions is US Letter, A4 or Custom, a width and height in inches, centimetres or millimetres. The page shows each choice as it's made, with a drawing of the sheet and its measurements in the dialog, and Save writes it into the script, in a boneyard at the bottom of its title page, or at the top of a script without one:
 
   ```
+  Title: Big Fish
+  /*
   Settings:
       Dimensions: 21cm x 29.7cm
+  */
   ```
 
-  Settings never print, and only Fountain view shows them. Typed by hand, `6" x 9"`, `6in x 9in` and `150 x 230 mm` all work. Custom pages are 7.5 to 17 inches wide, so the script's columns fit, and 6 to 17 inches tall. The PDF export's Paper starts at Default, the script's own size, and choosing another changes only that export.
+  Flow reads the first boneyard that opens with `Settings:`, wherever it is. Being a boneyard, it never prints, in Flow or any other Fountain app, and only Fountain view shows it. Typed by hand, `6" x 9"`, `6in x 9in` and `150 x 230 mm` all work. Custom pages are 7.5 to 17 inches wide, so the script's columns fit, and 6 to 17 inches tall. The PDF export's Paper starts at Default, the script's own size, and choosing another changes only that export.
 - **Title page.** After a key with nothing beside it, such as `Contact:`, Enter indents the next line and keeps doing so down its values. A second Enter on an empty one stops. A value on the same line as its key gets an ordinary new line. Values can be indented with a tab or two or more spaces, as long as all of a key's values match, and the key shows from any of them. The indent is out of sight in Seamless and Paged views, where the arrow keys and Backspace behave as if it weren't there, and it's on show in Fountain view.
 
 Paged view numbers every page, including page 1. The Read tab and PDFs follow the screenplay standard and leave page 1 unnumbered.

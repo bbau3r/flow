@@ -2826,7 +2826,7 @@ test.describe('project settings', () => {
     dialog = await openSettings(page);
     await dialog.getByLabel('Dimensions').selectOption('a4');
     await dialog.getByRole('button', { name: 'Save' }).click();
-    expect(await value(page)).toBe('Settings:\n    Dimensions: A4\nTitle: BIG\n\nAction.');
+    expect(await value(page)).toBe('Title: BIG\n/*\nSettings:\n    Dimensions: A4\n*/\n\nAction.');
     expect(await pageWidth(page)).toBe(`${8.27 * 6}em`);
   });
 
@@ -2840,39 +2840,39 @@ test.describe('project settings', () => {
     await dialog.getByLabel('Width').fill('21');
     await dialog.getByLabel('Height').fill('29.7');
     await dialog.getByRole('button', { name: 'Save' }).click();
-    expect(await value(page)).toBe('Settings:\n    Dimensions: 21cm x 29.7cm\n\nAction.');
+    expect(await value(page)).toBe('/*\nSettings:\n    Dimensions: 21cm x 29.7cm\n*/\n\nAction.');
   });
 
   for (const view of ['Paged', 'Seamless']) {
     test(`settings are out of sight in ${view} view, and the cursor goes around them`, async ({ page }) => {
       await open(page);
       await chooseView(page, view);
-      await setValue(page, 'Settings:\n    Dimensions: A4\nTitle: BIG\n\nAction.');
+      await setValue(page, 'Title: BIG\n/*\nSettings:\n    Dimensions: A4\n*/\n\nAction.');
       await expect(lineWith(page, 'Dimensions')).toBeHidden();
       // Page gaps follow a pause in typing, and keys pressed before they settle can go astray.
       const pace = () => page.waitForTimeout(300);
       await lineWith(page, 'BIG').click();
       await pace();
-      for (const key of ['Home', 'ArrowUp', 'Backspace']) {
+      for (const key of ['End', 'Delete', 'Enter']) {
         await page.keyboard.press(key);
         await pace();
       }
       await page.keyboard.type('X');
-      expect(await value(page)).toMatch(/^Settings:\n {4}Dimensions: A4\nTitle: .*X.*BIG|^Settings:\n {4}Dimensions: A4\nX?Title: BIG/);
-      expect((await value(page)).split('\n').slice(0, 2)).toEqual(['Settings:', '    Dimensions: A4']);
+      // Delete leaves the settings alone.
+      expect(await value(page)).toBe('Title: BIG\nX\n/*\nSettings:\n    Dimensions: A4\n*/\n\nAction.');
     });
   }
 
   test('Fountain view shows the settings', async ({ page }) => {
     await open(page);
-    await setValue(page, 'Settings:\n    Dimensions: A4\n\nAction.');
+    await setValue(page, '/*\nSettings:\n    Dimensions: A4\n*/\n\nAction.');
     await chooseView(page, 'Fountain');
     await expect(lineWith(page, 'Dimensions')).toBeVisible();
   });
 
   test("the export defaults to the script's size, and another one leaves the page alone", async ({ page }) => {
     await open(page);
-    await setValue(page, 'Settings:\n    Dimensions: A4\n\nAction.');
+    await setValue(page, '/*\nSettings:\n    Dimensions: A4\n*/\n\nAction.');
     const dialog = await openExport(page);
     const paper = dialog.getByLabel('Paper');
     await expect(paper.locator('option:checked')).toHaveText('Default (A4)');
