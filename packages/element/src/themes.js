@@ -40,7 +40,7 @@ export const PALETTES = {
       scheme: 'dark',
     },
   },
-  // Teal on white by day, lavender on deep sea blue by night, with pale sky for comments.
+  // Teal on white by day, and on sea-tinted grey by night, with pale sky for comments.
   sea: {
     label: 'Sea',
     light: {
@@ -59,22 +59,22 @@ export const PALETTES = {
       scheme: 'light',
     },
     dark: {
-      desk: '#011d27',
-      paper: '#022b3a',
+      desk: '#181c1e',
+      paper: '#22282b',
       ink: '#e1e5f2',
       muted: '#9fbcd6',
       accent: '#5fb8c9',
-      'accent-ink': '#022b3a',
-      rule: '#1d4a5a',
-      'ribbon-bg': '#012430',
+      'accent-ink': '#22282b',
+      rule: '#36444a',
+      'ribbon-bg': '#1c2124',
       'ribbon-ink': '#e1e5f2',
-      'bubble-bg': '#1f7a8c',
+      'bubble-bg': '#245a66',
       'bubble-ink': '#ffffff',
       shadow: 'rgb(0 0 0 / 0.6)',
       scheme: 'dark',
     },
   },
-  // Wine plum and smoky rose on bone by day, lavender blush on mahogany by night.
+  // Wine plum and smoky rose on bone by day, maroon and rose-mauve on plum-tinted grey by night.
   romance: {
     label: 'Romance',
     light: {
@@ -93,16 +93,16 @@ export const PALETTES = {
       scheme: 'light',
     },
     dark: {
-      desk: '#211103',
-      paper: '#3d1308',
-      ink: '#f8e5ee',
-      muted: '#d9a9bb',
-      accent: '#e8879f',
-      'accent-ink': '#211103',
-      rule: '#7b0d1e',
-      'ribbon-bg': '#2b1405',
-      'ribbon-ink': '#f8e5ee',
-      'bubble-bg': '#7b0d1e',
+      desk: '#1f1a1c',
+      paper: '#2b2226',
+      ink: '#f3e3ec',
+      muted: '#c3a0b3',
+      accent: '#d48aa8',
+      'accent-ink': '#2b2226',
+      rule: '#4a3a42',
+      'ribbon-bg': '#251e21',
+      'ribbon-ink': '#f3e3ec',
+      'bubble-bg': '#5a2a40',
       'bubble-ink': '#f8e5ee',
       shadow: 'rgb(0 0 0 / 0.6)',
       scheme: 'dark',
@@ -141,7 +141,8 @@ export const PALETTES = {
       scheme: 'dark',
     },
   },
-  // Space indigo and dusty grape on parchment, with lilac and almond between.
+  // Space indigo and dusty grape on parchment, with lilac and almond between, and almond on
+  // indigo-tinted grey by night.
   lavender: {
     label: 'Lavender',
     light: {
@@ -160,16 +161,16 @@ export const PALETTES = {
       scheme: 'light',
     },
     dark: {
-      desk: '#1b1b2e',
-      paper: '#22223b',
+      desk: '#1c1b20',
+      paper: '#26252c',
       ink: '#f2e9e4',
       muted: '#b3a5b0',
       accent: '#c9ada7',
-      'accent-ink': '#22223b',
-      rule: '#4a4e69',
-      'ribbon-bg': '#1f1f34',
+      'accent-ink': '#26252c',
+      rule: '#45434f',
+      'ribbon-bg': '#211f26',
       'ribbon-ink': '#f2e9e4',
-      'bubble-bg': '#3a3a55',
+      'bubble-bg': '#3a3a4d',
       'bubble-ink': '#f2e9e4',
       shadow: 'rgb(0 0 0 / 0.6)',
       scheme: 'dark',
