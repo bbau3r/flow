@@ -2952,6 +2952,7 @@ test.describe('Highlight Manager', () => {
     await show(page, 'Read');
     await manager(page).click();
     await expect(dialog(page).getByRole('heading', { name: 'Highlight Manager' })).toBeVisible();
+    await expect(dialog(page).getByText(/Separate several search terms with commas/)).toBeVisible();
     // It opens with a row ready to type in.
     await expect(dialog(page).getByLabel('Search terms')).toBeFocused();
     await page.keyboard.type('mara, Thermos');

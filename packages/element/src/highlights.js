@@ -250,6 +250,11 @@ export function openHighlightDialog(parent, { highlights, onSave, onClose }) {
   const addRowNode = document.createElement('div');
   addRowNode.className = 'fl-hl-add-row';
   addRowNode.append(add);
+  const note = document.createElement('p');
+  note.className = 'fl-hint fl-info';
+  const noteText = document.createElement('span');
+  noteText.textContent = 'Separate several search terms with commas, such as "Mara, Teo". Each matches whole words, in any case.';
+  note.append(icon('info'), noteText);
 
   const save = () => {
     const list = [...rows.children].map((row) => ({
@@ -264,7 +269,7 @@ export function openHighlightDialog(parent, { highlights, onSave, onClose }) {
   const modal = openModal(parent, {
     title: 'Highlight Manager',
     icon: 'highlighter',
-    body: [rows, addRowNode],
+    body: [rows, addRowNode, note],
     onClose,
     actions: [
       button({ label: 'Cancel', cls: 'fl-btn-outline', onClick: () => modal.close() }),
