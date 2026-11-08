@@ -12,6 +12,7 @@ import { createStatusbar, SCALE_MAX, SCALE_MIN, SCALE_STEP } from './statusbar.j
 import { createOutline } from './outline.js';
 import { openExportDialog } from './export-dialog.js';
 import { openSettingsDialog } from './settings-dialog.js';
+import { createHighlightPainter, createHighlightTools, normalizeHighlights, openHighlightDialog } from './highlights.js';
 
 let fontsRequested = false;
 
@@ -39,6 +40,9 @@ export class FlowScript extends HTMLElement {
   #read = null;
   #outline = null;
   #exportActions = [];
+  #highlights = [];
+  #highlightTools = null;
+  #painter = null;
   #barObserver = null;
   #scroll = null;
   #surface = null;
@@ -56,6 +60,7 @@ export class FlowScript extends HTMLElement {
     this.#scroll = document.createElement('div');
     this.#scroll.className = 'fl-scroll';
     shadow.append(style, this.#scroll);
+    this.#painter = createHighlightPainter(shadow);
     // Chrome counts a scrollbar as part of a container's width, which would size a page to
     // fit a phone slightly too wide, so measure the room that's really there.
     new ResizeObserver(() => {
@@ -70,7 +75,7 @@ export class FlowScript extends HTMLElement {
     if (this.#started) return;
     // Properties set before this element was defined sit on the instance and would
     // shadow the accessors, so reapply them through the class.
-    for (const prop of ['value', 'readonly', 'view', 'readView', 'workspace', 'printOptions', 'exportActions']) {
+    for (const prop of ['value', 'readonly', 'view', 'readView', 'workspace', 'printOptions', 'exportActions', 'highlights']) {
       if (Object.hasOwn(this, prop)) {
         const pending = this[prop];
         delete this[prop];
@@ -98,6 +103,7 @@ export class FlowScript extends HTMLElement {
         this.#editor = null;
         this.#outline?.destroy();
         this.#outline = null;
+        this.#painter.clear();
         this.#started = false;
         this.#valueSet = true;
       }
@@ -220,6 +226,22 @@ export class FlowScript extends HTMLElement {
   set exportActions(actions) {
     this.#exportActions = actions;
     this.#ribbon?.setExportActions(actions);
+  }
+
+  /**
+   * What the Read tab highlights, in order: { terms, color, enabled }, where `terms` is one
+   * search or several separated by commas, matched as whole words without regard to case, and
+   * `color` is a hex color. Changes made in the Highlight Manager or the action center fire
+   * `flow-highlights`, with the new list as `detail.highlights`, for an app to keep.
+   */
+  get highlights() {
+    return this.#highlights.map((item) => ({ ...item }));
+  }
+
+  set highlights(list) {
+    this.#highlights = normalizeHighlights(list);
+    this.#highlightTools?.update(this.#highlights);
+    this.#paintHighlights();
   }
 
   /** Section, scene and synopsis tree. Sections are never printed but always present here. */
@@ -456,11 +478,27 @@ export class FlowScript extends HTMLElement {
     if (reading && !this.#read) this.#scroll.scrollTop = 0;
     this.#read?.remove();
     this.#read = null;
-    if (!reading) return;
+    if (!reading) {
+      this.#painter.clear();
+      return;
+    }
     this.#read = renderReadonly(this.#editor.value, { view: this.readView, options: this.#layoutOptions() });
     this.#read.classList.add('fl-read');
     this.#statusbar.root.before(this.#read);
+    this.#paintHighlights();
     this.#trackPage();
+  }
+
+  // Highlights show only on what's being read: the Read tab, or the whole of a read-only script.
+  #paintHighlights() {
+    const root = this.#editor ? this.#read : this.#scroll.querySelector(':scope > .fl-script');
+    if (root && (this.readonly || this.workspace === 'read')) this.#painter.paint(root, this.#highlights);
+    else this.#painter.clear();
+  }
+
+  #changeHighlights(list) {
+    this.highlights = list;
+    this.dispatchEvent(new CustomEvent('flow-highlights', { detail: { highlights: this.highlights } }));
   }
 
   // Where each numbered page starts on screen, in order, in Read's pages or the Write tab's
@@ -537,6 +575,7 @@ export class FlowScript extends HTMLElement {
     // Read-only is for reading, so like the Read tab it shows pages unless asked otherwise.
     const view = this.hasAttribute('view') ? this.view : 'page';
     this.#scroll.replaceChildren(renderReadonly(this.#value, { view, options: this.#options }));
+    this.#paintHighlights();
     this.dispatchEvent(new CustomEvent('flow-ready'));
   }
 
@@ -606,6 +645,16 @@ export class FlowScript extends HTMLElement {
     this.#barObserver.observe(this.#ribbon.root);
     this.#barObserver.observe(this.#statusbar.root);
     this.#ribbon.setExportActions(this.#exportActions);
+    this.#highlightTools = createHighlightTools({
+      open: () => openHighlightDialog(this.shadowRoot, {
+        highlights: this.#highlights,
+        onSave: (list) => this.#changeHighlights(list),
+        onClose: () => this.focus(),
+      }),
+      toggle: (index) => this.#changeHighlights(this.#highlights.map((item, i) => (i === index ? { ...item, enabled: !item.enabled } : item))),
+    });
+    this.#highlightTools.update(this.#highlights);
+    this.#ribbon.setActions('read', { label: 'Reading', pills: [this.#highlightTools.root] });
     this.#syncBars();
     this.#statusbar.setScale(this.scale);
   }
@@ -629,6 +678,7 @@ export class FlowScript extends HTMLElement {
     this.#statusbar?.destroy();
     this.#ribbon = null;
     this.#statusbar = null;
+    this.#highlightTools = null;
   }
 
   #buildStatusbar() {

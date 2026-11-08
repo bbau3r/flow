@@ -1,9 +1,9 @@
 // Scripts autosave here, so work survives a closed tab or a dropped connection
 // whether or not it has been saved to a file yet.
 //
-// A doc is { id, name, value, savedValue, provider, ref, updatedAt }. `savedValue` is
-// what was last written to the provider (null if never), and `ref` is whatever the
-// provider needs to find the file again.
+// A doc is { id, name, value, savedValue, provider, ref, updatedAt, highlights }. `savedValue`
+// is what was last written to the provider (null if never), `ref` is whatever the provider
+// needs to find the file again, and `highlights` are the Read tab's, kept on this device.
 
 const DB_NAME = 'flow';
 const STORE = 'docs';

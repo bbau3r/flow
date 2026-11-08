@@ -165,6 +165,77 @@ ${CONTROLS_CSS}
 .fl-measure-height > .fl-measure-label { right: 11px; top: 50%; transform: translateY(-50%); }
 .fl-info { display: flex; align-items: flex-start; gap: 6px; margin-top: 10px; }
 .fl-info > .fl-svg { flex: none; width: 1.15em; height: 1.15em; margin-top: 0.05em; }
+/* The Highlight Manager: each row reads as one field holding its terms, color and remove button.
+   The rows scroll once there are more than fit, while the + and the buttons stay in view. */
+.fl-hl-rows {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: min(18rem, 45vh); margin: -4px; padding: 4px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: ${token('scrollbar')} transparent;
+}
+.fl-hl-row {
+  display: flex; align-items: center; gap: 2px; flex: none; padding: 2px 2px 2px 12px;
+  background: ${token('field-bg')}; color: ${token('field-ink')};
+  border: 1px solid color-mix(in srgb, var(--flow-ink) 35%, ${token('field-border')}); border-radius: ${token('button-radius')};
+  box-shadow: 0 1px 2px var(--flow-shadow);
+}
+.fl-hl-row:has(.fl-hl-terms:focus-visible) { border-color: ${token('focus')}; box-shadow: 0 0 0 1px ${token('focus')}; }
+.fl-hl-row .fl-hl-terms:focus-visible { outline: none; }
+.fl-hl-terms {
+  flex: 1; min-width: 0; height: 30px; padding: 0;
+  background: transparent; color: inherit; border: 0; outline: none; font: inherit;
+}
+.fl-hl-terms::placeholder { color: var(--flow-muted); opacity: 1; }
+.fl-hl-color, .fl-hl-preset {
+  appearance: none; flex: none; width: 26px; height: 26px; margin: 0 4px; padding: 0;
+  background: var(--fl-hl-color); border: 1px solid color-mix(in srgb, var(--flow-ink) 30%, transparent); border-radius: 50%; cursor: pointer;
+}
+.fl-hl-color:focus-visible, .fl-hl-preset:focus-visible { outline: 2px solid ${token('focus')}; outline-offset: 2px; }
+.fl-hl-color[aria-expanded="true"] { box-shadow: 0 0 0 2px ${token('field-bg')}, 0 0 0 4px ${token('focus')}; }
+/* The color picker, placed against the screen beside its swatch. */
+.fl-hl-picker {
+  position: fixed; z-index: 1; display: flex; flex-direction: column; gap: 10px; width: 216px; padding: 12px;
+  background: ${token('menu-bg')}; color: ${token('menu-ink')};
+  border: 1px solid ${token('menu-border')}; border-radius: ${token('menu-radius')};
+  box-shadow: 0 6px 20px var(--flow-shadow);
+}
+.fl-hl-picker[hidden] { display: none; }
+.fl-hl-picker hex-color-picker { width: 100%; height: 150px; }
+.fl-hl-picker hex-color-picker::part(saturation) { border-radius: 8px 8px 0 0; }
+.fl-hl-picker hex-color-picker::part(hue) { flex: 0 0 18px; border-radius: 0 0 8px 8px; }
+.fl-hl-picker hex-color-picker::part(saturation-pointer), .fl-hl-picker hex-color-picker::part(hue-pointer) { width: 18px; height: 18px; }
+.fl-hl-presets { display: flex; justify-content: space-between; }
+.fl-hl-preset { width: 24px; height: 24px; margin: 0; }
+.fl-hl-preset[aria-pressed="true"] { box-shadow: 0 0 0 2px ${token('menu-bg')}, 0 0 0 4px ${token('focus')}; }
+.fl-hl-picker hex-input { display: block; }
+.fl-hl-hex {
+  width: 100%; height: 30px; padding: 0 12px;
+  background: ${token('field-bg')}; color: ${token('field-ink')};
+  border: 1px solid color-mix(in srgb, var(--flow-ink) 35%, ${token('field-border')}); border-radius: ${token('button-radius')};
+  font: inherit; font-variant-numeric: tabular-nums; text-transform: lowercase;
+}
+.fl-hl-remove { color: var(--flow-muted); }
+.fl-hl-remove:hover:not(:disabled) { color: ${token('danger-hover')}; }
+.fl-hl-add-row { display: flex; justify-content: center; margin-top: 12px; }
+.fl-hl-add {
+  --fl-control-size: 36px; padding: 0; border-radius: 50%; color: var(--flow-accent);
+  border-color: color-mix(in srgb, var(--flow-ink) 35%, ${token('field-border')});
+  box-shadow: 0 1px 2px var(--flow-shadow);
+}
+/* In the action center, a dot of each highlight's color: filled while it shows, a ring when off. */
+.fl-hl-dots { display: flex; align-items: center; gap: 2px; }
+.fl-hl-dots:empty { display: none; }
+.fl-hl-tools .fl-pill-sep[hidden] { display: none; }
+.fl-btn.fl-hl-dot { padding: 0; }
+.fl-btn.fl-hl-dot[aria-pressed] { background: transparent; color: inherit; }
+.fl-btn.fl-hl-dot[aria-pressed]:hover:not(:disabled) { background: ${token('button-hover-bg')}; }
+.fl-hl-swatch {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--fl-hl-color); border: 2px solid var(--fl-hl-color);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--flow-ink) 25%, transparent);
+  transition: background-color 150ms ease;
+}
+.fl-hl-dot[aria-pressed="false"] .fl-hl-swatch { background: transparent; opacity: 0.7; }
+@media (prefers-reduced-motion: reduce) { .fl-hl-swatch { transition: none; } }
 .fl-field select { margin-left: auto; font: inherit; color: ${token('field-ink')}; background: ${token('field-bg')}; border: 1px solid ${token('field-border')}; border-radius: 4px; padding: 2px 4px; }
 
 /* Read-only pages */

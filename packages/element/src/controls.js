@@ -39,6 +39,7 @@ const ICONS = {
   'chevron-right': '<path d="m9 6 6 6-6 6"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
   settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  highlighter: '<path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>',
   'page-break': '<path d="M6 8V4a1 1 0 0 1 1-1h7l4 4v1"/><path d="M6 16v4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-4"/><path d="M3 12h2"/><path d="M8 12h2"/><path d="M14 12h2"/><path d="M19 12h2"/>',
 };
 
@@ -460,16 +461,17 @@ export class Menu {
 }
 
 /**
- * Opens a modal in `parent`, whose styles it needs to see. `onClose` runs however it
- * closes, including with Escape.
+ * Opens a modal in `parent`, whose styles it needs to see, with `icon` before its title when
+ * given one. `onClose` runs however it closes, including with Escape.
  */
-export function openModal(parent, { title, body, actions, onClose }) {
+export function openModal(parent, { title, icon: iconName, body, actions, onClose }) {
   const dialog = document.createElement('dialog');
   dialog.className = 'fl-dialog';
   dialog.setAttribute('aria-labelledby', 'fl-dialog-title');
   const heading = document.createElement('h2');
   heading.id = 'fl-dialog-title';
-  heading.textContent = title;
+  if (iconName) heading.append(icon(iconName));
+  heading.append(title);
   dialog.append(heading, div('fl-dialog-body', ...body), div('fl-dialog-actions', ...actions));
   dialog.addEventListener('close', () => {
     dialog.remove();
@@ -679,6 +681,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
   margin: 0 0 14px; color: var(--flow-muted);
   font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
 }
+.fl-dialog h2:has(> .fl-svg) { display: flex; align-items: center; gap: 8px; }
+.fl-dialog h2 > .fl-svg { width: 1.3em; height: 1.3em; color: var(--flow-accent); }
 .fl-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .fl-dialog-actions .fl-btn { padding-inline: 14px; }
 `;

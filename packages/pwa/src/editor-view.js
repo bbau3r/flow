@@ -152,6 +152,13 @@ export function renderEditor(root, doc) {
   };
   const onPageHide = () => { if (timer) persist(); };
 
+  // Highlights belong to the script on this device, not to its file, so they don't make it unsaved.
+  script.highlights = doc.highlights ?? [];
+  script.addEventListener('flow-highlights', (event) => {
+    doc.highlights = event.detail.highlights;
+    persist();
+  });
+
   script.addEventListener('flow-change', (event) => {
     doc.value = event.detail.value;
     doc.updatedAt = Date.now();

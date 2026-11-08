@@ -546,9 +546,11 @@ test('collapsing keeps the rest of the row in place, and keeps up with quick cli
   expect(after.x).toBeCloseTo(before.x, 0);
   expect(after.y).toBeCloseTo(before.y, 0);
 
-  // Going through Read doesn't lose the choice.
+  // Read has its own commands, folded or not on their own, and going through it doesn't lose
+  // the choice.
   await show(page, 'Read');
-  await expect(toggle).toBeHidden();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('flow-script .fl-hl-tools')).toBeVisible();
   await show(page, 'Paged');
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await expect(formatPills(page)).toBeHidden();
@@ -1190,7 +1192,9 @@ test('Read shows the printed pages with editing off, then returns intact', async
   await expect(page.locator('flow-script .fl-page').first()).toBeVisible();
   await expect(page.locator('flow-script .fl-pages')).toContainText('End.X');
   await expect(page.locator('flow-script .fl-pages')).not.toContainText('cut');
-  await expect(page.locator('flow-script .fl-ribbon')).toBeHidden();
+  // The action center holds Read's commands in place of the formatting.
+  await expect(rib(page, 'Bold')).toBeHidden();
+  await expect(rib(page, 'Highlight Manager')).toBeVisible();
   await page.keyboard.type('Y');
   expect(await value(page)).toContain('End.X');
   expect(await value(page)).not.toContain('Y');
@@ -2929,4 +2933,139 @@ test('the project settings draw the page at its proportions, measured', async ({
   const sheet = await preview.locator('.fl-preview-sheet').boundingBox();
   expect(sheet.x).toBeGreaterThanOrEqual(frame.x);
   expect(sheet.x + sheet.width).toBeLessThanOrEqual(frame.x + frame.width);
+});
+
+// What each highlight covers, as the text of its ranges, in the order the highlights are listed.
+const highlighted = (page) => page.evaluate(() => [...CSS.highlights]
+  .filter(([name]) => name.startsWith('flow-highlight-'))
+  .sort(([a], [b]) => Number(a.split('-').pop()) - Number(b.split('-').pop()))
+  .map(([, highlight]) => [...highlight].map((range) => range.toString())));
+
+test.describe('Highlight Manager', () => {
+  const tools = (page) => page.locator('flow-script .fl-hl-tools');
+  const manager = (page) => tools(page).getByRole('button', { name: 'Highlight Manager' });
+  const dialog = (page) => page.locator('flow-script dialog');
+
+  test('the Read tab highlights comma-separated terms in any case, in the chosen colors', async ({ page }) => {
+    await open(page);
+    await expect(manager(page)).toBeHidden();
+    await show(page, 'Read');
+    await manager(page).click();
+    await expect(dialog(page).getByRole('heading', { name: 'Highlight Manager' })).toBeVisible();
+    await expect(dialog(page).getByText(/Separate several search terms with commas/)).toBeVisible();
+    // It opens with a row ready to type in.
+    await expect(dialog(page).getByLabel('Search terms')).toBeFocused();
+    await page.keyboard.type('mara, Thermos');
+    await dialog(page).getByRole('button', { name: 'Add highlight' }).click();
+    await expect(dialog(page).getByLabel('Search terms')).toHaveCount(2);
+    await expect(dialog(page).getByLabel('Search terms').nth(1)).toBeFocused();
+    await page.keyboard.type('FRAUD');
+    // The color picker opens beside the swatch and takes a typed hex color. Enter closes it
+    // without closing the Highlight Manager.
+    await dialog(page).getByLabel('Highlight color').nth(1).click();
+    const picker = dialog(page).getByRole('dialog', { name: 'Choose a highlight color' });
+    await expect(picker).toBeVisible();
+    await expect(picker.locator('hex-color-picker [part="saturation"]')).toBeVisible();
+    await picker.getByLabel('Hex color').fill('ff0000');
+    await picker.getByLabel('Hex color').press('Enter');
+    await expect(picker).toBeHidden();
+    await expect(dialog(page).getByLabel('Highlight color').nth(1)).toHaveAttribute('data-color', '#ff0000');
+    // A preset is a click away, and Escape closes only the picker.
+    await dialog(page).getByLabel('Highlight color').first().click();
+    await picker.getByRole('button', { name: 'Use #8ce99a' }).click();
+    await page.keyboard.press('Escape');
+    await expect(picker).toBeHidden();
+    await expect(dialog(page)).toBeVisible();
+    await dialog(page).getByRole('button', { name: 'OK' }).click();
+    await expect(dialog(page)).toHaveCount(0);
+
+    const [first, second] = await highlighted(page);
+    expect(first.some((text) => text === 'MARA')).toBe(true);
+    // Typed as Thermos, it matches thermos.
+    expect(first).toContain('thermos');
+    // Bold text still matches as one word.
+    expect(second).toEqual(['fraud']);
+    expect(await host(page).evaluate((el) => el.highlights)).toEqual([
+      { terms: 'mara, Thermos', color: '#8ce99a', enabled: true },
+      { terms: 'FRAUD', color: '#ff0000', enabled: true },
+    ]);
+
+    // Seamless view is highlighted too.
+    await host(page).evaluate((el) => { el.readView = 'flow'; });
+    await expect.poll(async () => (await highlighted(page))[1]).toEqual(['fraud']);
+    // Leaving Read takes the highlights away, and coming back brings them again.
+    await host(page).evaluate((el) => { el.workspace = 'write'; });
+    expect(await highlighted(page)).toEqual([]);
+    await show(page, 'Read');
+    expect((await highlighted(page)).length).toBe(2);
+  });
+
+  test('each highlight is a dot that turns it off and on', async ({ page }) => {
+    await open(page);
+    await show(page, 'Read');
+    const events = [];
+    await page.exposeFunction('logHighlights', (list) => events.push(list));
+    await host(page).evaluate((el) => {
+      el.addEventListener('flow-highlights', (event) => window.logHighlights(event.detail.highlights));
+      el.highlights = [{ terms: 'Mara', color: '#ffe066' }, { terms: 'lamp', color: '#74c0fc' }];
+    });
+    const dots = tools(page).locator('.fl-hl-dot');
+    await expect(dots).toHaveCount(2);
+    await expect(dots.nth(0)).toHaveAttribute('aria-pressed', 'true');
+    expect((await highlighted(page)).length).toBe(2);
+
+    await dots.nth(1).click();
+    await expect(dots.nth(1)).toHaveAttribute('aria-pressed', 'false');
+    const shown = await highlighted(page);
+    expect(shown.length).toBe(1);
+    expect(shown[0]).toContain('MARA');
+    expect(events.at(-1)[1].enabled).toBe(false);
+
+    await dots.nth(1).click();
+    await expect(dots.nth(1)).toHaveAttribute('aria-pressed', 'true');
+    expect((await highlighted(page)).length).toBe(2);
+  });
+
+  test('rows can be removed, Cancel keeps what was there, and many rows scroll', async ({ page }) => {
+    await open(page);
+    await show(page, 'Read');
+    await host(page).evaluate((el) => { el.highlights = [{ terms: 'Mara', color: '#ffe066' }]; });
+    await manager(page).click();
+    await dialog(page).getByRole('button', { name: 'Remove highlight' }).click();
+    await expect(dialog(page).getByLabel('Search terms')).toHaveCount(0);
+    await dialog(page).getByRole('button', { name: 'Cancel' }).click();
+    expect((await host(page).evaluate((el) => el.highlights)).length).toBe(1);
+
+    await manager(page).click();
+    const add = dialog(page).getByRole('button', { name: 'Add highlight' });
+    for (let i = 0; i < 12; i += 1) await add.click();
+    // New rows take colors not yet used.
+    const colors = await dialog(page).getByLabel('Highlight color').evaluateAll((swatches) => swatches.slice(0, 6).map((swatch) => swatch.dataset.color));
+    expect(new Set(colors).size).toBe(6);
+    const rows = dialog(page).locator('.fl-hl-rows');
+    expect(await rows.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    // The buttons stay on screen however many rows there are.
+    await expect(dialog(page).getByRole('button', { name: 'OK' })).toBeInViewport();
+    await dialog(page).getByLabel('Search terms').last().fill('lighthouse');
+    // Rows left empty are dropped.
+    await dialog(page).getByRole('button', { name: 'OK' }).click();
+    expect((await host(page).evaluate((el) => el.highlights)).map((item) => item.terms)).toEqual(['Mara', 'lighthouse']);
+  });
+
+  test('terms match whole words, so IAN finds Ian but not Brian', async ({ page }) => {
+    await open(page);
+    await setValue(page, ["BRIAN", "Ian? Ian2 and Ian's, never Brian or Iant.", '', 'IAN', 'No.'].join('\n'));
+    await show(page, 'Read');
+    await host(page).evaluate((el) => { el.highlights = [{ terms: 'ian', color: '#ffe066' }]; });
+    expect(await highlighted(page)).toEqual([['Ian', 'Ian', 'IAN']]);
+  });
+
+  test('a read-only script shows highlights set on it', async ({ page }) => {
+    await open(page);
+    await host(page).evaluate((el) => {
+      el.highlights = [{ terms: 'thermos', color: '#8ce99a' }];
+      el.readonly = true;
+    });
+    await expect.poll(async () => (await highlighted(page))[0]?.length ?? 0).toBeGreaterThan(0);
+  });
 });
