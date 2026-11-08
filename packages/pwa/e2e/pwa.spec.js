@@ -884,7 +884,7 @@ test.describe('editor bars', () => {
     await expect(page.locator('flow-script .fl-outline-field').first()).toHaveValue('Kept');
   });
 
-  test('Read hides the action center, the Write view and history, and only those', async ({ page }) => {
+  test('Read swaps the action center for its own and hides the Write view and history, and only those', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 700 });
     await newScript(page);
     const bar = page.locator('flow-script .fl-statusbar');
@@ -894,7 +894,8 @@ test.describe('editor bars', () => {
     const saveBefore = await page.locator('#save').boundingBox();
 
     await page.getByRole('tab', { name: 'Read' }).click();
-    await expect(ribbon).toBeHidden();
+    await expect(ribbon.getByRole('button', { name: 'Bold', exact: true })).toBeHidden();
+    await expect(ribbon.getByRole('button', { name: 'Highlight Manager' })).toBeVisible();
     await expect(tabs).toBeVisible();
     // Read has its own view menu, in place of Write's.
     await expect(bar.getByRole('button', { name: 'View: Seamless' })).toBeHidden();
