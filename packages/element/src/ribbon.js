@@ -187,7 +187,7 @@ export function createRibbon(actions) {
     setActions(workspace, options) {
       center.set(workspace, options);
     },
-    // Each tab shows its own commands, and Read has none.
+    // Each tab shows its own commands.
     setWorkspace(workspace) {
       if (workspace !== 'write') topics.close();
       center.show(workspace);
