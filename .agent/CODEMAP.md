@@ -107,7 +107,7 @@ Other folders: `demo/` (dev page with `sample.fountain`, opened by `npm run dev`
 ### Events fired by `<flow-script>`
 
 `flow-change`, `flow-selection`, `flow-ready`, `flow-scale`, `flow-highlights`
-(`{ highlights }`, used by the PWA to persist them; not yet in the README).
+(`{ highlights }`, used by the PWA to persist them).
 
 ## packages/pwa/src
 
