@@ -64,6 +64,7 @@ The build produces two forms:
 | `exportPdf(options)` | Resolves to `{ blob, bytes, pageCount, unsupported }`. The page size is the script's own unless `paperOverride` names another. |
 | `downloadPdf(options)` | Same, and saves the file |
 | `scrollToLine(line)` | Jumps to a source line |
+| `highlights` | The Read tab's highlights, as `[{ terms, color, enabled }]`. `terms` are comma-separated words matched whole and without regard to case, and `color` is a hex color. The element keeps no storage, so an app saves them from `flow-highlights`. |
 | `exportActions` | The app's own actions, shown before PDF as `{ label, title, icon, attrs, onClick }`. They appear as icon buttons, or in a vertical ... menu when space runs short. |
 
 ### Events
@@ -74,6 +75,7 @@ The build produces two forms:
 | `flow-selection` | Current line type and active B/I/U |
 | `flow-ready` | None. Fires when a render or editor mount finishes. |
 | `flow-scale` | `{ scale }`. Fires when the writer changes the page scale. |
+| `flow-highlights` | `{ highlights }`. Fires when the writer changes highlights in the Highlight Manager or turns one off or on, not for setting `highlights`. |
 
 ### Slots
 
