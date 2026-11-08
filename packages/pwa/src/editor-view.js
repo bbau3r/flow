@@ -186,23 +186,30 @@ export function renderEditor(root, doc) {
     { label: 'Save', title: 'Save (Ctrl/Cmd+S)', icon: 'save', attrs: { id: 'save' }, onClick: save },
     { label: 'Save as', title: 'Save as (Ctrl/Cmd+Shift+S)', icon: 'save-as', attrs: { id: 'save-as' }, onClick: saveAs },
   ];
+  const workspaceTabs = tabs({
+    label: 'Workspace',
+    attrs: { slot: 'tabs' },
+    onSelect: (tab) => {
+      script.setAttribute('workspace', tab.toLowerCase());
+      setTabInAddress(tab);
+    },
+  }, [
+    { label: 'Write', icon: 'write', selected: openTab === 'Write' },
+    { label: 'Outline', icon: 'outline', title: 'Plan the script with acts, sequences and synopses', selected: openTab === 'Outline' },
+    { label: 'Read', icon: 'read', title: 'The pages as they print, with editing off', selected: openTab === 'Read' },
+  ]);
+  // The outline can send the writer to Write or Read itself.
+  script.addEventListener('flow-workspace', (event) => {
+    const tab = event.detail.workspace.replace(/^./, (c) => c.toUpperCase());
+    workspaceTabs.selectTab(tab);
+    setTabInAddress(tab);
+  });
   script.append(
     pill({ cls: 'fl-pill-tinted doc-pill', label: 'Document', attrs: { slot: 'document' } },
       button({ label: 'Home', title: 'Back to all scripts', icon: 'stack', iconOnly: true, href: '#/', cls: 'home-link' }),
       pillSep(),
       h('span', { class: 'doc' }, name, h('span', { class: 'doc-meta' }, date, where, state))),
-    tabs({
-      label: 'Workspace',
-      attrs: { slot: 'tabs' },
-      onSelect: (tab) => {
-        script.setAttribute('workspace', tab.toLowerCase());
-        setTabInAddress(tab);
-      },
-    }, [
-      { label: 'Write', icon: 'write', selected: openTab === 'Write' },
-      { label: 'Outline', icon: 'outline', title: 'Plan the script with acts, sequences and synopses', selected: openTab === 'Outline' },
-      { label: 'Read', icon: 'read', title: 'The pages as they print, with editing off', selected: openTab === 'Read' },
-    ]),
+    workspaceTabs,
     pill({ label: 'Appearance', attrs: { slot: 'status-end' } }, themePicker({
       up: true,
       onChange: (theme) => script.setAttribute('theme', theme),

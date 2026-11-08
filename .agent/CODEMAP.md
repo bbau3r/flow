@@ -78,7 +78,8 @@ return new lines, plus a cursor where relevant.
 | `flow-script.js` | `FlowScript` custom element. Attributes, properties, events, theme and paper, pinch-to-scale, page tracking, switching between Write / Outline / Read, building the bars, PDF export. The hub: start here. |
 | `editor.js` | `FlowEditor`, the Tiptap editor (loaded on demand). `Line` node, the `FountainDecorations` plugin (incremental reparse in `updateScript`, decorations in `lineDecorations`/`activeDecorations`, page gaps in `computeGaps`), title-page key handling, ribbon commands (`setLineType`, `emphasis`, `boneyard`, `dual`, `pageBreak`), `commit`/`commitFromOutline` |
 | `readonly.js` | Plain-DOM renderer for Read tab and `readonly`: paged (`renderPages`) or seamless (`renderFlow`), comment bubbles. No Tiptap. |
-| `outline.js` | Outline tab UI (`createOutline`): cards, drag and keyboard moves, add tools. Every change goes through core `outline.js` and back into the editor. |
+| `outline.js` | Outline tab UI (`createOutline`): cards, drag and keyboard moves, add tools, the right-click menu (Show in Write / Read). Every change goes through core `outline.js` and back into the editor. |
+| `position.js` | Keeping your place between tabs and views: `placeOf` records the source line at the top and its offset, `restorePlace` scrolls another tab to it. `FlowScript.#placeIn`/`#keepPlace` wrap tab and view changes with them. |
 | `ribbon.js` | Top row: document/tabs slots, export and settings buttons, plus the action center. Formatting pills that follow the cursor's line. |
 | `action-center.js` | Per-tab command rows (`setActions(tab, ...)`), foldable |
 | `statusbar.js` | Bottom pills: view menu, scale, page jump, `status-end` slot. `SCALE_MIN/MAX/STEP`. |
@@ -107,7 +108,8 @@ Other folders: `demo/` (dev page with `sample.fountain`, opened by `npm run dev`
 ### Events fired by `<flow-script>`
 
 `flow-change`, `flow-selection`, `flow-ready`, `flow-scale`, `flow-highlights`
-(`{ highlights }`, used by the PWA to persist them).
+(`{ highlights }`, used by the PWA to persist them), `flow-workspace` (`{ workspace }`, when the
+element changes tab itself; the PWA moves its tabs and address along, through `tabs().selectTab`).
 
 ## packages/pwa/src
 

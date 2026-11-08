@@ -463,8 +463,28 @@ export class FlowEditor {
     this.silent = false;
   }
 
-  focus() {
-    this.editor.commands.focus();
+  /** `scroll: false` leaves the page where it is, even with the cursor out of sight. */
+  focus({ scroll = true } = {}) {
+    this.editor.commands.focus(null, { scrollIntoView: scroll });
+  }
+
+  /** Each line's element, in order, for keeping your place between views. */
+  lineNodes() {
+    return [...this.view.dom.children].filter((node) => node.classList.contains('fl-line'));
+  }
+
+  /** Whether the cursor is on screen between `top` and `bottom`. */
+  cursorWithin(top, bottom) {
+    const { head } = this.editor.state.selection;
+    const rect = this.view.coordsAtPos(head);
+    return rect.bottom > top && rect.top < bottom;
+  }
+
+  /** Puts the cursor at the start of a line without scrolling to it. */
+  placeCursor(index) {
+    const { state } = this.editor;
+    const i = Math.max(0, Math.min(index, state.doc.childCount - 1));
+    this.view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, this.lineStart(i) + 1)));
   }
 
   /** Keeps the cursor clear of whatever floats over the top and bottom of the scrolling area. */

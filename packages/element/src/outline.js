@@ -84,7 +84,7 @@ const fieldItems = (items) => items.flatMap((item) => {
   return item.kind === 'synopsis' ? [item] : sceneNumbers(item);
 });
 
-export function createOutline({ edit, undo, redo }) {
+export function createOutline({ edit, undo, redo, jump }) {
   let lines = [''];
   let cards = [];
   let shape = null;
@@ -556,6 +556,7 @@ export function createOutline({ edit, undo, redo }) {
 
   // Redrawing would lose the cursor, so while the fields stay the same they're updated in place.
   const render = (value) => {
+    closeMenu();
     hidePreview();
     const previous = cards;
     cards = outlineCards(parse(value));
@@ -614,6 +615,7 @@ export function createOutline({ edit, undo, redo }) {
     if (line !== null) select(line);
   });
   root.addEventListener('pointerdown', (event) => {
+    if (event.composedPath().includes(menu)) return;
     const line = cardLineOf(event.target);
     select(line);
     if (line === null) root.focus({ preventScroll: true });
@@ -622,6 +624,87 @@ export function createOutline({ edit, undo, redo }) {
     if (event.key !== 'Escape' || selected === null || drag) return;
     select(null);
     root.focus({ preventScroll: true });
+  });
+
+  // Right-clicking a card offers to show it in Write or Read. Its text boxes keep the browser's
+  // own menu, for spelling and the clipboard.
+  const menu = element('div', 'fl-menu-popup fl-outline-menu');
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', 'Card');
+  menu.hidden = true;
+  root.append(menu);
+  let menuLine = null;
+  let menuFrom = null;
+
+  const menuItem = (label, iconName, workspace) => {
+    const node = element('button', 'fl-menu-item', icon(iconName), element('span', '', label));
+    node.type = 'button';
+    node.tabIndex = -1;
+    node.setAttribute('role', 'menuitem');
+    node.addEventListener('mousedown', (event) => event.preventDefault());
+    node.addEventListener('click', () => {
+      const line = menuLine;
+      closeMenu({ refocus: false });
+      jump?.(line, workspace);
+    });
+    return node;
+  };
+  const menuItems = [menuItem('Show in Write', 'write', 'write'), menuItem('Show in Read', 'read', 'read')];
+  menu.append(...menuItems);
+
+  const onMenuKey = (event) => {
+    const index = menuItems.indexOf(root.getRootNode().activeElement);
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      event.preventDefault();
+      closeMenu();
+    } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault();
+      const next = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: menuItems.length - 1 }[event.key];
+      menuItems[(next + menuItems.length) % menuItems.length].focus();
+    }
+  };
+  const onMenuPointer = (event) => {
+    if (!event.composedPath().includes(menu)) closeMenu({ refocus: false });
+  };
+  const onMenuScroll = () => closeMenu({ refocus: false });
+
+  function closeMenu({ refocus = true } = {}) {
+    if (menu.hidden) return;
+    menu.hidden = true;
+    document.removeEventListener('keydown', onMenuKey, true);
+    document.removeEventListener('pointerdown', onMenuPointer, true);
+    scrollArea()?.removeEventListener('scroll', onMenuScroll);
+    if (refocus && menuFrom?.isConnected) menuFrom.focus({ preventScroll: true });
+    menuFrom = null;
+  }
+
+  // At the pointer, or below the card when the keyboard asked, and kept within the visible room.
+  const openMenu = (line, target, x, y) => {
+    closeMenu({ refocus: false });
+    menuLine = line;
+    menuFrom = target.closest('button, [tabindex]') ?? blockNodes.get(line);
+    menu.hidden = false;
+    const box = root.getBoundingClientRect();
+    const area = scrollArea().getBoundingClientRect();
+    const { width, height } = menu.getBoundingClientRect();
+    const left = Math.max(area.left + 8, Math.min(x, area.right - width - 8));
+    const top = y + height > area.bottom - 8 ? Math.max(area.top + 8, y - height) : y;
+    menu.style.left = `${left - box.left}px`;
+    menu.style.top = `${top - box.top}px`;
+    document.addEventListener('keydown', onMenuKey, true);
+    document.addEventListener('pointerdown', onMenuPointer, true);
+    scrollArea().addEventListener('scroll', onMenuScroll, { passive: true });
+    menuItems[0].focus({ preventScroll: true });
+  };
+
+  root.addEventListener('contextmenu', (event) => {
+    if (drag || event.target.closest('textarea, input') || event.composedPath().includes(menu)) return;
+    const line = cardLineOf(event.target);
+    if (line === null) return;
+    event.preventDefault();
+    const fromKeyboard = event.clientX === 0 && event.clientY === 0;
+    const rect = (blockNodes.get(line).querySelector(':scope > .fl-outline-heading') ?? blockNodes.get(line)).getBoundingClientRect();
+    openMenu(line, event.target, fromKeyboard ? rect.left + 16 : event.clientX, fromKeyboard ? rect.bottom : event.clientY);
   });
 
   // One history for both tabs, rather than each text box keeping its own.
@@ -646,11 +729,21 @@ export function createOutline({ edit, undo, redo }) {
     /** The pills this tab puts in the action center. */
     tools: tools.map((tool) => pill({ label: tool.getAttribute('aria-label') }, tool)),
     render,
+    /** Each card, block and synopsis by its line, measured by its own row rather than all it holds. */
+    placeEntries() {
+      return [...list.querySelectorAll('[data-line]')]
+        .filter((node) => blockNodes.get(Number(node.dataset.line)) === node)
+        .map((node) => ({
+          line: Number(node.dataset.line),
+          node: node.querySelector(':scope > .fl-outline-heading') ?? node,
+        }));
+    },
     // Only moves focus into the outline when it's somewhere else.
     focus() {
       if (!root.contains(root.getRootNode().activeElement)) root.focus({ preventScroll: true });
     },
     destroy() {
+      closeMenu({ refocus: false });
       endDrag();
       resize.disconnect();
       root.remove();
