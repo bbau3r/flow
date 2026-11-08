@@ -199,12 +199,19 @@ export function openHighlightDialog(parent, { highlights, onSave, onClose }) {
     terms.autocomplete = 'off';
     terms.spellcheck = false;
 
-    const color = document.createElement('input');
-    color.type = 'color';
+    const color = document.createElement('button');
+    color.type = 'button';
     color.className = 'fl-hl-color';
-    color.value = item.color ?? nextColor([...rows.querySelectorAll('.fl-hl-color')].map((input) => input.value));
     color.setAttribute('aria-label', 'Highlight color');
-    color.title = 'Highlight color';
+    color.setAttribute('aria-haspopup', 'dialog');
+    color.setAttribute('aria-expanded', 'false');
+    const setColor = (hex) => {
+      color.dataset.color = hex;
+      color.style.setProperty('--fl-hl-color', hex);
+      color.title = `Highlight color: ${hex}`;
+    };
+    setColor(item.color ?? nextColor([...rows.querySelectorAll('.fl-hl-color')].map((swatch) => swatch.dataset.color)));
+    color.addEventListener('click', (event) => picker.toggle(color, color.dataset.color, setColor, event.detail === 0));
 
     const remove = button({
       label: 'Remove highlight',
@@ -212,6 +219,7 @@ export function openHighlightDialog(parent, { highlights, onSave, onClose }) {
       iconOnly: true,
       cls: 'fl-hl-remove',
       onClick: () => {
+        picker.close();
         const next = row.nextElementSibling ?? row.previousElementSibling;
         row.remove();
         (next?.querySelector('.fl-hl-terms') ?? add).focus();
@@ -223,6 +231,8 @@ export function openHighlightDialog(parent, { highlights, onSave, onClose }) {
     return terms;
   };
 
+  // Made once the dialog is, since it sits in it. Rows only reach it when clicked.
+  let picker = null;
   for (const item of highlights) addRow(item);
   const first = highlights.length ? null : addRow();
 
@@ -244,7 +254,7 @@ export function openHighlightDialog(parent, { highlights, onSave, onClose }) {
   const save = () => {
     const list = [...rows.children].map((row) => ({
       terms: splitTerms(row.querySelector('.fl-hl-terms').value).join(', '),
-      color: row.querySelector('.fl-hl-color').value,
+      color: row.querySelector('.fl-hl-color').dataset.color,
       enabled: row.dataset.enabled === 'true',
     }));
     modal.close();
@@ -262,6 +272,7 @@ export function openHighlightDialog(parent, { highlights, onSave, onClose }) {
     ],
   });
   modal.dialog.classList.add('fl-hl-dialog');
+  picker = colorPopover(modal.dialog, rows);
   modal.dialog.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && event.target.classList.contains('fl-hl-terms')) {
       event.preventDefault();
@@ -270,4 +281,143 @@ export function openHighlightDialog(parent, { highlights, onSave, onClose }) {
   });
   first?.focus();
   return modal;
+}
+
+// vanilla-colorful's pickers are custom elements, loaded the first time one is wanted. An app
+// that already defined them keeps its own.
+const loadPicker = () => Promise.all([
+  customElements.get('hex-color-picker') || import('vanilla-colorful/hex-color-picker.js'),
+  customElements.get('hex-input') || import('vanilla-colorful/hex-input.js'),
+]);
+
+// #abc as #aabbcc, and nothing at all for anything that isn't a color yet.
+function fullHex(value) {
+  const hex = String(value ?? '').replace(/^#/, '').toLowerCase();
+  if (/^[0-9a-f]{6}$/.test(hex)) return `#${hex}`;
+  if (/^[0-9a-f]{3}$/.test(hex)) return `#${[...hex].map((c) => c + c).join('')}`;
+  return null;
+}
+
+const PICKER_MARGIN = 8;
+
+/**
+ * A color picker that opens beside a swatch button in `dialog`: a square of shades and a strip
+ * of hues to drag, the highlighter colors to pick from, and the color as hex to type. It's
+ * placed against the screen, so the dialog's edges and the rows' scrolling don't cut it off.
+ */
+function colorPopover(dialog, scroller) {
+  const panel = document.createElement('div');
+  panel.className = 'fl-hl-picker';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'Choose a highlight color');
+  panel.hidden = true;
+
+  const picker = document.createElement('hex-color-picker');
+  const presets = document.createElement('div');
+  presets.className = 'fl-hl-presets';
+  const presetButtons = HIGHLIGHT_COLORS.map((hex) => {
+    const preset = document.createElement('button');
+    preset.type = 'button';
+    preset.className = 'fl-hl-preset';
+    preset.style.setProperty('--fl-hl-color', hex);
+    preset.setAttribute('aria-label', `Use ${hex}`);
+    preset.title = hex;
+    preset.dataset.color = hex;
+    preset.addEventListener('click', () => pick(hex));
+    presets.append(preset);
+    return preset;
+  });
+  const hexInput = document.createElement('hex-input');
+  hexInput.setAttribute('prefixed', '');
+  const field = document.createElement('input');
+  field.className = 'fl-hl-hex';
+  field.setAttribute('aria-label', 'Hex color');
+  field.spellcheck = false;
+  field.autocomplete = 'off';
+  hexInput.append(field);
+  panel.append(picker, presets, hexInput);
+  dialog.append(panel);
+
+  let anchor = null;
+  let onPick = null;
+
+  const markPreset = (hex) => {
+    for (const preset of presetButtons) preset.setAttribute('aria-pressed', String(preset.dataset.color === hex));
+  };
+
+  function pick(value, from) {
+    const hex = fullHex(value);
+    if (!hex || !anchor) return;
+    if (from !== picker) picker.color = hex;
+    if (from !== hexInput) hexInput.color = hex;
+    markPreset(hex);
+    onPick(hex);
+  }
+  picker.addEventListener('color-changed', (event) => pick(event.detail.value, picker));
+  hexInput.addEventListener('color-changed', (event) => pick(event.detail.value, hexInput));
+
+  // Below the swatch, or above it when there's no room below, and always on screen.
+  const place = () => {
+    const swatch = anchor.getBoundingClientRect();
+    const { width, height } = panel.getBoundingClientRect();
+    const left = Math.min(Math.max(PICKER_MARGIN, swatch.right - width), window.innerWidth - width - PICKER_MARGIN);
+    let top = swatch.bottom + 6;
+    if (top + height > window.innerHeight - PICKER_MARGIN) top = Math.max(PICKER_MARGIN, swatch.top - height - 6);
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+  };
+
+  const close = (refocus = false) => {
+    if (!anchor) return;
+    const was = anchor;
+    panel.hidden = true;
+    was.setAttribute('aria-expanded', 'false');
+    anchor = null;
+    onPick = null;
+    if (refocus) was.focus();
+  };
+
+  dialog.addEventListener('pointerdown', (event) => {
+    if (anchor && !event.composedPath().some((node) => node === panel || node === anchor)) close();
+  });
+  // Escape, or Enter in the hex field, closes the picker alone, leaving the Highlight Manager open.
+  dialog.addEventListener('keydown', (event) => {
+    if (!anchor) return;
+    if (event.key === 'Escape' || (event.key === 'Enter' && event.composedPath().includes(field))) {
+      event.preventDefault();
+      event.stopPropagation();
+      close(true);
+    }
+  });
+  dialog.addEventListener('cancel', (event) => {
+    if (!anchor) return;
+    event.preventDefault();
+    close(true);
+  });
+  scroller.addEventListener('scroll', () => close(), { passive: true });
+  const onResize = () => close();
+  window.addEventListener('resize', onResize);
+  dialog.addEventListener('close', () => window.removeEventListener('resize', onResize));
+
+  return {
+    close,
+    toggle(button, hex, callback, fromKeyboard) {
+      if (anchor === button) return close();
+      close();
+      anchor = button;
+      onPick = callback;
+      button.setAttribute('aria-expanded', 'true');
+      panel.hidden = false;
+      picker.color = hex;
+      hexInput.color = hex;
+      markPreset(hex);
+      place();
+      // Its size settles once the picker's own elements are defined.
+      loadPicker().then(() => {
+        if (anchor !== button) return;
+        place();
+        if (fromKeyboard) (presetButtons.find((preset) => preset.dataset.color === hex) ?? presetButtons[0]).focus();
+      }).catch(() => {});
+    },
+  };
 }

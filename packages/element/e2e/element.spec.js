@@ -2959,7 +2959,22 @@ test.describe('Highlight Manager', () => {
     await expect(dialog(page).getByLabel('Search terms')).toHaveCount(2);
     await expect(dialog(page).getByLabel('Search terms').nth(1)).toBeFocused();
     await page.keyboard.type('FRAUD');
-    await dialog(page).getByLabel('Highlight color').nth(1).fill('#ff0000');
+    // The color picker opens beside the swatch and takes a typed hex color. Enter closes it
+    // without closing the Highlight Manager.
+    await dialog(page).getByLabel('Highlight color').nth(1).click();
+    const picker = dialog(page).getByRole('dialog', { name: 'Choose a highlight color' });
+    await expect(picker).toBeVisible();
+    await expect(picker.locator('hex-color-picker [part="saturation"]')).toBeVisible();
+    await picker.getByLabel('Hex color').fill('ff0000');
+    await picker.getByLabel('Hex color').press('Enter');
+    await expect(picker).toBeHidden();
+    await expect(dialog(page).getByLabel('Highlight color').nth(1)).toHaveAttribute('data-color', '#ff0000');
+    // A preset is a click away, and Escape closes only the picker.
+    await dialog(page).getByLabel('Highlight color').first().click();
+    await picker.getByRole('button', { name: 'Use #8ce99a' }).click();
+    await page.keyboard.press('Escape');
+    await expect(picker).toBeHidden();
+    await expect(dialog(page)).toBeVisible();
     await dialog(page).getByRole('button', { name: 'OK' }).click();
     await expect(dialog(page)).toHaveCount(0);
 
@@ -2970,7 +2985,7 @@ test.describe('Highlight Manager', () => {
     // Bold text still matches as one word.
     expect(second).toEqual(['fraud']);
     expect(await host(page).evaluate((el) => el.highlights)).toEqual([
-      { terms: 'mara, Thermos', color: '#ffe066', enabled: true },
+      { terms: 'mara, Thermos', color: '#8ce99a', enabled: true },
       { terms: 'FRAUD', color: '#ff0000', enabled: true },
     ]);
 
@@ -3024,7 +3039,7 @@ test.describe('Highlight Manager', () => {
     const add = dialog(page).getByRole('button', { name: 'Add highlight' });
     for (let i = 0; i < 12; i += 1) await add.click();
     // New rows take colors not yet used.
-    const colors = await dialog(page).getByLabel('Highlight color').evaluateAll((inputs) => inputs.slice(0, 6).map((input) => input.value));
+    const colors = await dialog(page).getByLabel('Highlight color').evaluateAll((swatches) => swatches.slice(0, 6).map((swatch) => swatch.dataset.color));
     expect(new Set(colors).size).toBe(6);
     const rows = dialog(page).locator('.fl-hl-rows');
     expect(await rows.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
