@@ -40,6 +40,7 @@ export function openExportDialog(parent, actions) {
 
   const modal = openModal(parent, {
     title: 'Export PDF',
+    icon: 'pdf',
     body: [...paper.nodes, ...checks],
     onClose: actions.onClose,
     actions: [

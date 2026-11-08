@@ -32,6 +32,7 @@ export function openSettingsDialog(parent, actions) {
   };
   const modal = openModal(parent, {
     title: 'Project Settings',
+    icon: 'settings',
     body: [...dimensions.nodes, preview.root, note],
     onClose: () => {
       if (!saved) actions.preview(null);
