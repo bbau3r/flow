@@ -3069,3 +3069,150 @@ test.describe('Highlight Manager', () => {
     await expect.poll(async () => (await highlighted(page))[0]?.length ?? 0).toBeGreaterThan(0);
   });
 });
+
+test.describe('keeping your place between tabs', () => {
+  const LONG = Array.from({ length: 40 }, (_, i) => `INT. ROOM ${i + 1} - DAY\n\nSomeone waits in room ${i + 1}, looking at the door.\n\nMAYA\nLine ${i + 1}, said slowly and at some length so that it wraps onto another line.\n`).join('\n');
+  const scroller = (page) => page.locator('flow-script .fl-scroll');
+  const menu = (page) => page.locator('flow-script .fl-outline-menu');
+  const nextFrame = (page) => page.evaluate(() => new Promise(requestAnimationFrame));
+
+  // The source line at the top of the room below the bars, in whichever tab is showing.
+  const lineAtTop = (page) => host(page).evaluate((el) => {
+    const root = el.shadowRoot;
+    const top = root.querySelector('.fl-scroll').getBoundingClientRect().top + root.querySelector('.fl-chrome').offsetHeight;
+    const { workspace } = el;
+    const nodes = workspace === 'write'
+      ? [...root.querySelectorAll('.ProseMirror > .fl-line')].map((node, line) => ({ node, line }))
+      : [...root.querySelectorAll(workspace === 'read' ? '.fl-read [data-line]' : '.fl-outline-list [data-line]')]
+        .map((node) => ({ node: node.querySelector(':scope > .fl-outline-heading') ?? node, line: Number(node.dataset.line) }));
+    const at = nodes.find(({ node }) => node.getClientRects().length && node.getBoundingClientRect().bottom > top);
+    return at?.line ?? null;
+  });
+
+  const scrollTo = async (page, top) => {
+    await scroller(page).evaluate((el, to) => { el.scrollTop = to; }, top);
+    await nextFrame(page);
+  };
+  const setWorkspace = async (page, workspace) => {
+    await host(page).evaluate((el, w) => el.setAttribute('workspace', w), workspace);
+    await nextFrame(page);
+  };
+
+  test('Write, Read and back keep the same part of the script at the top', async ({ page }) => {
+    await open(page);
+    await setValue(page, LONG);
+    await scrollTo(page, 3000);
+    const line = await lineAtTop(page);
+    expect(line).toBeGreaterThan(20);
+
+    await setWorkspace(page, 'read');
+    const read = await lineAtTop(page);
+    // Read leaves out blank lines, so it can show the next line along.
+    expect(read).toBeGreaterThanOrEqual(line);
+    expect(read).toBeLessThanOrEqual(line + 2);
+
+    await setWorkspace(page, 'write');
+    const back = await lineAtTop(page);
+    expect(back).toBeGreaterThanOrEqual(line);
+    expect(back).toBeLessThanOrEqual(line + 2);
+  });
+
+  test('Seamless and Paged Read keep your place too, and the top stays the top', async ({ page }) => {
+    await open(page);
+    await setValue(page, LONG);
+    await setWorkspace(page, 'read');
+    await scrollTo(page, 2500);
+    const line = await lineAtTop(page);
+    await host(page).evaluate((el) => el.setAttribute('read-view', 'flow'));
+    await nextFrame(page);
+    expect(Math.abs((await lineAtTop(page)) - line)).toBeLessThanOrEqual(2);
+
+    await scrollTo(page, 0);
+    await setWorkspace(page, 'write');
+    expect(await scroller(page).evaluate((el) => el.scrollTop)).toBe(0);
+  });
+
+  test('back in Write, a cursor left out of sight comes to where you are', async ({ page }) => {
+    await open(page);
+    await setValue(page, LONG);
+    await editor(page).click();
+    await page.keyboard.press('Control+Home');
+    await setWorkspace(page, 'read');
+    await scrollTo(page, 3000);
+    const line = await lineAtTop(page);
+    await setWorkspace(page, 'write');
+    await page.keyboard.type('X');
+    const typed = (await value(page)).split('\n').findIndex((text) => text.startsWith('X'));
+    expect(typed).toBeGreaterThanOrEqual(line);
+    expect(typed).toBeLessThanOrEqual(line + 2);
+  });
+
+  test('the Outline shows the card holding the line you were on', async ({ page }) => {
+    await open(page);
+    await setValue(page, LONG);
+    await scrollTo(page, 3000);
+    const line = await lineAtTop(page);
+    await setWorkspace(page, 'outline');
+    // The scene the line belongs to: the last heading at or above it.
+    const scene = LONG.split('\n').slice(0, line + 1).findLastIndex((text) => text.startsWith('INT.'));
+    expect(await lineAtTop(page)).toBe(scene);
+  });
+
+  test('right-clicking a card offers to show it in Write or Read', async ({ page }) => {
+    await open(page);
+    await setValue(page, LONG);
+    await setWorkspace(page, 'outline');
+    await host(page).evaluate((el) => {
+      window.flowWorkspaces = [];
+      el.addEventListener('flow-workspace', (e) => window.flowWorkspaces.push(e.detail.workspace));
+    });
+    const heading = LONG.split('\n').indexOf('INT. ROOM 30 - DAY');
+    const text = page.locator('flow-script .fl-outline-block', { hasText: 'INT. ROOM 30 - DAY' }).locator('.fl-outline-block-text').first();
+    await text.scrollIntoViewIfNeeded();
+    await text.click({ button: 'right' });
+    await expect(menu(page)).toBeVisible();
+    await expect(menu(page).getByRole('menuitem')).toHaveText(['Show in Write', 'Show in Read']);
+
+    await menu(page).getByRole('menuitem', { name: 'Show in Read' }).click();
+    await expect(host(page)).toHaveAttribute('workspace', 'read');
+    await nextFrame(page);
+    expect(await lineAtTop(page)).toBe(heading);
+
+    await setWorkspace(page, 'outline');
+    await text.click({ button: 'right' });
+    await menu(page).getByRole('menuitem', { name: 'Show in Write' }).click();
+    await expect(host(page)).toHaveAttribute('workspace', 'write');
+    await nextFrame(page);
+    expect(await lineAtTop(page)).toBe(heading);
+    // The cursor waits at the start of the scene.
+    await page.keyboard.type('X');
+    expect((await value(page)).split('\n')[heading]).toBe('XINT. ROOM 30 - DAY');
+    expect(await page.evaluate(() => window.flowWorkspaces)).toEqual(['read', 'write']);
+  });
+
+  test('the menu closes with Escape or a click elsewhere, and text boxes keep their own', async ({ page }) => {
+    await open(page);
+    await setValue(page, '# Act One\n\nINT. A - DAY\n\nINT. B - DAY\n');
+    await setWorkspace(page, 'outline');
+    const text = page.locator('flow-script .fl-outline-block .fl-outline-block-text').first();
+    await text.click({ button: 'right' });
+    await expect(menu(page)).toBeVisible();
+    await expect(menu(page).getByRole('menuitem').first()).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu(page)).toBeHidden();
+
+    await text.click({ button: 'right' });
+    await expect(menu(page)).toBeVisible();
+    await page.locator('flow-script .fl-outline').click({ position: { x: 5, y: 5 } });
+    await expect(menu(page)).toBeHidden();
+
+    // The act's title is a text box, which keeps the browser's menu.
+    const prevented = await page.locator('flow-script .fl-outline-card textarea').first().evaluate((field) => {
+      const event = new MouseEvent('contextmenu', { bubbles: true, composed: true, cancelable: true, clientX: 10, clientY: 10 });
+      field.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+    expect(prevented).toBe(false);
+    await expect(menu(page)).toBeHidden();
+  });
+});

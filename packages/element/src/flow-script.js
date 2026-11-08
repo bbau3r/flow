@@ -13,6 +13,7 @@ import { createOutline } from './outline.js';
 import { openExportDialog } from './export-dialog.js';
 import { openSettingsDialog } from './settings-dialog.js';
 import { createHighlightPainter, createHighlightTools, normalizeHighlights, openHighlightDialog } from './highlights.js';
+import { placeOf, restorePlace } from './position.js';
 
 let fontsRequested = false;
 
@@ -51,6 +52,8 @@ export class FlowScript extends HTMLElement {
   #started = false;
   #pageFrame = 0;
   #pageTimer = 0;
+  // Where the outline asked to go, kept until the tab it named shows.
+  #jump = null;
 
   constructor() {
     super();
@@ -121,17 +124,22 @@ export class FlowScript extends HTMLElement {
     if (name === 'read-view') {
       this.#syncBars();
       if (this.#editor && this.workspace === 'read') {
-        this.#scroll.scrollTop = 0;
+        const place = this.#placeIn('read');
         this.#showRead();
+        this.#keepPlace(place);
       }
       return;
     }
     if (name === 'readonly') {
       this.#render();
     } else if (name === 'view' || name === 'workspace' || name === 'paper') {
-      // A live editor only needs restyling, which keeps its undo history and cursor.
-      if (this.#editor) this.#restyleEditor();
-      else if (this.#loading) this.#syncBars();
+      // A live editor only needs restyling, which keeps its undo history and cursor. Moving
+      // between tabs or views keeps your place in the script.
+      if (this.#editor) {
+        const place = name === 'paper' ? null : this.#placeIn(name === 'workspace' ? workspaceOf(oldValue) : this.workspace);
+        this.#restyleEditor();
+        this.#keepPlace(place);
+      } else if (this.#loading) this.#syncBars();
       else this.#render();
     }
   }
@@ -468,7 +476,53 @@ export class FlowScript extends HTMLElement {
     this.#editor.relayout();
     this.#showRead();
     this.#showOutline();
-    if (wasHidden && !this.#surface.hidden) this.#editor.focus();
+    if (wasHidden && !this.#surface.hidden) this.#editor.focus({ scroll: false });
+  }
+
+  // The top of the room below the bars, where the line being read sits.
+  #viewTop() {
+    return this.#scroll.getBoundingClientRect().top + (this.#ribbon?.root.offsetHeight ?? 0);
+  }
+
+  // Each source line's elements in a tab, in order down the screen.
+  #placeEntries(workspace) {
+    if (workspace === 'read') {
+      return [...(this.#read?.querySelectorAll('[data-line]') ?? [])].map((node) => ({ line: Number(node.dataset.line), node }));
+    }
+    if (workspace === 'outline') return this.#outline?.placeEntries() ?? [];
+    return this.#editor?.lineNodes().map((node, line) => ({ line, node })) ?? [];
+  }
+
+  #placeIn(workspace) {
+    const jump = this.#jump;
+    this.#jump = null;
+    return jump ?? placeOf(this.#scroll, this.#placeEntries(workspace), this.#viewTop());
+  }
+
+  // Shows the place in the current tab. Back in Write, a cursor left out of sight comes to it,
+  // so typing carries on where you're looking rather than jumping away.
+  #keepPlace(place) {
+    if (!place) return;
+    const restore = () => restorePlace(this.#scroll, this.#placeEntries(this.workspace), place, this.#viewTop(), { within: this.workspace === 'outline' });
+    const line = restore();
+    if (this.workspace === 'write' && line !== null) {
+      const bottom = this.#scroll.getBoundingClientRect().bottom - (this.#statusbar?.root.offsetHeight ?? 0);
+      if (place.jump || !this.#editor.cursorWithin(this.#viewTop(), bottom)) this.#editor.placeCursor(line);
+    }
+    // Text boxes and page breaks can settle a frame later.
+    requestAnimationFrame(() => {
+      if (this.#editor) restore();
+      this.#trackPage();
+    });
+  }
+
+  // Opens a line in Write or Read at the top of the page, as the outline's menu asks.
+  #jumpTo(line, workspace) {
+    if (workspace === this.workspace) return;
+    this.#jump = { line, offset: 0, height: 0, jump: true };
+    this.workspace = workspace;
+    this.#jump = null;
+    this.dispatchEvent(new CustomEvent('flow-workspace', { detail: { workspace } }));
   }
 
   // The Read tab's pages sit beside the hidden editor rather than replacing it, which is what
@@ -601,6 +655,7 @@ export class FlowScript extends HTMLElement {
       edit: (lines, options) => this.#editor.commitFromOutline(lines, options),
       undo: () => this.#editor.undo({ focus: false }),
       redo: () => this.#editor.redo({ focus: false }),
+      jump: (line, workspace) => this.#jumpTo(line, workspace),
     });
     this.#ribbon.setActions('outline', { label: 'Outline', pills: this.#outline.tools });
     this.#syncBars();
@@ -741,6 +796,8 @@ export class FlowScript extends HTMLElement {
     }
   }
 }
+
+const workspaceOf = (value) => (value === 'outline' || value === 'read' ? value : 'write');
 
 // Inline scripts in HTML are usually indented with the markup; indentation is
 // meaningful to action lines, so strip only what every line shares.
