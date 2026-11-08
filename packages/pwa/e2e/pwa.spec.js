@@ -834,6 +834,21 @@ test.describe('editor bars', () => {
     await expect(page.locator('.doc-state')).toHaveText('On this device only');
   });
 
+  test('showing a card in Read from the outline moves the tabs and the address along', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await newScript(page);
+    await page.locator('flow-script').evaluate((el) => { el.value = 'INT. A - DAY\n\nAction.\n\nINT. B - DAY\n\nMore.'; });
+    await page.getByRole('tab', { name: 'Outline' }).click();
+    await page.locator('flow-script .fl-outline-block-text', { hasText: 'INT. B - DAY' }).click({ button: 'right' });
+    await page.locator('flow-script .fl-outline-menu').getByRole('menuitem', { name: 'Show in Read' }).click();
+    await expect(page.getByRole('tab', { name: 'Read' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'Outline' })).toHaveAttribute('aria-selected', 'false');
+    expect(page.url()).toMatch(/\?tab=read$/);
+    // Choosing Outline again works, now that the tabs know Read is showing.
+    await page.getByRole('tab', { name: 'Outline' }).click();
+    await expect(page.locator('flow-script .fl-outline')).toBeVisible();
+  });
+
   test('the document pill joins a title on several lines with separators', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 700 });
     await newScript(page);

@@ -236,17 +236,21 @@ function responsive(attrs, wide, compact) {
 /**
  * Tabs, as a pill of tabs or, when space runs short, a dropdown naming the current one.
  * Items are { label, icon, selected, disabled, title }, and `onSelect` gets the label of a tab
- * the writer switches to.
+ * the writer switches to. The returned node's `selectTab(label)` shows another tab as current
+ * without calling `onSelect`, for when something else changed it.
  */
 export function tabs({ label, attrs, onSelect }, items) {
   let current = items.find((item) => item.selected);
   let menu = null;
-  const select = (item) => {
-    if (item === current) return;
+  const show = (item) => {
+    if (!item || item === current) return false;
     current = item;
     for (const [other, tab] of nodes) tab.setAttribute('aria-selected', String(other === item));
     menu.refresh();
-    onSelect?.(item.label);
+    return true;
+  };
+  const select = (item) => {
+    if (show(item)) onSelect?.(item.label);
   };
   const nodes = new Map(items.map((item) => {
     const tab = document.createElement('button');
@@ -274,7 +278,9 @@ export function tabs({ label, attrs, onSelect }, items) {
     },
     onSelect: (value) => select(items.find((item) => item.label === value)),
   });
-  return responsive(attrs, wide, pill({ cls: 'fl-tabs', label }, menu.root));
+  const node = responsive(attrs, wide, pill({ cls: 'fl-tabs', label }, menu.root));
+  node.selectTab = (name) => show(items.find((item) => item.label.toLowerCase() === String(name).toLowerCase()));
+  return node;
 }
 
 /**
