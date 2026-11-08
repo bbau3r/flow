@@ -114,10 +114,10 @@ function classifyBody(l, ctx) {
   }
   if (s[0] === '>') { l.type = 'transition'; l.forced = true; prefix(1); skipSpaces(); return; }
   if (SCENE_RE.test(s) && ctx.prevBlank && ctx.nextBlank) { l.type = 'scene'; finishScene(l); return; }
-  // Any all-caps line ending in a colon, alone between blank lines, is a transition (CUT TO:,
-  // SMASH CUT:, BACK TO SCENE:). It needs a letter, so 10: stays action. Trailing spaces
-  // deliberately opt out of a transition match (per spec).
-  if (l.visible.endsWith(':') && s === s.toUpperCase() && /\p{Lu}/u.test(s) && ctx.prevBlank && ctx.nextBlank) { l.type = 'transition'; return; }
+  // Per the spec, only an all-caps line ending in TO:, alone between blank lines, is a
+  // transition on its own (CUT TO:, DISSOLVE TO:). Others, such as SMASH CUT:, need a >.
+  // Trailing spaces deliberately opt out of a transition match (per spec).
+  if (l.visible.endsWith('TO:') && s === s.toUpperCase() && ctx.prevBlank && ctx.nextBlank) { l.type = 'transition'; return; }
   if (ctx.prevBlank && !ctx.nextBlank && isUpperName(s)) { l.type = 'character'; finishCharacter(l, ctx); return; }
   l.type = 'action';
   l.contentStart = 0; // action keeps its indentation
