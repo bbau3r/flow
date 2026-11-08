@@ -67,8 +67,18 @@ button:focus-visible, select:focus-visible, a:focus-visible {
 }
 
 .brand {
+  display: inline-flex;
+  align-items: baseline;
   color: var(--flow-accent);
-  font: 700 22px var(--font);
+  font: 700 28px var(--font);
+}
+
+/* The mark is the F: tall like a capital, its lower curl dipping below the baseline. */
+.brand .flow-mark {
+  height: 1.75em;
+  width: auto;
+  margin-right: 0.02em;
+  transform: translateY(0.42em);
 }
 
 .home main { max-width: 760px; margin: 0 auto; padding: 8px 20px 48px; }
