@@ -135,6 +135,9 @@ test.describe('new scripts', () => {
     await page.goBack();
     await expect(page.locator('h1')).toHaveCSS('font-family', roboto);
     await expect(page.locator('.brand')).toHaveCSS('font-family', roboto);
+    // The mark stands in for the F of the wordmark.
+    await expect(page.getByRole('img', { name: 'Flow' })).toHaveText('low');
+    await expect(page.locator('.brand .flow-mark')).toBeVisible();
     await page.waitForFunction(() => [...document.fonts].filter((f) => f.family.includes('Roboto') && f.status === 'loaded').length === 3);
   });
 

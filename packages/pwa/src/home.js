@@ -3,6 +3,7 @@ import { pill } from '@flow/element/source';
 import { createDoc, deleteDoc, listDocs } from './store.js';
 import { providers } from './providers/index.js';
 import { h, themePicker, timeAgo, toast } from './ui.js';
+import { flowMark } from './mark.js';
 
 const edit = (doc) => { location.hash = `#/edit/${doc.id}`; };
 
@@ -85,7 +86,8 @@ export async function renderHome(root) {
 
   root.replaceChildren(h('div', { class: 'home' },
     h('header', { class: 'home-top' },
-      h('span', { class: 'brand' }, 'Flow'),
+      // The mark stands in for the F, so the wordmark reads "Flow".
+      h('span', { class: 'brand', role: 'img', 'aria-label': 'Flow' }, flowMark(), h('span', { 'aria-hidden': 'true' }, 'low')),
       h('span', { class: 'spacer' }),
       navigator.onLine ? null : h('span', { class: 'badge' }, 'Offline'),
       install,
