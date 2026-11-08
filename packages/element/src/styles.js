@@ -216,7 +216,11 @@ ${CONTROLS_CSS}
 .fl-hl-remove { color: var(--flow-muted); }
 .fl-hl-remove:hover:not(:disabled) { color: ${token('danger-hover')}; }
 .fl-hl-add-row { display: flex; justify-content: center; margin-top: 12px; }
-.fl-hl-add { --fl-control-size: 36px; padding: 0; border-radius: 50%; color: var(--flow-accent); }
+.fl-hl-add {
+  --fl-control-size: 36px; padding: 0; border-radius: 50%; color: var(--flow-accent);
+  border-color: color-mix(in srgb, var(--flow-ink) 35%, ${token('field-border')});
+  box-shadow: 0 1px 2px var(--flow-shadow);
+}
 /* In the action center, a dot of each highlight's color: filled while it shows, a ring when off. */
 .fl-hl-dots { display: flex; align-items: center; gap: 2px; }
 .fl-hl-dots:empty { display: none; }
