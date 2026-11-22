@@ -579,7 +579,7 @@ const CONTROL_TOKENS = {
   // The desk under them: a faint grain, and a soft wash of the theme's colors. Either can be
   // set to none.
   'desk-noise': `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.07'/%3E%3C/svg%3E")`,
-  'desk-gradient': 'linear-gradient(155deg, color-mix(in srgb, var(--flow-accent) 7%, transparent), transparent 55%, color-mix(in srgb, var(--flow-secondary) 6%, transparent))',
+  'desk-gradient': 'linear-gradient(155deg, color-mix(in srgb, var(--flow-accent) 2%, transparent), transparent 55%, color-mix(in srgb, var(--flow-secondary) 1.5%, transparent))',
 };
 
 /** The token's value, falling back to its default when nobody has set it. */
@@ -593,6 +593,8 @@ export const DESK_BACKGROUND = `background: ${token('desk-noise')}, ${token('des
 
 export const CONTROLS_CSS = `
 .fl-desk { ${DESK_BACKGROUND} }
+/* Paper on the desk, such as a page or a sheet standing for one, with the pages' hard shadow. */
+.fl-paper { background: var(--flow-paper); box-shadow: ${token('page-shadow')}; }
 .fl-svg {
   flex: none; width: 1.25em; height: 1.25em;
   fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;

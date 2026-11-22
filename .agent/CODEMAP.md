@@ -91,7 +91,7 @@ return new lines, plus a cursor where relevant.
 | `settings-dialog.js` | Project settings (page dimensions) on `openSettingsPanel`, previews live, Save writes the boneyard |
 | `dimensions-field.js` | Paper size picker shared by project settings, the PDF export and the PWA's Defaults; `bare` hands over the select for a settings panel |
 | `page-preview.js` | Small drawing of the sheet with measurements |
-| `controls.js` | Shared UI kit: `button`, `pill`, `pillSep`, `foldingPill`, `tabs` (`fixed` keeps the pill at any width), `actionPill`, `searchField`, `Menu`, `openModal`, `icon`, `CONTROL_TOKENS` (including `page-shadow`, `desk-noise`, `desk-gradient`), `DESK_BACKGROUND` and the `.fl-desk` class, `CONTROLS_CSS`, `token()`. New components build on these and style with `token()`. |
+| `controls.js` | Shared UI kit: `button`, `pill`, `pillSep`, `foldingPill`, `tabs` (`fixed` keeps the pill at any width), `actionPill`, `searchField`, `Menu`, `openModal`, `icon`, `CONTROL_TOKENS` (including `page-shadow`, `desk-noise`, `desk-gradient`), `DESK_BACKGROUND` and the `.fl-desk` and `.fl-paper` classes, `CONTROLS_CSS`, `token()`. New components build on these and style with `token()`. |
 | `themes.js` | `PALETTES` (sage, sand, sea, romance, forest, lavender, graphite x light/dark), `registerTheme`, `THEME_CSS` (`:host`), `PAGE_THEME_CSS` (`:root[data-theme]`) |
 | `styles.js` | The shadow-root stylesheet `STYLES`, page geometry in em |
 | `fonts.js` / `pdf-fonts.js` | Courier Prime and Roboto inlined; WOFF2 on screen, WOFF for PDF |

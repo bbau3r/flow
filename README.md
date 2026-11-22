@@ -168,7 +168,7 @@ Each component also has its own tokens, which default to those colors. Set them 
 | Modals | `dialog-bg`, `dialog-ink`, `dialog-radius` |
 | Fields | `check` (checkboxes, radio buttons, sliders and progress bars), `field-bg`, `field-ink`, `field-border`, `selection-bg` |
 | Outline | `drop-line` (where a dragged card lands), `preview-line` (where a tool would add one, `secondary` by default), `danger-hover` (pointing at something that deletes) |
-| Pages and desk | `page-shadow` (a hard, offset shadow under every page), `desk-noise` (a faint grain), `desk-gradient` (a soft wash of the theme's colors). Set either desk token to `none` to leave it out. The `fl-desk` class gives an app's own page the same desk. |
+| Pages and desk | `page-shadow` (a hard, offset shadow under every page), `desk-noise` (a faint grain), `desk-gradient` (a soft wash of the theme's colors). Set either desk token to `none` to leave it out. The `fl-desk` class gives an app's own page the same desk, and `fl-paper` gives a sheet on it the pages' paper and shadow. |
 
  Use `--flow-font` to change the script typeface; anything but a 0.6em-wide monospace font will throw off page alignment. Use `--flow-ui-font` to change the interface font, which defaults to the bundled Roboto. PDFs are always black on white.
 

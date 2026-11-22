@@ -173,16 +173,14 @@ h2 {
   background: color-mix(in srgb, var(--flow-accent) 6%, transparent);
 }
 
+/* Open and the covers are paper (the shared fl-paper class), like the pages in the editor. */
 .tile-open {
   color: var(--flow-accent);
-  background: var(--flow-paper);
-  border: 1px solid var(--flow-rule);
-  box-shadow: 0 1px 3px var(--flow-shadow);
+  border: 1px solid transparent;
 }
 
 .tile-button:hover:not(:disabled) .tile-face, .recent-open:hover .cover {
   border-color: var(--flow-accent);
-  box-shadow: 0 6px 16px var(--flow-shadow);
   transform: translateY(-2px);
 }
 
@@ -212,10 +210,8 @@ h2 {
   justify-content: space-between;
   padding: 34% 9% 9%;
   overflow: hidden;
-  background: var(--flow-paper);
   color: var(--flow-ink);
-  border: 1px solid var(--flow-rule);
-  box-shadow: 0 1px 3px var(--flow-shadow);
+  border: 1px solid transparent;
   font-family: "Courier Prime", "Courier New", Courier, monospace;
   line-height: 1.25;
 }
@@ -307,8 +303,8 @@ h2 {
   .home main { padding: 12px 14px 40px; }
   .shelf { --tile-w: calc((100% - 16px) / 2); gap: 20px 16px; }
   .shelf-rule { flex-basis: 100%; width: auto; height: 1px; margin: 0; }
-  .home-search { flex: none; width: 40px; padding: 0 11px; transition: width 160ms ease; }
-  .home-search:focus-within, .home-search.fl-search-filled { flex: 1; width: auto; padding: 0 14px; }
+  .home-search { flex: none; width: 40px; padding: 0 11px; gap: 0; transition: width 160ms ease; }
+  .home-search:focus-within, .home-search.fl-search-filled { flex: 1; width: auto; padding: 0 14px; gap: 8px; }
 }
 
 /* Editor */

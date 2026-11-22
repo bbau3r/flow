@@ -82,6 +82,11 @@ test.describe('home page', () => {
     const corners = await radius(card.locator('.cover'));
     expect(await radius(page.locator('.tile-new'))).toBe(corners);
     expect(await radius(page.locator('.tile-open'))).toBe(corners);
+    // They sit on the desk like the editor's pages, with the same hard shadow.
+    const shadow = (locator) => locator.evaluate((el) => getComputedStyle(el).boxShadow);
+    expect(await shadow(card.locator('.cover'))).toMatch(/3px 4px 0\.5px/);
+    expect(await shadow(page.locator('.tile-open'))).toBe(await shadow(card.locator('.cover')));
+    expect(await page.locator('body').evaluate((el) => getComputedStyle(el).backgroundImage)).toContain('data:image/svg+xml');
     // New and Open come first, then the scripts, in a row.
     const open = await page.locator('#open-script').boundingBox();
     expect((await card.boundingBox()).x).toBeGreaterThan(open.x + open.width);

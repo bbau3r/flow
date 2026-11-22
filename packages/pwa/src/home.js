@@ -79,7 +79,7 @@ function cover(doc) {
   const fields = titleFields(doc.value);
   const title = fields.title?.length ? fields.title : [doc.name];
   const authors = [...(fields.author ?? []), ...(fields.authors ?? [])];
-  return h('span', { class: 'cover', 'aria-hidden': 'true' },
+  return h('span', { class: 'cover fl-paper', 'aria-hidden': 'true' },
     h('span', { class: 'cover-middle' },
       lines('cover-title', title),
       lines('cover-credit', fields.credit),
@@ -128,7 +128,7 @@ function openTile() {
       disabled: !usable.length,
       onclick: chooseAndOpen,
     },
-    h('span', { class: 'tile-face tile-open' }, icon('folder')),
+    h('span', { class: 'tile-face tile-open fl-paper' }, icon('folder')),
     h('span', { class: 'tile-label' }, 'Open'),
     h('span', { class: 'recent-meta' }, only ? `From ${only.label.toLowerCase()}` : 'Choose where'),
     status && !status.ok ? h('span', { class: 'badge' }, status.reason) : null));
