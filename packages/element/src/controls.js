@@ -628,6 +628,8 @@ export const CONTROLS_CSS = `
   flex: 1; min-width: 0; height: 32px; padding: 0;
   background: transparent; color: inherit; border: 0; outline: none; font: inherit;
 }
+/* The pill shows focus, so the field inside it never draws its own. */
+.fl-search-input:focus, .fl-search-input:focus-visible { outline: none; box-shadow: none; }
 .fl-pill-sep { flex: none; width: 1px; height: 1.4em; margin: 0 2px; background: currentColor; opacity: 0.25; }
 .fl-pill-sep[hidden] { display: none; }
 

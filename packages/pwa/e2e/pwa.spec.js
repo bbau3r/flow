@@ -103,6 +103,10 @@ test.describe('home page', () => {
     await fromMenu(page, 'home');
     await expect(page.locator('.recent-row')).toHaveCount(2);
     const search = page.getByRole('searchbox', { name: 'Search scripts' });
+    // Focused, only the pill shows it: the field inside draws no outline of its own.
+    await search.focus();
+    await expect(search).toHaveCSS('outline-style', 'none');
+    await expect(page.locator('.home-search')).not.toHaveCSS('outline-style', 'none');
     await search.fill('lighthouse');
     await expect(page.locator('.recent-row:visible')).toHaveCount(1);
     await search.fill('nothing like this');
