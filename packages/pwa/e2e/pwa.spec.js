@@ -217,7 +217,8 @@ test.describe('new scripts', () => {
     await page.keyboard.press('End');
     await page.keyboard.type(' Two');
     await expect(page.locator('.doc-name')).toHaveText('Untitled Two');
-    await expect(page.locator('.doc-state')).toHaveText('On this device only');
+    // Not in a file yet, it lives only in this browser: its source is Temp.
+    await expect(page.locator('.doc-where')).toHaveText('Temp');
   });
 });
 
@@ -232,7 +233,7 @@ test.describe('autosave and recent', () => {
 
     await fromMenu(page, 'home');
     const row = page.locator('.recent-row', { hasText: 'Typed before reload.' });
-    await expect(row).toContainText('unsaved changes');
+    await expect(row.locator('.recent-source')).toHaveText('Temp');
     await row.locator('.recent-open').click();
     await expect(editor(page)).toBeVisible();
     expect(await value(page)).toContain('Typed before reload.');
@@ -297,7 +298,7 @@ test.describe('local files with direct saving', () => {
     await page.goto(HOME);
     await providerCard(page, 'local').click();
     await expect(editor(page)).toBeVisible();
-    await expect(page.locator('.doc-where')).toContainText('On this device');
+    await expect(page.locator('.doc-where')).toHaveText('Local');
     await lineWith(page, 'From disk').click();
     await page.keyboard.type('Z');
     await fromMenu(page, 'save');
@@ -929,7 +930,7 @@ test.describe('editor bars', () => {
   test('the document pill shows title, date and source, and its menu leads home', async ({ page }) => {
     await newScript(page);
     await expect(page.locator('.doc-date')).toHaveText(new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }));
-    await expect(page.locator('.doc-state')).toBeVisible();
+    await expect(page.locator('.doc-where')).toHaveText('Temp');
     // The app's name and details sit inside the menu's pill.
     const pill = await docPill(page).boundingBox();
     const name = await page.locator('.doc-name').boundingBox();
@@ -957,7 +958,7 @@ test.describe('editor bars', () => {
     await page.keyboard.type('Act One');
     await page.getByRole('tab', { name: 'Write' }).click();
     await expect(page.locator('flow-script .fl-line', { hasText: 'Act One' })).toBeVisible();
-    await expect(page.locator('.doc-state')).toHaveText('On this device only');
+    await expect(page.locator('.doc-where')).toHaveText('Temp');
   });
 
   test('showing a card in Read from the outline moves the tabs and the address along', async ({ page }) => {
