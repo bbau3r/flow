@@ -44,7 +44,7 @@ function buildProperty(property) {
  * rail and out of searches, and the string 'divider' between sections draws a rule across the
  * rail. `start` names the section to open on. `actions` are buttons for the foot of the panel;
  * without them it has only its close button. `onClose` runs however it closes. Returns
- * { dialog, search, close(), setHidden(id, hidden) }.
+ * { dialog, search, close(), show(id), setHidden(id, hidden) }.
  */
 export function openSettingsPanel(parent, { title, icon: iconName, sections: listed, start, actions = [], onClose }) {
   const sections = listed.filter((section) => section && section !== 'divider');
@@ -149,7 +149,8 @@ export function openSettingsPanel(parent, { title, icon: iconName, sections: lis
     const query = search.value.trim().toLowerCase();
     let shown = 0;
     for (const entry of built) {
-      if (entry.hidden) {
+      // A hidden section stays out of searches, but can still be turned to with show().
+      if (entry.hidden && (query || entry !== current)) {
         entry.node.hidden = true;
         continue;
       }
@@ -199,10 +200,17 @@ export function openSettingsPanel(parent, { title, icon: iconName, sections: lis
     dialog,
     search,
     close: () => dialog.close(),
+    /** Turns to a section, even one out of the rail, ending any search. */
+    show(id) {
+      const entry = built.find(({ section }) => section.id === id);
+      if (!entry) return;
+      search.value = '';
+      turnTo(entry);
+    },
     /** Takes a section out of the rail and searches, or brings it back. */
     setHidden(id, hidden) {
       const entry = built.find(({ section }) => section.id === id);
-      if (!entry) return;
+      if (!entry || entry.hidden === !!hidden) return;
       entry.hidden = !!hidden;
       syncRail();
       if (entry.hidden && current === entry) turnTo(firstShown());

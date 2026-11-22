@@ -350,14 +350,17 @@ export class FlowScript extends HTMLElement {
   /**
    * Adds a bubble to the bottom row: a pill holding `node`. `side` 'start' puts it after the
    * element's own pills on the left, and 'end' on the right, just before undo and redo.
-   * `tabs` lists the workspaces it shows in, or every one when left out. Returns a function
-   * that takes it away again.
+   * `tabs` lists the workspaces it shows in, or every one when left out. The bubble is inside
+   * the element's shadow root, where the page's styles don't reach, so `css` can bring its own;
+   * the theme's --flow-* colors reach it. Returns a function that takes it away again.
    */
-  addBubble({ node, side = 'start', label, tabs: shownIn = null, cls }) {
+  addBubble({ node, side = 'start', label, tabs: shownIn = null, cls, css }) {
+    const style = css ? document.createElement('style') : null;
+    if (style) style.textContent = css;
     const bubble = {
       side: side === 'end' ? 'end' : 'start',
       tabs: shownIn,
-      root: pill({ label, cls: `fl-ext-bubble${cls ? ` ${cls}` : ''}` }, node),
+      root: pill({ label, cls: `fl-ext-bubble${cls ? ` ${cls}` : ''}` }, ...[style, node].filter(Boolean)),
     };
     this.#bubbles.add(bubble);
     this.#statusbar?.addBubble(bubble);
@@ -378,7 +381,7 @@ export class FlowScript extends HTMLElement {
    */
   addWorkspace({ id, render }) {
     if (!/^[a-z][a-z0-9-]*$/.test(id) || BUILT_IN_WORKSPACES.includes(id) || this.#workspaces.has(id)) {
-      throw new Error(`A tab can't be called "${id}"`);
+      throw new Error(`A tab can’t be called "${id}"`);
     }
     const root = document.createElement('div');
     root.className = 'fl-workspace';
