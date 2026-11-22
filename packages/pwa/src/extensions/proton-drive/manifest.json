@@ -1,0 +1,9 @@
+{
+  "id": "proton-drive",
+  "kind": "app",
+  "name": "Proton Drive",
+  "version": "1.0.0",
+  "author": "Flow",
+  "icon": { "paths": ["M7 18a4.5 4.5 0 0 1-.5-9 6 6 0 0 1 11.5 1.5A3.75 3.75 0 0 1 17.5 18z"] },
+  "description": "Opens and saves scripts in Proton Drive, through the folder the Proton Drive app keeps in sync on your computer. Connect it on the Sources page by choosing that folder. Needs Chrome or Edge on a computer."
+}
