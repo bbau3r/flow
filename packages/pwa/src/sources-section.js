@@ -57,15 +57,12 @@ export function sourcesSection() {
     topics: [
       {
         label: 'Temp',
-        properties: [{
-          label: 'This browser',
-          keywords: 'temp temporary autosave storage browser',
-          description: 'A script that isn’t in a file yet lives in this browser’s own storage, on this device only. It autosaves there as you write. Save it to a file to keep it anywhere else.',
-          control: null,
-        }],
+        description: 'Project file temporarily saved in the browser’s own local storage. Autosaves there as you write. Need to save to persist file.',
+        properties: [],
       },
       {
         label: 'Local',
+        description: 'Project file from your device.',
         properties: local.map((provider) => ({
           label: provider.label,
           keywords: 'local file device folder',
@@ -75,6 +72,7 @@ export function sourcesSection() {
       },
       {
         label: 'Cloud',
+        description: 'External cloud sources to save and load files.',
         properties: cloud.length ? cloud.map(cloudProperty) : [{
           label: 'No cloud sources',
           keywords: 'cloud drive sync',

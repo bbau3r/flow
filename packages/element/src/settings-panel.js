@@ -38,7 +38,8 @@ function buildProperty(property) {
 
 /**
  * Opens the settings in `parent`. `sections` are { id, label, icon, topics }, topics are
- * { label, open = true, properties }, and properties are { label, description, control, below,
+ * { label, description, open = true, properties }, where `description` is a line under the
+ * topic's name, and properties are { label, description, control, below,
  * wide, keywords }, where `control` is a node or a list of them, and `below` are nodes that run
  * the full width under it, such as a preview. A section with `hidden` set starts out of the
  * rail and out of searches, and the string 'divider' between sections draws a rule across the
@@ -67,11 +68,13 @@ export function openSettingsPanel(parent, { title, icon: iconName, sections: lis
     const topics = section.topics.map((topic) => {
       const head = el('button', 'fl-settings-topic-head', el('span', '', topic.label), icon('caret'));
       head.type = 'button';
-      const body = el('div', 'fl-settings-topic-body', ...topic.properties.map(buildProperty));
+      const props = topic.properties.map(buildProperty);
+      // A topic can open with a line saying what it's about, before its properties.
+      const body = el('div', 'fl-settings-topic-body', topic.description ? el('p', 'fl-settings-topic-desc', topic.description) : null, ...props);
       body.id = nextId('topic');
       head.setAttribute('aria-controls', body.id);
       const node = el('div', 'fl-settings-topic', el('h4', 'fl-settings-topic-title', head), body);
-      const entry = { node, head, body, topic, properties: [...body.children].map((prop, i) => ({ prop, def: topic.properties[i] })) };
+      const entry = { node, head, body, topic, properties: props.map((prop, i) => ({ prop, def: topic.properties[i] })) };
       entry.setOpen = (open) => {
         head.setAttribute('aria-expanded', String(open));
         node.classList.toggle('fl-settings-folded', !open);
@@ -163,6 +166,9 @@ export function openSettingsPanel(parent, { title, icon: iconName, sections: lis
           prop.hidden = !match;
           if (match) topicShown += 1;
         }
+        // A topic's own description is searched too, and keeps a topic with nothing else showing.
+        const about = [entry.section.label, topic.topic.label, topic.topic.description].filter(Boolean).join(' ').toLowerCase();
+        if (topic.topic.description && (!query || about.includes(query))) topicShown = Math.max(topicShown, 1);
         topic.node.hidden = !topicShown;
         sectionShown += topicShown;
       }
@@ -287,6 +293,7 @@ export const SETTINGS_PANEL_CSS = `
 .fl-settings-folded .fl-settings-topic-head > .fl-svg { transform: rotate(-90deg); }
 .fl-settings-topic-body { display: flex; flex-direction: column; gap: 14px; padding: 6px 4px 16px 18px; }
 .fl-settings-folded > .fl-settings-topic-body { display: none; }
+.fl-settings-topic-desc { margin: 0; color: var(--flow-muted); font-size: 13px; line-height: 1.45; }
 .fl-settings-searching .fl-settings-folded > .fl-settings-topic-body { display: flex; }
 .fl-settings-searching .fl-settings-folded .fl-settings-topic-head > .fl-svg { transform: none; }
 @media (prefers-reduced-motion: reduce) { .fl-settings-topic-head > .fl-svg, .fl-settings-jump::after { transition: none; } }
