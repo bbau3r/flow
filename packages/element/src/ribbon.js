@@ -6,6 +6,7 @@
 import { button, centerGlyphs, glyphBadge, Menu, pill, pillSep } from './controls.js';
 import { createDocMenu } from './doc-menu.js';
 import { createActionCenter } from './action-center.js';
+import { createWidgetShelf } from './widgets.js';
 
 const STYLE_BUTTONS = [
   { key: 'bold', label: 'Bold', text: 'B', cls: 'fl-b', title: 'Bold (Ctrl/Cmd+B)' },
@@ -67,11 +68,13 @@ const cell = (className, ...children) => {
 // the action center to lean against when everything fits on one row.
 function createTopBar(actions) {
   const menu = createDocMenu({ onClose: actions.onMenuClose });
-  const end = cell('fl-topbar-end');
+  // The top right corner holds the app's widgets placed there.
+  const widgets = createWidgetShelf();
+  const end = cell('fl-topbar-end', widgets.root);
   const bar = document.createElement('div');
   bar.className = 'fl-topbar';
   bar.append(cell('fl-topbar-start', menu.root, cell('fl-topbar-tabs', slot('tabs'))), end);
-  return { bar, end, menu };
+  return { bar, end, menu, widgets };
 }
 
 export function createRibbon(actions) {
@@ -176,12 +179,15 @@ export function createRibbon(actions) {
       }
       additions.hidden = !DUAL_TOPICS.has(state.type);
     },
+    /** Places a widget in the top right corner. */
+    addWidget: (widget) => topBar.widgets.add(widget),
     /** Registers the commands a tab shows in the action center, as a list of pills. */
     setActions(workspace, options) {
       center.set(workspace, options);
     },
     // Each tab shows its own commands.
     setWorkspace(workspace) {
+      topBar.widgets.setTab(workspace);
       if (workspace !== 'write') topics.close();
       center.show(workspace);
     },

@@ -1,6 +1,6 @@
 // The settings layout shared by project and app settings. A search box sits at the top of the
 // panel as its own island. Below it, when there's more than one section, a rail of section icons
-// runs down the left, each naming itself in a bubble when pointed at, and each section is a page
+// runs down the left, each naming itself in a label when pointed at, and each section is a page
 // of its own that the rail turns to. A search looks through every section at once. Each section
 // has a title and a button that folds or unfolds all its topics, and each topic folds on its own
 // and holds the properties: a name with its control beside it, or below it when `wide`, then a
@@ -104,7 +104,7 @@ export function openSettingsPanel(parent, { title, icon: iconName, sections: lis
     if (section.id) node.dataset.section = section.id;
 
     const jump = button({ label: section.label, icon: section.icon ?? 'settings', iconOnly: true, toggle: true, cls: 'fl-settings-jump', attrs: { 'data-tip': section.label } });
-    // The bubble names it, so the browser's own tooltip would only repeat it.
+    // The label names it, so the browser's own tooltip would only repeat it.
     jump.removeAttribute('title');
     const entry = { node, topics, jump, section, hidden: !!section.hidden };
     // Turning to a section ends a search, which would otherwise keep every section in view.

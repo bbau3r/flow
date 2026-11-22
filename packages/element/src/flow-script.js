@@ -6,7 +6,7 @@
 import { parse, layout, scriptTitle, DEFAULT_OPTIONS, formatDimensions, pageProfile, parseDimensions, resolvePaper, writeSetting } from '@flow/core';
 import { STYLES } from './styles.js';
 import { addedPaletteSheet, getTheme } from './themes.js';
-import { pill } from './controls.js';
+import { button, pill } from './controls.js';
 import { renderReadonly } from './readonly.js';
 import { createRibbon } from './ribbon.js';
 import { createStatusbar, SCALE_MAX, SCALE_MIN, SCALE_STEP } from './statusbar.js';
@@ -55,8 +55,8 @@ export class FlowScript extends HTMLElement {
   #pageTimer = 0;
   // Where the outline asked to go, kept until the tab it named shows.
   #jump = null;
-  // What an app has added: bubbles along the bottom, tabs of its own, and key handlers.
-  #bubbles = new Set();
+  // What an app has added: widgets in the bars, tabs of its own, and key handlers.
+  #widgets = new Set();
   #workspaces = new Map();
   #keyHandlers = new Set();
 
@@ -348,26 +348,30 @@ export class FlowScript extends HTMLElement {
   // --- Extending ---
 
   /**
-   * Adds a bubble to the bottom row: a pill holding `node`. `side` 'start' puts it after the
-   * element's own pills on the left, and 'end' on the right, just before undo and redo.
-   * `tabs` lists the workspaces it shows in, or every one when left out. The bubble is inside
-   * the element's shadow root, where the page's styles don't reach, so `css` can bring its own;
-   * the theme's --flow-* colors reach it. Returns a function that takes it away again.
+   * Adds a widget: a pill of the app's own in the bars. `place` is 'bottom-start' (after the
+   * element's own pills along the bottom, the default), 'bottom-end' (at the bottom right, just
+   * before undo and redo) or 'top-end' (the top right corner). It holds `node`, or, given
+   * `onClick` instead, a button named `label` with `icon`, that runs it. `tabs` lists the
+   * workspaces it shows in, or every one when left out. A widget is inside the element's shadow
+   * root, where the page's styles don't reach, so `css` can bring its own; the theme's --flow-*
+   * colors reach it. Returns a function that takes it away again.
    */
-  addBubble({ node, side = 'start', label, tabs: shownIn = null, cls, css }) {
+  addWidget({ node, place = 'bottom-start', label, icon: iconName, title, onClick, tabs: shownIn = null, cls, css }) {
     const style = css ? document.createElement('style') : null;
     if (style) style.textContent = css;
-    const bubble = {
-      side: side === 'end' ? 'end' : 'start',
+    const content = node ?? button({ label, title: title || label, icon: iconName, iconOnly: !!iconName, onClick });
+    const widget = {
+      place: WIDGET_PLACES.includes(place) ? place : 'bottom-start',
       tabs: shownIn,
-      root: pill({ label, cls: `fl-ext-bubble${cls ? ` ${cls}` : ''}` }, ...[style, node].filter(Boolean)),
+      root: pill({ label, cls: `fl-widget${cls ? ` ${cls}` : ''}` }, ...[style, content].filter(Boolean)),
     };
-    this.#bubbles.add(bubble);
-    this.#statusbar?.addBubble(bubble);
+    widget.root.dataset.place = widget.place;
+    this.#widgets.add(widget);
+    this.#placeWidget(widget);
     this.#syncBars();
     return () => {
-      this.#bubbles.delete(bubble);
-      bubble.root.remove();
+      this.#widgets.delete(widget);
+      widget.root.remove();
     };
   }
 
@@ -595,6 +599,12 @@ export class FlowScript extends HTMLElement {
     this.#showOutline();
     this.#showWorkspaces();
     if (wasHidden && !this.#surface.hidden) this.#editor.focus({ scroll: false });
+  }
+
+  // A widget goes in the bar its place names, once that bar is there.
+  #placeWidget(widget) {
+    if (widget.place === 'top-end') this.#ribbon?.addWidget(widget);
+    else this.#statusbar?.addWidget(widget);
   }
 
   #workspaceOf(value) {
@@ -876,7 +886,7 @@ export class FlowScript extends HTMLElement {
     });
     this.#highlightTools.update(this.#highlights);
     this.#ribbon.setActions('read', { label: 'Reading', pills: [this.#highlightTools.root] });
-    for (const bubble of this.#bubbles) this.#statusbar.addBubble(bubble);
+    for (const widget of this.#widgets) this.#placeWidget(widget);
     this.#syncBars();
     this.#statusbar.setScale(this.scale);
     this.#statusbar.setTextWidth(this.textWidth);
@@ -991,6 +1001,8 @@ export class FlowScript extends HTMLElement {
 const DEFAULT_MENU = [['pdf'], ['project-settings']];
 
 const BUILT_IN_WORKSPACES = ['write', 'outline', 'read'];
+
+const WIDGET_PLACES = ['bottom-start', 'bottom-end', 'top-end'];
 
 const workspaceOf = (value) => (value === 'outline' || value === 'read' ? value : 'write');
 

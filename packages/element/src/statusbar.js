@@ -1,7 +1,8 @@
 // The floating pills along the bottom: how the script is shown on the left, whatever the
-// app adds on the right through the status-end slot.
+// app adds on the right through the status-end slot, and the app's widgets on either side.
 
 import { button, foldingPill, icon, iconSwitch, Menu, pill, pillSep } from './controls.js';
+import { createWidgetShelf } from './widgets.js';
 
 export const SCALE_MIN = 50;
 export const SCALE_MAX = 200;
@@ -206,19 +207,9 @@ export function createStatusbar(actions) {
   const spacer = document.createElement('span');
   spacer.className = 'fl-spacer';
 
-  // Bubbles an app adds: after the pills on the left, or just before undo and redo.
-  const bubbles = new Set();
-  const startBubbles = document.createElement('span');
-  startBubbles.className = 'fl-ext-bubbles';
-  const endBubbles = document.createElement('span');
-  endBubbles.className = 'fl-ext-bubbles';
-  let workspaceShown = 'write';
-  const showBubbles = () => {
-    for (const bubble of bubbles) {
-      if (!bubble.root.parentNode) bubbles.delete(bubble);
-      else bubble.root.hidden = !!bubble.tabs && !bubble.tabs.includes(workspaceShown);
-    }
-  };
+  // Widgets an app adds: after the pills on the left, or just before undo and redo.
+  const startWidgets = createWidgetShelf();
+  const endWidgets = createWidgetShelf();
 
   const end = document.createElement('slot');
   end.name = 'status-end';
@@ -232,9 +223,9 @@ export function createStatusbar(actions) {
     scalePill.root,
     pagePill.root,
     statusPill,
-    startBubbles,
+    startWidgets.root,
     spacer,
-    endBubbles,
+    endWidgets.root,
     history,
     end,
   );
@@ -255,17 +246,15 @@ export function createStatusbar(actions) {
       undo.disabled = !state.canUndo;
       redo.disabled = !state.canRedo;
     },
-    /** Places a bubble, { side, tabs, root }, which shows only in its tabs when it lists some. */
-    addBubble(bubble) {
-      bubbles.add(bubble);
-      (bubble.side === 'end' ? endBubbles : startBubbles).append(bubble.root);
-      showBubbles();
+    /** Places a widget, { place, tabs, root }: 'bottom-end' before undo and redo, others after the pills. */
+    addWidget(widget) {
+      (widget.place === 'bottom-end' ? endWidgets : startWidgets).add(widget);
     },
     // Write and Read each have their own views, and Outline has none. Only Write and Outline
     // change anything that could be undone.
     setView(next, workspace = 'write', nextRead = readView) {
-      workspaceShown = workspace;
-      showBubbles();
+      startWidgets.setTab(workspace);
+      endWidgets.setTab(workspace);
       view = next;
       readView = nextRead;
       for (const each of viewPills) each.refresh();
