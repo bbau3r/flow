@@ -5,8 +5,8 @@
 // There are three ways an extension arrives. Built-in ones ship with Flow, each a manifest.json
 // and, for an app, code that only uses the API below. Added ones come from files someone picks on
 // the Extensions page: a theme, an app whose commands type text, or an app with code, whose
-// manifest names its code file as `main` and which is only added once the person says they trust
-// it. And code running on the page can register one with window.flowExtensions.register(manifest,
+// manifest names the .js file it starts from as `main`, and which is only added once the person
+// says they trust it. What someone adds starts turned on; what ships with Flow starts off. And code running on the page can register one with window.flowExtensions.register(manifest,
 // activate).
 //
 // An app's activate(flow) gets this API, and may return a function that undoes whatever it did:
@@ -139,21 +139,21 @@ export function checkExtension(json) {
 }
 
 /**
- * Adds an extension from the text of its manifest, with `code`, the text of its main file, for
- * an app that has one. Whoever calls this has already asked whether the code is trusted. Throws
- * an error that says what's wrong.
+ * Adds an extension from the text of its manifest, with `files`, its .js files by name, for an
+ * app with code. Whoever calls this has already asked whether the code is trusted. A new one
+ * starts turned on; an update stays as it was. Throws an error that says what's wrong.
  */
-export async function addExtension(json, { code = null } = {}) {
+export async function addExtension(json, { files = {} } = {}) {
   const manifest = checkExtension(json);
-  if (manifest.main && typeof code !== 'string') throw new Error(`This app’s code is in ${manifest.main}. Choose it together with the manifest.`);
+  if (manifest.main && typeof files[manifest.main] !== 'string') throw new Error(`This app’s code starts in ${manifest.main}. Choose it together with the manifest.`);
   const existing = entries.get(manifest.id);
   if (existing) deactivate(existing);
-  if (manifest.main) await putCode(manifest.id, code);
+  if (manifest.main) await putCode(manifest.id, { main: manifest.main, files });
   else if (existing?.manifest.main) await deleteCode(manifest.id);
   add(manifest, 'added');
   store.added = [...store.added.filter((saved) => saved?.id !== manifest.id), manifest];
+  if (!existing) store.enabled[manifest.id] = true;
   writeStore();
-  // Updating one that was on keeps it on.
   if (isEnabled(manifest.id)) await activate(entries.get(manifest.id));
   emit({ type: 'added', id: manifest.id });
   return manifest;
@@ -211,7 +211,7 @@ async function activate(entry) {
   const { manifest } = entry;
   if (entry.source === 'added' && manifest.main && !entry.activate) {
     entry.starting ??= getCode(manifest.id).then((code) => {
-      if (typeof code !== 'string') throw new Error('Its code is missing. Add it again.');
+      if (!code?.files?.[code.main]) throw new Error('Its code is missing. Add it again.');
       return loadModule(code);
     });
     try {

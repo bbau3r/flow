@@ -1,7 +1,7 @@
 // The Extensions page of App settings: every extension Flow knows, apps and then themes, each
 // with a switch to turn it on, a button that turns to its settings if it has any, and Remove for
-// one added from a file. Add extension opens the file picker for a manifest and any code file it
-// names, and asks whether the code is trusted before adding it. The guides to writing extensions
+// one added from a file. Add extension opens the file picker for a manifest and any .js files with
+// it, asks whether code is trusted before adding it, and turns it on. The guides to writing extensions
 // are linked beside it.
 
 import { button, icon, openModal, toggleSwitch } from '@flow/element/source';
@@ -87,10 +87,12 @@ const GUIDES = 'https://github.com/bbau3r/flow/blob/main/docs/extensions';
 
 // Code from a file runs with everything Flow can do, so it's only added once the person says
 // they trust it, every time, including updates. Resolves to whether they do.
-function confirmTrust(manifest, codeFile) {
+function confirmTrust(manifest, codeFiles) {
   return new Promise((resolve) => {
     let trusted = false;
-    const size = codeFile.size < 1024 ? `${codeFile.size} bytes` : `${Math.round(codeFile.size / 1024)} KB`;
+    const bytes = codeFiles.reduce((total, each) => total + each.size, 0);
+    const size = bytes < 1024 ? `${bytes} bytes` : `${Math.round(bytes / 1024)} KB`;
+    const names = codeFiles.map((each) => each.name).join(', ');
     const cancel = button({ label: 'Cancel', cls: 'fl-btn-outline', attrs: { id: 'trust-cancel' }, onClick: () => modal.close() });
     const modal = openModal(document.body, {
       title: 'Do you trust this extension?',
@@ -98,7 +100,7 @@ function confirmTrust(manifest, codeFile) {
       onClose: () => resolve(trusted),
       body: [
         h('p', { class: 'trust-name' }, h('strong', {}, manifest.name), ` ${manifest.version}`, manifest.author ? ` by ${manifest.author}` : ''),
-        h('p', { class: 'trust-file' }, `Its code: ${codeFile.name}, ${size}`),
+        h('p', { class: 'trust-file' }, `Its code: ${names}, ${size}`),
         h('p', { class: 'trust-warning', role: 'alert' },
           'This extension runs its own code inside Flow, with everything Flow can do: it can read and change your scripts, and the files and accounts Flow is connected to on this device. Flow can’t check what the code does. Only add it if it comes from someone you trust.'),
       ],
@@ -129,17 +131,16 @@ function addControls() {
       const json = await manifests[0].text();
       const manifest = checkExtension(json);
       const scripts = chosen.filter((each) => each !== manifests[0]);
-      let code = null;
+      const files = {};
       if (manifest.main) {
-        const codeFile = scripts.find((each) => each.name === manifest.main);
-        if (!codeFile) throw new Error(`This app’s code is in ${manifest.main}. Choose it together with the manifest.`);
-        if (!(await confirmTrust(manifest, codeFile))) return;
-        code = await codeFile.text();
+        if (!scripts.some((each) => each.name === manifest.main)) throw new Error(`This app’s code starts in ${manifest.main}. Choose it together with the manifest.`);
+        if (!(await confirmTrust(manifest, scripts))) return;
+        for (const each of scripts) files[each.name] = await each.text();
       } else if (scripts.length) {
         throw new Error('This manifest names no code file. Give it a "main", such as "index.js", to add code with it.');
       }
-      await addExtension(json, { code });
-      toast(`Added ${manifest.name}. Turn it on when you’re ready.`);
+      await addExtension(json, { files });
+      toast(`Added ${manifest.name}, turned on.`);
     } catch (err) {
       message.textContent = `${named}: ${err.message}`;
     }
@@ -178,7 +179,7 @@ export function extensionsSection(panel) {
           {
             label: 'Add extension',
             keywords: 'install add import json file extension theme',
-            description: 'Choose an extension’s manifest, a .json file, and its code file with it if it has one. Flow checks it, asks whether you trust any code, and adds it turned off.',
+            description: 'Choose an extension’s manifest .json + any supporting .js files to add extension.',
             control: adding.control,
             below: adding.message,
           },
