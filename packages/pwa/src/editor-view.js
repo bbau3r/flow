@@ -1,11 +1,17 @@
-import { button, openModal, pill, pillSep, tabs } from '@flow/element/source';
+import { button, openModal, tabs } from '@flow/element/source';
 import { parse, scriptTitle } from '@flow/core';
 import { putDoc } from './store.js';
 import { getProvider, providers } from './providers/index.js';
-import { currentTheme, h, themePicker, toast } from './ui.js';
+import { currentTheme, h, themeControls, toast } from './ui.js';
+import { openAppSettings } from './app-settings.js';
 
 const AUTOSAVE_DELAY_MS = 300;
 const SCALE_KEY = 'flow-scale';
+const TEXT_WIDTH_KEY = 'flow-text-width';
+// Shortcuts as each system writes them.
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+const SAVE_KEY = MAC ? '⌘S' : 'Ctrl+S';
+const SAVE_AS_KEY = MAC ? '⇧⌘S' : 'Ctrl+Shift+S';
 
 // Asks where a script that isn't a file yet should go. With only one place available
 // there's nothing to ask, so the browser's own save dialog comes up straight away.
@@ -48,11 +54,20 @@ const setTabInAddress = (tab) => {
   history.replaceState(history.state, '', tab === 'Write' ? route : `${route}?tab=${tab.toLowerCase()}`);
 };
 
-const readScale = () => {
+const readStored = (key) => {
   try {
-    return localStorage.getItem(SCALE_KEY);
+    return localStorage.getItem(key);
   } catch {
     return null;
+  }
+};
+
+const store = (key, value) => {
+  try {
+    if (value == null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    // Private browsing can refuse storage; the choice still applies for this visit.
   }
 };
 
@@ -61,15 +76,12 @@ export function renderEditor(root, doc) {
   const openTab = tabInAddress();
   script.setAttribute('workspace', openTab.toLowerCase());
   script.setAttribute('theme', currentTheme());
-  const scale = readScale();
+  const scale = readStored(SCALE_KEY);
   if (scale) script.setAttribute('scale', scale);
-  script.addEventListener('flow-scale', (event) => {
-    try {
-      localStorage.setItem(SCALE_KEY, event.detail.scale);
-    } catch {
-      // Private browsing can refuse storage; the scale still applies for this visit.
-    }
-  });
+  script.addEventListener('flow-scale', (event) => store(SCALE_KEY, event.detail.scale));
+  // Wide or narrow text is a choice for this device, like the scale.
+  if (readStored(TEXT_WIDTH_KEY) === 'wide') script.setAttribute('text-width', 'wide');
+  script.addEventListener('flow-text-width', (event) => store(TEXT_WIDTH_KEY, event.detail.textWidth));
   script.value = doc.value;
 
   const name = h('span', { class: 'doc-name' });
@@ -151,6 +163,7 @@ export function renderEditor(root, doc) {
     }
   };
   const onPageHide = () => { if (timer) persist(); };
+  const onTheme = (event) => script.setAttribute('theme', event.detail.theme);
 
   // Highlights belong to the script on this device, not to its file, so they don't make it unsaved.
   script.highlights = doc.highlights ?? [];
@@ -180,11 +193,21 @@ export function renderEditor(root, doc) {
 
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('pagehide', onPageHide);
+  window.addEventListener('flow-theme', onTheme);
   refreshHeader();
 
-  script.exportActions = [
-    { label: 'Save', title: 'Save (Ctrl/Cmd+S)', icon: 'save', attrs: { id: 'save' }, onClick: save },
-    { label: 'Save as', title: 'Save as (Ctrl/Cmd+Shift+S)', icon: 'save-as', attrs: { id: 'save-as' }, onClick: saveAs },
+  script.menuItems = [
+    [{ label: 'Home', title: 'Back to all scripts', icon: 'home', attrs: { id: 'home' }, onClick: () => { location.hash = '#/'; } }],
+    [
+      { label: 'Save', title: 'Save (Ctrl/Cmd+S)', icon: 'save', shortcut: SAVE_KEY, attrs: { id: 'save' }, onClick: save },
+      { label: 'Save as', title: 'Save as (Ctrl/Cmd+Shift+S)', icon: 'save-as', shortcut: SAVE_AS_KEY, attrs: { id: 'save-as' }, onClick: saveAs },
+      'pdf',
+    ],
+    [
+      { label: 'Theme', title: 'Palette, and light or dark', icon: 'palette', attrs: { id: 'theme' }, panel: { title: 'Theme', build: () => themeControls().root } },
+      'project-settings',
+      { label: 'App settings', title: 'Settings for Flow on this device', icon: 'settings', attrs: { id: 'app-settings' }, onClick: () => openAppSettings({ onClose: () => script.focus() }) },
+    ],
   ];
   const workspaceTabs = tabs({
     label: 'Workspace',
@@ -205,15 +228,8 @@ export function renderEditor(root, doc) {
     setTabInAddress(tab);
   });
   script.append(
-    pill({ cls: 'fl-pill-tinted doc-pill', label: 'Document', attrs: { slot: 'document' } },
-      button({ label: 'Home', title: 'Back to all scripts', icon: 'stack', iconOnly: true, href: '#/', cls: 'home-link' }),
-      pillSep(),
-      h('span', { class: 'doc' }, name, h('span', { class: 'doc-meta' }, date, where, state))),
+    h('span', { class: 'doc', slot: 'document' }, name, h('span', { class: 'doc-meta' }, date, where, state)),
     workspaceTabs,
-    pill({ label: 'Appearance', attrs: { slot: 'status-end' } }, themePicker({
-      up: true,
-      onChange: (theme) => script.setAttribute('theme', theme),
-    })),
   );
 
   root.replaceChildren(h('div', { class: 'editor' }, script));
@@ -221,6 +237,7 @@ export function renderEditor(root, doc) {
   return () => {
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('pagehide', onPageHide);
+    window.removeEventListener('flow-theme', onTheme);
     if (timer) persist();
   };
 }

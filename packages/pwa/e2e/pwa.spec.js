@@ -5,6 +5,14 @@ const editor = (page) => page.locator('flow-script .ProseMirror');
 const value = (page) => page.locator('flow-script').evaluate((el) => el.value);
 const providerCard = (page, id) => page.locator(`[data-provider="${id}"]`);
 const lineWith = (page, text) => page.locator('flow-script .fl-line', { hasText: text }).first();
+const docPill = (page) => page.locator('flow-script .fl-docmenu-trigger');
+const docMenu = (page) => page.locator('flow-script .fl-docmenu');
+
+// Runs an item of the Document menu, by its id: home, save, save-as, theme or app-settings.
+async function fromMenu(page, id) {
+  await docPill(page).click();
+  await docMenu(page).locator(`#${id}`).click();
+}
 
 // The editor takes focus a frame after appearing or saving, and only a focused editor
 // marks the active line, so this is the signal that it's safe to type.
@@ -56,9 +64,45 @@ test.describe('home page', () => {
   test('offers a new script, or opening one from the device', async ({ page }) => {
     await page.goto(HOME);
     await expect(page.locator('#new-script')).toBeVisible();
+    await expect(page.locator('#new-script')).toHaveText('New');
     await expect(providerCard(page, 'local')).toBeEnabled();
-    await expect(providerCard(page, 'local')).toContainText('This device');
-    await expect(page.locator('section', { hasText: 'Open a script' }).locator('.card')).toHaveCount(1);
+    await expect(providerCard(page, 'local')).toContainText('From this device');
+    await expect(page.locator('#open-script')).toHaveCount(1);
+  });
+
+  test('shows recent scripts by their title pages beside New and Open, all with the same corners', async ({ page }) => {
+    await newScript(page);
+    await page.keyboard.type('Cover Story');
+    await page.waitForTimeout(500);
+    await fromMenu(page, 'home');
+    const card = page.locator('.recent-row', { hasText: 'Cover Story' });
+    await expect(card.locator('.cover-title')).toHaveText('Cover Story');
+    await expect(card.locator('.cover-author')).toHaveText('Your Name');
+    const radius = (locator) => locator.evaluate((el) => getComputedStyle(el).borderTopLeftRadius);
+    const corners = await radius(card.locator('.cover'));
+    expect(await radius(page.locator('.tile-new'))).toBe(corners);
+    expect(await radius(page.locator('.tile-open'))).toBe(corners);
+    // New and Open come first, then the scripts, in a row.
+    const open = await page.locator('#open-script').boundingBox();
+    expect((await card.boundingBox()).x).toBeGreaterThan(open.x + open.width);
+  });
+
+  test('the search finds recent scripts by name or title page', async ({ page }) => {
+    await newScript(page);
+    await page.keyboard.type('Lighthouse');
+    await page.waitForTimeout(500);
+    await fromMenu(page, 'home');
+    await page.locator('#new-script').click();
+    await expect(editor(page)).toBeVisible();
+    await page.waitForTimeout(500);
+    await fromMenu(page, 'home');
+    await expect(page.locator('.recent-row')).toHaveCount(2);
+    const search = page.getByRole('searchbox', { name: 'Search scripts' });
+    await search.fill('lighthouse');
+    await expect(page.locator('.recent-row:visible')).toHaveCount(1);
+    await search.fill('nothing like this');
+    await expect(page.locator('.recent-row:visible')).toHaveCount(0);
+    await expect(page.locator('.home-empty')).toContainText('No scripts match');
   });
 
   test('never mentions or contacts Google', async ({ page }) => {
@@ -69,7 +113,7 @@ test.describe('home page', () => {
     await expect(page.locator('body')).not.toContainText(/google|drive/i);
     await page.locator('#new-script').click();
     await expect(editor(page)).toBeVisible();
-    await page.locator('#save-as').click();
+    await fromMenu(page, 'save-as');
     await expect(page.locator('dialog')).toHaveCount(0);
     expect(requests.filter((u) => /google/i.test(u))).toEqual([]);
   });
@@ -126,14 +170,18 @@ test.describe('new scripts', () => {
     const roboto = /^Roboto/;
     const courier = /^"Courier Prime"/;
     await expect(page.locator('.doc-name')).toHaveCSS('font-family', roboto);
-    await expect(page.locator('#save')).toHaveCSS('font-family', roboto);
+    await docPill(page).click();
+    await expect(docMenu(page).locator('#save')).toHaveCSS('font-family', roboto);
+    await page.keyboard.press('Escape');
     const ribbon = page.locator('flow-script .fl-ribbon');
     await expect(ribbon.locator('.fl-topics .fl-menu-trigger')).toHaveCSS('font-family', roboto);
     for (const name of ['Bold', 'Italic', 'Underline']) await expect(ribbon.getByRole('button', { name, exact: true })).toHaveCSS('font-family', roboto);
     await expect(page.locator('flow-script .fl-icon-glyph').first()).toHaveCSS('font-family', courier);
     await expect(lineWith(page, 'Written by')).toHaveCSS('font-family', courier);
     await page.goBack();
-    await expect(page.locator('h1')).toHaveCSS('font-family', roboto);
+    await expect(page.locator('.tile-label').first()).toHaveCSS('font-family', roboto);
+    // The rest of the wordmark runs from secondary to primary.
+    await expect(page.locator('.brand > span')).toHaveCSS('background-image', /linear-gradient\(135deg/);
     await expect(page.locator('.brand')).toHaveCSS('font-family', roboto);
     // The mark stands in for the F of the wordmark.
     await expect(page.getByRole('img', { name: 'Flow' })).toHaveText('low');
@@ -173,7 +221,7 @@ test.describe('autosave and recent', () => {
     await expect(editor(page)).toBeVisible();
     expect(await value(page)).toContain('Typed before reload.');
 
-    await page.locator('.home-link').click();
+    await fromMenu(page, 'home');
     const row = page.locator('.recent-row', { hasText: 'Typed before reload.' });
     await expect(row).toContainText('unsaved changes');
     await row.locator('.recent-open').click();
@@ -184,7 +232,7 @@ test.describe('autosave and recent', () => {
   test('leaving right after typing keeps the text', async ({ page }) => {
     await newScript(page);
     await page.keyboard.type('Quick exit.');
-    await page.locator('.home-link').click();
+    await fromMenu(page, 'home');
     await page.locator('.recent-open').first().click();
     await expect(editor(page)).toBeVisible();
     expect(await value(page)).toContain('Quick exit.');
@@ -198,7 +246,7 @@ test.describe('autosave and recent', () => {
 
   test('removing unsaved work asks first', async ({ page }) => {
     await newScript(page);
-    await page.locator('.home-link').click();
+    await fromMenu(page, 'home');
     const rows = page.locator('.recent-row');
     await expect(rows).toHaveCount(1);
     page.once('dialog', (d) => d.dismiss());
@@ -243,7 +291,7 @@ test.describe('local files with direct saving', () => {
     await expect(page.locator('.doc-where')).toContainText('On this device');
     await lineWith(page, 'From disk').click();
     await page.keyboard.type('Z');
-    await page.locator('#save').click();
+    await fromMenu(page, 'save');
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     await expect(page.locator('dialog')).toHaveCount(0);
     const saves = (await page.evaluate(() => window.pickerCalls)).filter((c) => c.kind === 'save');
@@ -255,12 +303,12 @@ test.describe('local files with direct saving', () => {
     await providerCard(page, 'local').click();
     await expect(editor(page)).toBeVisible();
     await page.evaluate(() => { window.pickerChoice = 'elsewhere.fountain'; });
-    await page.locator('#save').click();
+    await fromMenu(page, 'save');
     await expect(page.locator('.doc-name')).toHaveText('elsewhere.fountain');
     expect(await page.evaluate(() => window.readFile('elsewhere.fountain'))).toContain('From disk');
 
     // The next save starts from the new file.
-    await page.locator('#save').click();
+    await fromMenu(page, 'save');
     await expect.poll(async () => (await page.evaluate(() => window.pickerCalls)).at(-1).startInName).toBe('elsewhere.fountain');
   });
 
@@ -271,7 +319,7 @@ test.describe('local files with direct saving', () => {
     await lineWith(page, 'From disk').click();
     await page.keyboard.type('Z');
     await page.evaluate(() => { window.pickerCancels = true; });
-    await page.locator('#save').click();
+    await fromMenu(page, 'save');
     await expect.poll(async () => (await page.evaluate(() => window.pickerCalls)).filter((c) => c.kind === 'save').length).toBe(1);
     await expect(page.locator('.doc-state')).toHaveText('Unsaved changes');
     await expect(page.locator('#toast')).toBeHidden();
@@ -282,7 +330,7 @@ test.describe('local files with direct saving', () => {
     await page.goto(HOME);
     await providerCard(page, 'local').click();
     await expect(editor(page)).toBeVisible();
-    await page.locator('#save-as').click();
+    await fromMenu(page, 'save-as');
     await expect(page.locator('dialog')).toHaveCount(0);
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     const save = (await page.evaluate(() => window.pickerCalls)).find((c) => c.kind === 'save');
@@ -291,7 +339,7 @@ test.describe('local files with direct saving', () => {
 
   test('a first save asks where, and suggests a name from the title', async ({ page }) => {
     await newScript(page);
-    await page.locator('#save').click();
+    await fromMenu(page, 'save');
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     const save = (await page.evaluate(() => window.pickerCalls)).find((c) => c.kind === 'save');
     expect(save).toEqual({ kind: 'save', id: 'flow-scripts', suggestedName: 'Untitled Screenplay.fountain' });
@@ -306,7 +354,7 @@ test.describe('local files with direct saving', () => {
     await page.waitForTimeout(100);
     await page.keyboard.type('!');
     await expect(page.locator('.doc-name')).toHaveText('The Long · Way Home!');
-    await page.locator('#save').click();
+    await fromMenu(page, 'save');
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     const save = (await page.evaluate(() => window.pickerCalls)).find((c) => c.kind === 'save');
     expect(save.suggestedName).toBe('The Long - Way Home!.fountain');
@@ -314,7 +362,7 @@ test.describe('local files with direct saving', () => {
 
   test('a script with no file to return to asks where instead of downloading', async ({ page }) => {
     await newScript(page);
-    await page.locator('.home-link').click();
+    await fromMenu(page, 'home');
     await page.evaluate(() => new Promise((resolve) => {
       const open = indexedDB.open('flow', 1);
       open.onsuccess = () => {
@@ -328,7 +376,7 @@ test.describe('local files with direct saving', () => {
     await page.reload();
     await page.locator('.recent-open').first().click();
     await expect(editor(page)).toBeVisible();
-    await page.locator('#save').click();
+    await fromMenu(page, 'save');
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     expect((await page.evaluate(() => window.pickerCalls)).filter((c) => c.kind === 'save')).toHaveLength(1);
   });
@@ -338,19 +386,19 @@ test.describe('local files with direct saving', () => {
     await providerCard(page, 'local').click();
     await expect(editor(page)).toBeVisible();
     await page.reload();
-    await page.locator('.home-link').click();
+    await fromMenu(page, 'home');
     await page.locator('.recent-open').first().click();
     await expect(editor(page)).toBeVisible();
     await lineWith(page, 'From disk').click();
     await page.keyboard.type('Y');
-    await page.locator('#save').click();
+    await fromMenu(page, 'save');
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     expect(await page.evaluate(() => window.readFile('existing.fountain'))).toContain('Y');
   });
 
   test('a new script goes straight to the OS dialog, then keeps saving there', async ({ page }) => {
     await newScript(page);
-    await page.locator('#save').click();
+    await fromMenu(page, 'save');
     await expect(page.locator('dialog')).toHaveCount(0);
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     await expect(page.locator('.doc-name')).toHaveText('Untitled Screenplay.fountain');
@@ -359,7 +407,7 @@ test.describe('local files with direct saving', () => {
     await editorFocused(page);
     await page.keyboard.type('More.');
     await expect(page.locator('.doc-state')).toHaveText('Unsaved changes');
-    await page.locator('#save').click();
+    await fromMenu(page, 'save');
     await expect(page.locator('dialog')).toHaveCount(0);
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     expect(await page.evaluate(() => window.readFile('Untitled Screenplay.fountain'))).toContain('More.');
@@ -383,13 +431,22 @@ test.describe('local files with direct saving', () => {
     await page.keyboard.type('X');
     await page.evaluate(() => window.writeElsewhere('existing.fountain', 'Changed elsewhere.'));
 
-    page.once('dialog', (d) => d.dismiss());
-    await page.locator('#save').click();
+    // The state reads Unsaved changes before saving too, so wait until the question was answered.
+    const answer = (reply) => new Promise((resolve) => {
+      page.once('dialog', async (d) => {
+        await d[reply]();
+        resolve();
+      });
+    });
+    let answered = answer('dismiss');
+    await fromMenu(page, 'save');
+    await answered;
     await expect(page.locator('.doc-state')).toHaveText('Unsaved changes');
     expect(await page.evaluate(() => window.readFile('existing.fountain'))).toBe('Changed elsewhere.');
 
-    page.once('dialog', (d) => d.accept());
-    await page.locator('#save').click();
+    answered = answer('accept');
+    await fromMenu(page, 'save');
+    await answered;
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     expect(await page.evaluate(() => window.readFile('existing.fountain'))).toContain('From disk');
   });
@@ -404,7 +461,7 @@ test('without folder access, Flow explains why it downloaded', async ({ page }) 
   });
   await newScript(page);
   const download = page.waitForEvent('download');
-  await page.locator('#save').click();
+  await fromMenu(page, 'save');
   await download;
   await expect(page.locator('dialog')).toHaveCount(0);
   await expect(page.locator('#toast')).toContainText('can\u2019t ask where to save');
@@ -430,7 +487,7 @@ test.describe('local files without direct saving, as on iOS', () => {
     await lineWith(page, 'From a phone').click();
     await page.keyboard.type('X');
     const download = page.waitForEvent('download');
-    await page.locator('#save').click();
+    await fromMenu(page, 'save');
     const file = await download;
     expect(file.suggestedFilename()).toBe('phone.fountain');
     await expect(page.locator('.doc-state')).toHaveText('Saved');
@@ -470,7 +527,7 @@ test.describe('files opened from the system', () => {
     await lineWith(page, 'Waves').click();
     await page.keyboard.press('End');
     await page.keyboard.type(' More.');
-    await page.locator('#save').click();
+    await fromMenu(page, 'save');
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     expect(await page.evaluate(() => window.readFile('launched.fountain'))).toContain('Waves. More.');
   });
@@ -492,7 +549,7 @@ test.describe('files opened from the system', () => {
     await page.evaluate(() => window.launchFile('again.fountain', 'Disk again.'));
     await expect.poll(() => value(page)).toBe('Changed on disk.!');
 
-    await page.locator('.home-link').click();
+    await fromMenu(page, 'home');
     await expect(page.locator('.recent-name', { hasText: 'again.fountain' })).toHaveCount(1);
   });
 });
@@ -559,11 +616,16 @@ test.describe('installable and offline', () => {
   });
 });
 
-const themeItem = (page, name) => page.locator('.theme').getByRole('menuitemradio', { name, exact: true });
+const MODES = ['Auto', 'Light', 'Dark'];
+const themeOption = (scope, name) => scope.getByRole(MODES.includes(name) ? 'tab' : 'radio', { name, exact: true });
 
+// Chooses a palette or a mode on the Document menu's Theme card, then closes the menu.
 async function chooseTheme(page, name) {
-  await page.locator('.theme .fl-menu-trigger').click();
-  await themeItem(page, name).click();
+  await fromMenu(page, 'theme');
+  await themeOption(docMenu(page), name).click();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(docMenu(page)).toHaveCount(0);
 }
 
 test('theme choice applies to the app and script, and persists', async ({ page }) => {
@@ -571,71 +633,131 @@ test('theme choice applies to the app and script, and persists', async ({ page }
   await chooseTheme(page, 'Sea');
   await chooseTheme(page, 'Dark');
   await expect(page.locator('flow-script')).toHaveAttribute('theme', 'sea-dark');
-  await expect(page.locator('.doc-pill')).toHaveCSS('color', 'rgb(225, 229, 242)');
+  await expect(docPill(page)).toHaveCSS('color', 'rgb(225, 229, 242)');
   await page.reload();
   await expect(editor(page)).toBeVisible();
   await expect(page.locator('flow-script')).toHaveAttribute('theme', 'sea-dark');
   await page.goBack();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'sea-dark');
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(24, 28, 30)');
-  await page.locator('.theme .fl-menu-trigger').click();
-  await expect(themeItem(page, 'Sea')).toHaveAttribute('aria-checked', 'true');
-  await expect(themeItem(page, 'Dark')).toHaveAttribute('aria-checked', 'true');
-  await expect(themeItem(page, 'Sage')).toHaveAttribute('aria-checked', 'false');
+  // App settings shows the same choice.
+  await page.locator('#app-settings').click();
+  const settings = page.locator('dialog.fl-settings-dialog');
+  await expect(themeOption(settings, 'Sea')).toHaveAttribute('aria-checked', 'true');
+  await expect(themeOption(settings, 'Sage')).toHaveAttribute('aria-checked', 'false');
+  await expect(themeOption(settings, 'Dark')).toHaveAttribute('aria-selected', 'true');
 });
 
-test('every theme can be chosen from the menu and fits the screen', async ({ page }) => {
+test('every theme can be chosen from the Theme card and fits the screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 500 });
   await newScript(page);
   for (const [name, theme] of [['Sage', 'sage'], ['Sand', 'sand'], ['Sea', 'sea'], ['Romance', 'romance'], ['Forest', 'forest'], ['Lavender', 'lavender'], ['Graphite', 'graphite']]) {
-    await chooseTheme(page, name);
+    await fromMenu(page, 'theme');
+    const option = themeOption(docMenu(page), name);
+    await option.scrollIntoViewIfNeeded();
+    await expect(option).toBeInViewport();
+    await option.click();
     await expect(page.locator('flow-script')).toHaveAttribute('theme', `${theme}-auto`);
-    await page.locator('.theme .fl-menu-trigger').click();
-    await themeItem(page, 'Dark').scrollIntoViewIfNeeded();
-    await expect(themeItem(page, 'Dark')).toBeInViewport();
-    await page.locator('.theme .fl-menu-trigger').click();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
   }
 });
 
-test('the theme menu headings are bold on a contrasting background', async ({ page }) => {
-  await page.goto(HOME);
-  await page.locator('.theme .fl-menu-trigger').click();
-  const headings = page.locator('.theme .fl-menu-heading');
-  await expect(headings).toHaveText(['Theme', 'Mode']);
-  for (const heading of await headings.all()) {
-    await expect(heading).toHaveCSS('font-weight', '700');
-    await expect(heading).toHaveCSS('background-color', 'rgb(82, 121, 111)');
-    await expect(heading).toHaveCSS('color', 'rgb(246, 248, 244)');
-  }
-});
-
-test('on a small screen the theme shows only its palette icon', async ({ page }) => {
+test('the Theme card swaps in for the menu, with Light and Dark as tabs like Write, Outline and Read', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 700 });
   await newScript(page);
-  const trigger = page.locator('.theme .fl-menu-trigger');
-  const name = trigger.locator('.fl-compact-hide');
-  const palette = trigger.locator('.fl-svg').first();
-  await expect(name).toHaveText('Sage');
-  await expect(name).toBeVisible();
-  await expect(palette).toBeVisible();
-
-  await page.setViewportSize({ width: 390, height: 700 });
-  await expect(name).toBeHidden();
-  await expect(palette).toBeVisible();
-  await expect(trigger.locator('.fl-swatch')).toHaveCount(0);
-  // The name stays available to screen readers and the tooltip.
-  await expect(trigger).toHaveAttribute('aria-label', /Sage/);
-  await expect(trigger).toHaveAttribute('title', /Sage/);
-
-  // The menu still lists every name, and the home page does the same.
-  await trigger.click();
-  await expect(themeItem(page, 'Lavender')).toBeVisible();
+  await fromMenu(page, 'theme');
+  const card = docMenu(page).locator('.fl-docmenu-panel');
+  await expect(card.getByRole('heading', { name: 'Theme' })).toBeVisible();
+  // It takes the main card's place rather than stacking on it.
+  await expect(docMenu(page).locator('.fl-docmenu-main')).toBeHidden();
+  const modes = card.getByRole('tablist', { name: 'Mode' });
+  await expect(modes).toHaveClass(/fl-tabs/);
+  await expect(card.getByRole('tab')).toHaveText(MODES);
+  await expect(card.getByRole('tab', { name: 'Auto' })).toHaveCSS('background-color', 'rgb(82, 121, 111)');
+  await card.getByRole('button', { name: 'Back' }).click();
+  await expect(card).toHaveCount(0);
+  await expect(docMenu(page).getByRole('menuitem', { name: 'Theme' })).toBeVisible();
   await page.keyboard.press('Escape');
-  await page.locator('.home-link').click();
-  await expect(page.locator('#new-script')).toBeVisible();
-  await expect(page.locator('.theme .fl-compact-hide')).toBeHidden();
-  await page.setViewportSize({ width: 1280, height: 700 });
-  await expect(page.locator('.theme .fl-compact-hide')).toBeVisible();
+
+  // The palettes wrap in a grid in App settings too.
+  await fromMenu(page, 'app-settings');
+  const swatches = page.locator('dialog.fl-settings-dialog .fl-theme-swatch');
+  const first = await swatches.nth(0).boundingBox();
+  const second = await swatches.nth(1).boundingBox();
+  expect(second.y).toBeCloseTo(first.y, 0);
+  expect(second.x).toBeGreaterThan(first.x + first.width - 1);
+});
+
+test('App settings shows each section as its own page, and searches all of them', async ({ page }) => {
+  await page.goto(HOME);
+  await page.locator('#app-settings').click();
+  const dialog = page.locator('dialog.fl-settings-dialog');
+  await expect(dialog.getByRole('heading', { name: 'App Settings' })).toBeVisible();
+  const appearance = dialog.getByRole('heading', { name: 'Appearance' });
+  const app = dialog.getByRole('heading', { name: 'App', exact: true });
+  await expect(appearance).toBeVisible();
+  await expect(app).toBeHidden();
+
+  // The search sits inside the panel.
+  const search = dialog.getByRole('searchbox', { name: 'Search settings' });
+  const panel = await dialog.boundingBox();
+  const field = await search.boundingBox();
+  expect(field.y).toBeGreaterThan(panel.y);
+  expect(field.x).toBeGreaterThan(panel.x);
+
+  await dialog.getByRole('button', { name: 'App', exact: true }).click();
+  await expect(app).toBeVisible();
+  await expect(appearance).toBeHidden();
+  await expect(dialog.getByRole('button', { name: 'App', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+  await search.fill('dark');
+  await expect(appearance).toBeVisible();
+  await expect(app).toBeHidden();
+  await search.fill('install');
+  await expect(app).toBeVisible();
+  await expect(appearance).toBeHidden();
+  await search.fill('');
+  await expect(app).toBeVisible();
+
+  // Rules only come between topics, not after the last.
+  const last = dialog.locator('.fl-settings-section:not([hidden]) .fl-settings-topic').last();
+  await expect(last).toHaveCSS('border-bottom-width', '0px');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+});
+
+test('Defaults set the size and cover fields that new scripts start with', async ({ page }) => {
+  await page.goto(HOME);
+  await page.locator('#app-settings').click();
+  const dialog = page.locator('dialog.fl-settings-dialog');
+  await dialog.getByRole('button', { name: 'Defaults', exact: true }).click();
+  await dialog.getByRole('textbox', { name: 'Author' }).fill('Ada Writer');
+  // A field is switched off rather than removed, and keeps its text for later.
+  await dialog.getByRole('checkbox', { name: 'Include Source' }).uncheck();
+  await expect(dialog.getByRole('textbox', { name: 'Source' })).toBeDisabled();
+  await expect(dialog.getByRole('textbox', { name: 'Source' })).toHaveValue('Based On Blank');
+  await expect(dialog.getByRole('textbox', { name: 'New field name' })).toHaveCount(0);
+  await dialog.getByLabel('Size').selectOption('a4');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+
+  await page.locator('#new-script').click();
+  await expect(editor(page)).toBeVisible();
+  const text = await value(page);
+  expect(text).toContain('Author: Ada Writer');
+  expect(text).not.toContain('Source:');
+  expect(text).toContain('Credit: Written by');
+  expect(text).toContain('Dimensions: A4');
+  expect(text.startsWith('Title: Untitled\n')).toBe(true);
+
+  // They're kept for next time.
+  await page.goto(HOME);
+  await page.locator('#app-settings').click();
+  await dialog.getByRole('button', { name: 'Defaults', exact: true }).click();
+  await expect(dialog.getByRole('textbox', { name: 'Author' })).toHaveValue('Ada Writer');
+  await expect(dialog.getByRole('checkbox', { name: 'Include Source' })).not.toBeChecked();
+  await expect(dialog.getByLabel('Size')).toHaveValue('a4');
 });
 
 test('a theme saved by an older version still loads', async ({ page }) => {
@@ -649,22 +771,20 @@ test('a theme saved by an older version still loads', async ({ page }) => {
 });
 
 test.describe('editor bars', () => {
-  test('on one row, everything runs document, tabs, formatting, export, then settings', async ({ page }) => {
+  test('on one row, everything runs document, tabs, then formatting', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 700 });
     await newScript(page);
     const box = (locator) => locator.boundingBox();
-    const doc = await box(page.locator('.doc-pill'));
+    const doc = await box(docPill(page));
     const tabs = await box(page.getByRole('tablist', { name: 'Workspace' }));
     const format = await box(page.locator('flow-script .fl-ribbon'));
-    const exportPill = await box(page.locator('flow-script .fl-export'));
     expect(doc.x + doc.width).toBeLessThanOrEqual(tabs.x);
     expect(tabs.x + tabs.width).toBeLessThanOrEqual(format.x);
-    const settings = await box(page.locator('flow-script .fl-settings'));
-    expect(format.x + format.width).toBeLessThanOrEqual(exportPill.x);
-    expect(exportPill.x + exportPill.width).toBeLessThanOrEqual(settings.x);
-    expect(settings.x + settings.width).toBeCloseTo(1268, 0);
+    expect(format.x + format.width).toBeLessThanOrEqual(1268);
     const middle = doc.y + doc.height / 2;
-    for (const other of [tabs, format, exportPill, settings]) expect(Math.abs(other.y + other.height / 2 - middle)).toBeLessThan(2);
+    for (const other of [tabs, format]) expect(Math.abs(other.y + other.height / 2 - middle)).toBeLessThan(2);
+    // Export and settings live in the Document menu now.
+    await expect(page.locator('flow-script .fl-export, flow-script .fl-settings')).toHaveCount(0);
   });
 
   test('a very long title gives way before the row breaks', async ({ page }) => {
@@ -672,12 +792,11 @@ test.describe('editor bars', () => {
     await newScript(page);
     await page.keyboard.type('A very long title indeed '.repeat(8));
     await expect(page.locator('.doc-name')).toContainText('A very long');
-    const doc = await page.locator('.doc-pill').boundingBox();
+    const doc = await docPill(page).boundingBox();
     const tabs = await page.getByRole('tablist', { name: 'Workspace' }).boundingBox();
-    const exportPill = await page.locator('flow-script .fl-export').boundingBox();
     expect(doc.x + doc.width).toBeLessThanOrEqual(tabs.x);
-    expect(exportPill.x + exportPill.width).toBeLessThanOrEqual(1000);
-    expect(Math.abs(tabs.y - exportPill.y)).toBeLessThan(8);
+    expect(tabs.x + tabs.width).toBeLessThanOrEqual(1000);
+    expect(Math.abs(tabs.y - doc.y)).toBeLessThan(8);
     const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(sideways).toBeLessThanOrEqual(0);
   });
@@ -685,55 +804,31 @@ test.describe('editor bars', () => {
   test('on two rows, formatting leans left beneath the document and tabs', async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 700 });
     await newScript(page);
-    const doc = await page.locator('.doc-pill').boundingBox();
+    const doc = await docPill(page).boundingBox();
     const tabs = await page.getByRole('tablist', { name: 'Workspace' }).boundingBox();
-    const save = await page.locator('#save').boundingBox();
     const bold = await page.locator('flow-script .fl-ribbon').getByRole('button', { name: 'Bold', exact: true }).boundingBox();
     expect(doc.x + doc.width).toBeLessThanOrEqual(tabs.x);
-    expect(tabs.x + tabs.width).toBeLessThanOrEqual(save.x);
     expect(bold.y).toBeGreaterThanOrEqual(doc.y + doc.height - 1);
     expect(bold.x).toBeLessThan(25);
   });
 
-  test('the theme menu matches the small bottom pills beside it', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 700 });
-    await newScript(page);
-    const bar = page.locator('flow-script .fl-statusbar');
-    const theme = await page.locator('.theme .fl-menu-trigger').boundingBox();
-    const larger = await bar.getByRole('button', { name: 'Larger' }).boundingBox();
-    const undo = await bar.getByRole('button', { name: 'Undo', exact: true }).boundingBox();
-    const bold = await page.locator('flow-script .fl-ribbon').getByRole('button', { name: 'Bold', exact: true }).boundingBox();
-    expect(theme.height).toBeCloseTo(larger.height, 0);
-    expect(undo.height).toBeCloseTo(theme.height, 0);
-    expect(larger.height).toBeLessThan(bold.height);
-
-    // Undo and redo sit directly left of the theme, in pills of the same height.
-    const pills = page.locator('flow-script .fl-statusbar .fl-pill').filter({ has: page.getByRole('button', { name: 'Undo', exact: true }) });
-    const historyPill = await pills.boundingBox();
-    const themePill = await page.locator('.theme').locator('xpath=ancestor::*[contains(@class, "fl-pill")][1]').boundingBox();
-    expect(historyPill.x + historyPill.width).toBeLessThanOrEqual(themePill.x);
-    expect(themePill.x - (historyPill.x + historyPill.width)).toBeLessThan(12);
-    expect(historyPill.height).toBeCloseTo(themePill.height, 0);
-    await expect(page.locator('.theme .fl-menu-trigger .fl-svg').first()).toBeVisible();
-  });
 
   test('every pill in the top rows floats the same way, and all still work', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 700 });
     await newScript(page);
     const shadowOf = (locator) => locator.evaluate((el) => getComputedStyle(el).boxShadow);
-    const doc = page.locator('.doc-pill');
+    const doc = docPill(page);
     const tabs = page.getByRole('tablist', { name: 'Workspace' });
     const expected = await shadowOf(page.locator('flow-script .fl-ribbon .fl-pill').first());
     expect(await shadowOf(doc)).toBe(expected);
     expect(await shadowOf(tabs)).toBe(expected);
-    expect(await shadowOf(page.locator('flow-script .fl-export'))).toBe(expected);
 
     await page.locator('flow-script').evaluate((el) => { el.value = 'Beat.\n\n'.repeat(300); });
     await page.locator('flow-script .fl-scroll').evaluate((el) => { el.scrollTop = 900; });
     const box = await doc.boundingBox();
     expect(box.y).toBeLessThan(20);
-    await expect(page.locator('.home-link')).toBeInViewport();
-    await page.locator('.home-link').click();
+    await expect(doc).toBeInViewport();
+    await fromMenu(page, 'home');
     await expect(page.locator('#new-script')).toBeVisible();
   });
 
@@ -741,7 +836,7 @@ test.describe('editor bars', () => {
     test(`the document and tabs pills match in height and padding at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 700 });
       await newScript(page);
-      const doc = page.locator('.doc-pill');
+      const doc = docPill(page);
       const tabs = width > 600 ? page.getByRole('tablist', { name: 'Workspace' }) : page.locator('.fl-compact-only .fl-tabs');
       const docBox = await doc.boundingBox();
       const tabsBox = await tabs.boundingBox();
@@ -749,7 +844,7 @@ test.describe('editor bars', () => {
       expect(tabsBox.y).toBeCloseTo(docBox.y, 0);
       const paddings = (locator) => locator.evaluate((el) => {
         const style = getComputedStyle(el);
-        return [style.paddingTop, style.paddingBottom, style.paddingLeft];
+        return [style.paddingTop, style.paddingBottom];
       });
       expect(await paddings(tabs)).toEqual(await paddings(doc));
       // What's inside fills the pill, so the padding looks the same on screen too.
@@ -780,7 +875,7 @@ test.describe('editor bars', () => {
     await page.setViewportSize({ width: 900, height: 700 });
     await newScript(page);
     const accent = 'rgb(82, 121, 111)';
-    const doc = page.locator('.doc-pill');
+    const doc = docPill(page);
     const tabs = page.getByRole('tablist', { name: 'Workspace' });
     const docBox = await doc.boundingBox();
     const tabsBox = await tabs.boundingBox();
@@ -813,13 +908,23 @@ test.describe('editor bars', () => {
     await expect(doc).toBeVisible();
   });
 
-  test('the document pill shows title, date and source, and leads home', async ({ page }) => {
+  test('the document pill shows title, date and source, and its menu leads home', async ({ page }) => {
     await newScript(page);
     await expect(page.locator('.doc-date')).toHaveText(new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }));
     await expect(page.locator('.doc-state')).toBeVisible();
-    await expect(page.locator('.home-link')).toHaveAttribute('aria-label', 'Home');
-    await expect(page.locator('.home-link .fl-svg')).toBeVisible();
-    await page.locator('.home-link').click();
+    // The app's name and details sit inside the menu's pill.
+    const pill = await docPill(page).boundingBox();
+    const name = await page.locator('.doc-name').boundingBox();
+    expect(name.x).toBeGreaterThan(pill.x);
+    expect(name.x + name.width).toBeLessThanOrEqual(pill.x + pill.width);
+    await docPill(page).click();
+    const items = docMenu(page).getByRole('menuitem');
+    await expect(items).toHaveCount(7);
+    for (const [i, name] of ['Home', 'Save', 'Save as', 'Export to PDF', 'Theme', 'Project settings', 'App settings'].entries()) {
+      await expect(items.nth(i)).toHaveAccessibleName(name);
+    }
+    await expect(docMenu(page).locator('#save')).toContainText('Ctrl+S');
+    await docMenu(page).locator('#home').click();
     await expect(page.locator('#new-script')).toBeVisible();
   });
 
@@ -908,8 +1013,7 @@ test.describe('editor bars', () => {
     const bar = page.locator('flow-script .fl-statusbar');
     const ribbon = page.locator('flow-script .fl-ribbon');
     const tabs = page.getByRole('tablist', { name: 'Workspace' });
-    const exportPill = page.locator('flow-script .fl-export');
-    const saveBefore = await page.locator('#save').boundingBox();
+    const tabsBefore = await tabs.boundingBox();
 
     await page.getByRole('tab', { name: 'Read' }).click();
     await expect(ribbon.getByRole('button', { name: 'Bold', exact: true })).toBeHidden();
@@ -919,21 +1023,29 @@ test.describe('editor bars', () => {
     await expect(bar.getByRole('button', { name: 'View: Seamless' })).toBeHidden();
     await expect(bar.getByRole('button', { name: 'View: Paged' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeHidden();
-    await expect(page.locator('.doc-pill')).toBeVisible();
-    await expect(exportPill).toBeVisible();
+    await expect(docPill(page)).toBeVisible();
     await expect(bar).toBeVisible();
     // Nothing else in the top row moves.
-    expect((await page.locator('#save').boundingBox()).x).toBeCloseTo(saveBefore.x, 0);
+    expect((await tabs.boundingBox()).x).toBeCloseTo(tabsBefore.x, 0);
 
     await page.setViewportSize({ width: 390, height: 700 });
     await expect(page.getByRole('button', { name: 'Workspace: Read' })).toBeVisible();
-    await expect(page.locator('flow-script .fl-export-holder').getByRole('button', { name: 'Export', exact: true })).toBeInViewport({ ratio: 1 });
+    await expect(docPill(page)).toBeInViewport({ ratio: 1 });
 
     await page.setViewportSize({ width: 1280, height: 700 });
     await page.getByRole('tab', { name: 'Write' }).click();
     await expect(ribbon).toBeVisible();
     await expect(tabs).toBeVisible();
     await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeVisible();
+  });
+
+  test('wide text is remembered between scripts', async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 800 });
+    await newScript(page);
+    await page.locator('flow-script .fl-statusbar').getByRole('switch', { name: 'Wide page' }).click();
+    await expect(page.locator('flow-script')).toHaveAttribute('text-width', 'wide');
+    await newScript(page);
+    await expect(page.locator('flow-script')).toHaveAttribute('text-width', 'wide');
   });
 
   test('page scale is remembered between scripts', async ({ page }) => {
@@ -956,54 +1068,21 @@ test.describe('editor bars', () => {
       await newScript(page);
       const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(sideways).toBeLessThanOrEqual(0);
-      await expect(page.locator('flow-script .fl-export-holder').getByRole('button', { name: 'Export', exact: true })).toBeInViewport({ ratio: 1 });
-      await expect(page.locator('.theme .fl-menu-trigger')).toBeInViewport({ ratio: 1 });
-      const name = await page.locator('.doc-pill').boundingBox();
+      const name = await docPill(page).boundingBox();
       expect(name.x + name.width).toBeLessThanOrEqual(width);
     });
   }
 
-  test('export buttons are icons, then a menu as the screen narrows', async ({ page }) => {
-    const exportPill = page.locator('flow-script .fl-export');
-    const holder = page.locator('flow-script .fl-export-holder');
-    const more = holder.getByRole('button', { name: 'Export', exact: true });
-    await page.setViewportSize({ width: 1280, height: 700 });
-    await newScript(page);
-    await expect(more).toBeHidden();
 
-    for (const width of [1280, 900, 700, 601]) {
-      await page.setViewportSize({ width, height: 700 });
-      for (const name of ['Save', 'Save as', 'PDF']) {
-        const b = exportPill.getByRole('button', { name, exact: true });
-        await expect(b.locator('.fl-svg')).toBeVisible();
-        await expect(b.locator('.fl-label')).toHaveCount(0);
-        await expect(b).toHaveAttribute('title', /./);
-        await expect(b).toBeInViewport({ ratio: 1 });
-      }
-      await expect(more).toBeHidden();
-      await expect(page.getByRole('tablist', { name: 'Workspace' })).toBeVisible();
-      const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-      expect(sideways).toBeLessThanOrEqual(0);
-    }
-
-    await page.setViewportSize({ width: 600, height: 700 });
-    await expect(exportPill).toBeHidden();
-    await expect(more).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Workspace: Write' })).toBeVisible();
-  });
-
-  test('a small screen fits the document, tab and export menus on one row', async ({ page }) => {
+  test('a small screen fits the document and tab menus on one row', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 700 });
     await newScript(page);
-    const doc = await page.locator('.doc-pill').boundingBox();
+    const doc = await docPill(page).boundingBox();
     const tabMenu = page.getByRole('button', { name: 'Workspace: Write' });
-    const exportMenu = page.locator('flow-script .fl-export-holder').getByRole('button', { name: 'Export', exact: true });
     const tab = await tabMenu.boundingBox();
-    const more = await exportMenu.boundingBox();
     expect(doc.x + doc.width).toBeLessThanOrEqual(tab.x);
-    expect(tab.x + tab.width).toBeLessThanOrEqual(more.x);
+    expect(tab.x + tab.width).toBeLessThanOrEqual(390);
     expect(Math.abs((doc.y + doc.height / 2) - (tab.y + tab.height / 2))).toBeLessThan(2);
-    expect(Math.abs((doc.y + doc.height / 2) - (more.y + more.height / 2))).toBeLessThan(2);
     await expect(page.locator('.fl-wide-only .fl-tab').first()).toBeHidden();
 
     await tabMenu.click();
@@ -1012,18 +1091,13 @@ test.describe('editor bars', () => {
     await expect(page.getByRole('button', { name: 'Workspace: Outline' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Add act', exact: true })).toBeVisible();
 
-    await exportMenu.click();
-    const holder = page.locator('flow-script .fl-export-holder');
-    for (const name of ['Save', 'Save as', 'PDF']) await expect(holder.getByRole('menuitem', { name, exact: true })).toBeVisible();
   });
 
-  test('saving works from the export menu on a small screen', async ({ page }) => {
+  test('saving works from the Document menu on a small screen', async ({ page }) => {
     await page.addInitScript(fakePickers);
     await page.setViewportSize({ width: 390, height: 700 });
     await newScript(page);
-    const holder = page.locator('flow-script .fl-export-holder');
-    await holder.getByRole('button', { name: 'Export', exact: true }).click();
-    await holder.getByRole('menuitem', { name: 'Save', exact: true }).click();
+    await fromMenu(page, 'save');
     await expect(page.locator('.doc-state')).toHaveText('Saved');
   });
 });

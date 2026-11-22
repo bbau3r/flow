@@ -50,6 +50,7 @@ The build produces two forms:
 | `read-view` | How the Read tab shows the script: `page` (the pages as they print) or `flow` (Seamless, continuous). Also the `readView` property. | `page` |
 | `workspace` | `write` (the script), `outline` (its acts, sequences, scenes and transitions as cards and blocks, which edit the same text) or `read` (the pages as they print, with editing off) | `write` |
 | `scale` | How large the script is shown, as a percentage from 50 to 200 | `100` |
+| `text-width` | `wide` runs Seamless and Fountain views across most of the window on a large screen; absent keeps their usual column. A switch beside the view menu, showing `><` or `<>` for the width it's at, changes it and fires `flow-text-width`. Also the `textWidth` property. | absent |
 | `theme` | `sage`, `sand`, `sea`, `romance`, `forest`, `lavender` or `graphite` followed by `-light`, `-dark` or `-auto`; plain `auto`, which means `sage-auto`; or a registered name | `sage-light` |
 | `paper` | `letter`, `a4` or a custom size such as `6in x 9in`. The size for a script whose own settings name none. | `letter` |
 
@@ -65,7 +66,8 @@ The build produces two forms:
 | `downloadPdf(options)` | Same, and saves the file |
 | `scrollToLine(line)` | Jumps to a source line |
 | `highlights` | The Read tab's highlights, as `[{ terms, color, enabled }]`. `terms` are comma-separated words matched whole and without regard to case, and `color` is a hex color. The element keeps no storage, so an app saves them from `flow-highlights`. |
-| `exportActions` | The app's own actions, shown before PDF as `{ label, title, icon, attrs, onClick }`. They appear as icon buttons, or in a vertical ... menu when space runs short. |
+| `menuItems` | What the Document menu holds, as groups kept apart by rules. Items are `{ label, icon, shortcut, title, attrs, onClick }`, or have `panel: { title, build(menu) }` in place of `onClick` to swap the menu for a card of their own, from the nodes `build` returns. The strings `'pdf'` and `'project-settings'` place the element's own Export to PDF and Project settings. Defaults to `[['pdf'], ['project-settings']]`. |
+| `closeMenu()` | Closes the Document menu if it's open |
 
 ### Events
 
@@ -75,6 +77,7 @@ The build produces two forms:
 | `flow-selection` | Current line type and active B/I/U |
 | `flow-ready` | None. Fires when a render or editor mount finishes. |
 | `flow-scale` | `{ scale }`. Fires when the writer changes the page scale. |
+| `flow-text-width` | `{ textWidth }`, `'wide'` or `null`. Fires when the writer widens or narrows the text. |
 | `flow-workspace` | `{ workspace }`. Fires when the element changes tab itself, as when the outline's menu shows a card in Write or Read, so an app's own tabs can follow. Not fired for setting `workspace`. |
 | `flow-highlights` | `{ highlights }`. Fires when the writer changes highlights in the Highlight Manager or turns one off or on, not for setting `highlights`. |
 
@@ -84,17 +87,23 @@ The editor has a top row, the action center that joins it when there is room, an
 
 | Slot | Where it goes |
 | --- | --- |
-| `document` | Top row, left |
+| `document` | Inside the Document menu's pill, at the left of the top row, after the menu icon. Empty, the pill reads "Document". |
 | `tabs` | Top row, after `document` |
 | `status-end` | Right end of the bottom row |
 
 ### Shared controls
 
-The pills, buttons, menus, tabs and modals are exported so that an app's own controls match the editor's. Call `installControlStyles()` once to use them outside the element, which also adds the theme colors for `<html data-theme="...">`.
+The pills, buttons, menus, tabs, search field, modals, the settings panel, the paper size picker and the theme chooser are exported so that an app's own controls match the editor's. Call `installControlStyles()` once to use them outside the element, which also adds the theme colors for `<html data-theme="...">`.
 
 ```js
-import { actionPill, button, installControlStyles, Menu, openModal, pill, pillSep, tabs } from '@flow/element/source';
+import { actionPill, button, dimensionsField, installControlStyles, Menu, openModal, openSettingsPanel, pill, pillSep, searchField, tabs, themeChooser } from '@flow/element/source';
 ```
+
+`openSettingsPanel(parent, { title, icon, sections, actions, onClose })` lays settings out the same way everywhere: a search box floating above the panel, a rail of section icons down its left when there's more than one section, each section with a button that folds or unfolds all its topics, and topics that fold on their own. Sections are `{ id, label, icon, topics }`, topics `{ label, open, properties }`, and properties `{ label, description, control, below, wide, keywords }`. A property's control sits beside its name, or under it when `wide`, and `below` runs the full width beneath, such as a preview. The search sits at the top of the panel, and each section is a page of its own that the rail turns to. Searching looks through every section, matching names, descriptions and keywords, and shows matching topics open.
+
+`themeChooser({ value, onChange })` is the Auto, Light and Dark switch and the palette grid, for `{ palette, mode }`. It returns `{ root, modes, grid }`, so the parts can also go into a settings panel separately. The modes are `tabs({ fixed: true })`, the same tabs as Write, Outline and Read, kept as a pill at any width.
+
+`searchField({ label, cls, onInput })` is a search box in a pill with its icon at the right, returning `{ root, input }`.
 
 ## Writing
 
@@ -108,7 +117,8 @@ Syntax markers such as `**`, `.` or `@` show only on the line you're on. Everywh
 - **Keeping your place.** Moving between tabs or views keeps the same part of the script at the top of the page, and the Outline shows the card it belongs to. Back in Write, a cursor left out of sight moves to where you are, so typing carries on there.
 - **Opening files.** Installed on a desktop with Chrome or Edge, the app opens `.fountain` and `.spmd` files from the file manager, in the window that's already open. A file already in the recent list reopens there, refreshed from disk unless it has unsaved changes. Android doesn't support this yet.
 - **Tabs in the app.** The address records the tab as `#/edit/<id>?tab=outline` or `?tab=read`, so a reload stays on it.
-- **Project settings.** The gear at the right end of the top row, or Settings in the ... menu on a phone, opens them. Dimensions is US Letter, A4 or Custom, a width and height in inches, centimetres or millimetres. The page shows each choice as it's made, with a drawing of the sheet and its measurements in the dialog, and Save writes it into the script, in a boneyard at the bottom of its title page, or at the top of a script without one:
+- **Document menu.** The pill at the left of the top row opens a card of commands below it: in the app, Home, Save, Save as, Export to PDF, Theme, Project settings and App settings. Theme swaps the menu for a card of its own, which rises from behind it, with a back button, and Escape or the left arrow steps back. On a phone the menu flies out from the left and covers most of the screen.
+- **Project settings.** Project settings in the Document menu opens them. Dimensions is US Letter, A4 or Custom, a width and height in inches, centimetres or millimetres. The page shows each choice as it's made, with a drawing of the sheet and its measurements in the dialog, and Save writes it into the script, in a boneyard at the bottom of its title page, or at the top of a script without one:
 
   ```
   Title: Big Fish
@@ -158,6 +168,7 @@ Each component also has its own tokens, which default to those colors. Set them 
 | Modals | `dialog-bg`, `dialog-ink`, `dialog-radius` |
 | Fields | `check` (checkboxes, radio buttons, sliders and progress bars), `field-bg`, `field-ink`, `field-border`, `selection-bg` |
 | Outline | `drop-line` (where a dragged card lands), `preview-line` (where a tool would add one, `secondary` by default), `danger-hover` (pointing at something that deletes) |
+| Pages and desk | `page-shadow` (a hard, offset shadow under every page), `desk-noise` (a faint grain), `desk-gradient` (a soft wash of the theme's colors). Set either desk token to `none` to leave it out. The `fl-desk` class gives an app's own page the same desk. |
 
  Use `--flow-font` to change the script typeface; anything but a 0.6em-wide monospace font will throw off page alignment. Use `--flow-ui-font` to change the interface font, which defaults to the bundled Roboto. PDFs are always black on white.
 
@@ -173,9 +184,9 @@ Two decisions shape the code:
 
 ## The PWA
 
-The home page starts a new script or opens one from a provider. New scripts begin with a title page containing every field Flow prints, to keep or delete.
+The home page is a shelf of sheets: New, Open, then each recent script drawn as its own title page, wrapping onto as many rows as they need, two to a row on a phone. The search box above filters the recent scripts by name and title page, and the gear opens App settings: Appearance (the theme), Defaults and App (installing Flow). New scripts begin with a title page containing every field Flow prints, to keep or delete. Defaults changes that for this device: the page size new scripts start at, and the text of each standard title page field after Title, each with a switch to leave it off. `{date}` and `{year}` fill in when a script is made, and empty fields are left off too. Core's `newScript(today, { cover, dimensions })` builds the text. With one place to open from, Open goes straight to its picker; with several, it asks which.
 
-Scripts autosave to IndexedDB on the device, so work survives closing the tab or losing the connection. The Recent list is that local copy. **Save** writes to the file, and won't overwrite a file that changed elsewhere without asking. After the first visit, the whole app works offline, including PDF export.
+Scripts autosave to IndexedDB on the device, so work survives closing the tab or losing the connection. The recent scripts are that local copy. **Save** writes to the file, and won't overwrite a file that changed elsewhere without asking. After the first visit, the whole app works offline, including PDF export.
 
 Storage options live in `packages/pwa/src/providers/`. To add one, write an object with the interface described in `providers/index.js` and add it to the list.
 

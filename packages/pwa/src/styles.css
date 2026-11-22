@@ -6,8 +6,9 @@
 
 html, body, #app { height: 100%; margin: 0; }
 
+/* The desk's grain and wash come from the shared fl-desk class on the body. */
 body {
-  background: var(--flow-desk);
+  background-color: var(--flow-desk);
   color: var(--flow-ink);
   font: 15px/1.45 var(--font);
 }
@@ -56,17 +57,26 @@ button:focus-visible, select:focus-visible, a:focus-visible {
 /* Home */
 .home { min-height: 100%; }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .home-top {
-  container-type: inline-size;
   display: flex;
   align-items: center;
-  gap: 8px;
-  max-width: 760px;
+  gap: 10px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 14px 20px;
+  padding: 14px 20px 10px;
 }
 
 .brand {
+  flex: none;
   display: inline-flex;
   align-items: baseline;
   color: var(--flow-accent);
@@ -74,6 +84,14 @@ button:focus-visible, select:focus-visible, a:focus-visible {
 }
 
 /* The mark is the F: tall like a capital, its lower curl dipping below the baseline. */
+/* The rest of the word runs from the secondary color to the primary, corner to corner. */
+.brand > span {
+  background: linear-gradient(135deg, var(--flow-secondary), var(--flow-accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 .brand .flow-mark {
   height: 1.75em;
   width: auto;
@@ -81,11 +99,20 @@ button:focus-visible, select:focus-visible, a:focus-visible {
   transform: translateY(0.42em);
 }
 
-.home main { max-width: 760px; margin: 0 auto; padding: 8px 20px 48px; }
+/* The shared search field, sized for the header. */
+.home-search { width: min(340px, 100%); height: 40px; font-size: 15px; }
 
-.home h1 { margin: 12px 0 28px; font-size: 30px; line-height: 1.2; }
+.home-settings {
+  flex: none;
+  --fl-control-size: 40px;
+  background: var(--flow-ribbon-bg);
+  border: 1px solid var(--flow-rule);
+  box-shadow: 0 1px 3px var(--flow-shadow);
+}
 
-.home section { margin-bottom: 30px; }
+.home-settings .fl-svg { width: 1.4em; height: 1.4em; }
+
+.home main { max-width: 1120px; margin: 0 auto; padding: 18px 20px 48px; }
 
 h2 {
   margin: 0 0 10px;
@@ -96,6 +123,159 @@ h2 {
   text-transform: uppercase;
 }
 
+/* New, Open and the recent scripts, as sheets that wrap onto as many rows as they need. */
+.shelf {
+  --tile-w: 150px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 26px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tile { position: relative; flex: none; width: var(--tile-w); }
+
+.tile[hidden], .shelf-rule[hidden] { display: none; }
+
+.tile-button, .recent-open {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tile-button:disabled { opacity: 0.6; cursor: default; }
+
+.tile-button:focus-visible, .recent-open:focus-visible { outline: none; }
+
+.tile-face, .cover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 8.5 / 11;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.tile-face .fl-svg { width: 42px; height: 42px; stroke-width: 1.6; }
+
+.tile-new {
+  color: var(--flow-accent);
+  border: 2px dashed color-mix(in srgb, var(--flow-accent) 60%, var(--flow-rule));
+  background: color-mix(in srgb, var(--flow-accent) 6%, transparent);
+}
+
+.tile-open {
+  color: var(--flow-accent);
+  background: var(--flow-paper);
+  border: 1px solid var(--flow-rule);
+  box-shadow: 0 1px 3px var(--flow-shadow);
+}
+
+.tile-button:hover:not(:disabled) .tile-face, .recent-open:hover .cover {
+  border-color: var(--flow-accent);
+  box-shadow: 0 6px 16px var(--flow-shadow);
+  transform: translateY(-2px);
+}
+
+.tile-button:focus-visible .tile-face, .recent-open:focus-visible .cover { outline: 2px solid var(--flow-accent); outline-offset: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tile-face, .cover { transition: none; }
+}
+
+.tile-label {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-name, .recent-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.recent-meta { color: var(--flow-muted); font-size: 12.5px; }
+
+.shelf-rule { flex: none; align-self: stretch; width: 1px; margin: 0 6px; background: var(--flow-rule); }
+
+/* A title page in miniature, in the script's typeface. */
+.cover {
+  container-type: inline-size;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 34% 9% 9%;
+  overflow: hidden;
+  background: var(--flow-paper);
+  color: var(--flow-ink);
+  border: 1px solid var(--flow-rule);
+  box-shadow: 0 1px 3px var(--flow-shadow);
+  font-family: "Courier Prime", "Courier New", Courier, monospace;
+  line-height: 1.25;
+}
+
+/* Sized from the sheet's own width, which only its contents can measure. */
+.cover-middle { font-size: 7cqw; }
+
+.cover-foot { font-size: 5.4cqw; }
+
+.cover > span, .cover span > span { display: block; }
+
+.cover-middle { display: flex; flex-direction: column; gap: 0.9em; width: 100%; text-align: center; }
+
+.cover-title { font-weight: 700; text-transform: uppercase; text-decoration: underline; overflow-wrap: anywhere; }
+
+.cover-middle span > span, .cover-foot span > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cover-title > span { white-space: normal; }
+
+.cover-foot { display: flex; justify-content: space-between; align-items: flex-end; gap: 6%; width: 100%; }
+
+.cover-foot > span { min-width: 0; }
+
+.cover-date { text-align: right; }
+
+.recent-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: var(--flow-ribbon-bg);
+  color: var(--flow-muted);
+  border: 1px solid var(--flow-rule);
+  border-radius: 999px;
+  box-shadow: 0 1px 3px var(--flow-shadow);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.recent-remove .fl-svg { width: 16px; height: 16px; }
+
+.tile:hover .recent-remove, .recent-remove:focus-visible { opacity: 1; }
+
+.recent-remove:hover { color: var(--flow-danger-hover, var(--flow-danger)); }
+
+/* Touch screens have no pointing, so the remove button stays in sight. */
+@media (hover: none) {
+  .recent-remove { opacity: 1; }
+}
+
+.home-empty:empty { display: none; }
+
+.home-empty { margin: 24px 0; color: var(--flow-muted); }
+
+/* Places to open from, when there are several. */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 
 .card {
@@ -116,56 +296,25 @@ h2 {
 
 .card:disabled { box-shadow: none; opacity: 0.7; cursor: default; }
 
-.card.primary { background: var(--flow-accent); border-color: var(--flow-accent); color: var(--flow-accent-ink); }
-
 .card-title { font-size: 17px; font-weight: 600; }
 
 .card-text { font-size: 14px; opacity: 0.85; }
 
-.recent { margin: 0; padding: 0; background: var(--flow-paper); border: 1px solid var(--flow-rule); border-radius: 10px; list-style: none; }
-
-.recent-row { display: flex; align-items: center; }
-
-.recent-row + .recent-row { border-top: 1px solid var(--flow-rule); }
-
-.recent-open {
-  flex: 1;
-  min-width: 0;
-  padding: 10px 14px;
-  background: none;
-  border: 0;
-  border-radius: 10px;
-  text-align: left;
-  cursor: pointer;
+/* On a phone the sheets go two to a row, New and Open first, then a rule across. The search
+   folds to its icon until it's used. */
+@media (max-width: 560px) {
+  .home-top { padding: 12px 14px 8px; gap: 8px; }
+  .home main { padding: 12px 14px 40px; }
+  .shelf { --tile-w: calc((100% - 16px) / 2); gap: 20px 16px; }
+  .shelf-rule { flex-basis: 100%; width: auto; height: 1px; margin: 0; }
+  .home-search { flex: none; width: 40px; padding: 0 11px; transition: width 160ms ease; }
+  .home-search:focus-within, .home-search.fl-search-filled { flex: 1; width: auto; padding: 0 14px; }
 }
-
-.recent-name, .recent-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.recent-name { font-weight: 600; }
-
-.recent-meta { color: var(--flow-muted); font-size: 13px; }
-
-.recent-remove {
-  flex: none;
-  width: 36px;
-  height: 36px;
-  margin-right: 6px;
-  background: none;
-  border: 0;
-  border-radius: 6px;
-  color: var(--flow-muted);
-  font-size: 18px;
-  cursor: pointer;
-}
-
-.recent-remove:hover { color: var(--flow-danger-hover, var(--flow-danger)); }
 
 /* Editor */
 .editor { display: flex; flex-direction: column; height: 100dvh; }
 
-.doc-pill { flex: 0 1 auto; padding-right: 16px; }
-
-.doc { display: flex; flex-direction: column; min-width: 0; padding-left: 4px; line-height: 1.25; }
+.doc { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
 
 .doc-name { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 

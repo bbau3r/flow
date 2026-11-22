@@ -44,7 +44,6 @@ test('zooming a page past the window does scroll sideways, on purpose', async ({
 });
 
 const menus = {
-  theme: (page) => page.locator('.theme'),
   view: (page) => page.locator('flow-script .fl-statusbar .fl-menu').first(),
   topics: (page) => page.locator('flow-script .fl-topics'),
 };
@@ -70,16 +69,19 @@ for (const [name, menu] of Object.entries(menus)) {
   });
 }
 
-test('the export menu stays inside the script area on a small screen', async ({ page }) => {
-  const area = await longScript(page);
-  await page.setViewportSize({ width: 390, height: 700 });
-  const holder = page.locator('flow-script .fl-export-holder');
-  await holder.getByRole('button', { name: 'Export', exact: true }).click();
-  const box = await holder.locator('.fl-menu-popup').boundingBox();
-  const measured = await area.evaluate((el) => ({
-    sideways: el.scrollWidth - el.clientWidth,
-    right: el.getBoundingClientRect().left + el.clientWidth,
-  }));
-  expect(measured.sideways).toBeLessThanOrEqual(0);
-  expect(box.x + box.width).toBeLessThanOrEqual(measured.right);
+test('the Document menu stays on screen without scrolling anything sideways', async ({ page }) => {
+  await longScript(page);
+  for (const width of [1280, 700, 390, 320]) {
+    await page.setViewportSize({ width, height: 700 });
+    await page.locator('flow-script .fl-docmenu-trigger').click();
+    const card = page.locator('flow-script .fl-docmenu-main');
+    await expect(card).toBeVisible();
+    await page.waitForTimeout(250);
+    const box = await card.boundingBox();
+    expect(box.x, `left edge at ${width}px`).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, `right edge at ${width}px`).toBeLessThanOrEqual(width);
+    const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(sideways).toBeLessThanOrEqual(0);
+    await page.keyboard.press('Escape');
+  }
 });
