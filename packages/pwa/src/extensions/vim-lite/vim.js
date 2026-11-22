@@ -2,8 +2,9 @@
 // through the editor's text API and nothing else. It keeps a mode, the command being typed, and a
 // register for what was last deleted or copied. Each change it makes is one undo step.
 //
-// Normal mode moves and edits; Insert types as usual; Visual and Visual line select. What it
-// knows is in MOTIONS, OPERATORS, normalKey and visualKey, and the README lists it too.
+// Normal mode moves and edits; Insert types as usual; Visual and Visual line select. / and ?
+// search for words, which n and N find again. What it knows is in MOTIONS, OPERATORS,
+// commandKey, normalKey and visualKey, and the README lists it too.
 
 // Motions, by key: what they're called and what an operator takes with them. `inclusive` takes
 // the character landed on; `linewise` takes whole lines; `wantsChar` reads one more key.
@@ -39,7 +40,7 @@ const KEY_ALIASES = {
   ArrowLeft: 'h', ArrowRight: 'l', ArrowDown: 'j', ArrowUp: 'k', Backspace: 'h', Enter: '+', Home: '0', End: '$', Delete: 'x',
 };
 
-export const MODE_LABELS = { normal: 'NORMAL', insert: 'INSERT', visual: 'VISUAL', 'visual-line': 'V-LINE' };
+export const MODE_LABELS = { normal: 'NORMAL', insert: 'INSERT', visual: 'VISUAL', 'visual-line': 'V-LINE', search: 'SEARCH' };
 
 const CHORD_MS = 600;
 
@@ -72,10 +73,14 @@ export function createVim({ options, onStatus }) {
   let lastInsert = { key: '', at: 0 };
   // A count before i, a, I, A, o or O, kept until Insert is left.
   let insertRepeat = null;
+  // A search being typed after / or ?, and the last one run, which n and N find again.
+  let searching = null;
+  let lastSearch = null;
   let text = null;
 
   const visual = () => mode === 'visual' || mode === 'visual-line';
-  const status = () => onStatus({ mode, keys: keys || shownKeys, pending: !!keys, action });
+  // While a search is typed, the mode reads Search.
+  const status = () => onStatus({ mode: searching ? 'search' : mode, keys: keys || shownKeys, pending: !!keys, action });
 
   const caret = () => {
     text?.setCaret(mode !== 'insert' && options().blockCursor !== false ? 'block' : null);
@@ -362,6 +367,7 @@ export function createVim({ options, onStatus }) {
 
   const reset = () => {
     keys = '';
+    searching = null;
     pending = { count: '', op: '', opCount: '', prefix: '' };
   };
 
@@ -416,8 +422,104 @@ export function createVim({ options, onStatus }) {
       pending.count = '';
       return wait(`${OPERATORS[key]}…`);
     }
+    if (key === '/' || key === '?') return startSearch(key === '/' ? 1 : -1, count);
+    if (key === 'n' || key === 'N') {
+      if (!lastSearch) return done('No search yet');
+      return findAgain(lastSearch, key === 'n' ? lastSearch.dir : -lastSearch.dir, count);
+    }
+    if (key === '*' || key === '#') {
+      const word = wordAt(here());
+      if (!word) return done('No word here');
+      return findAgain({ text: word, whole: true, dir: key === '*' ? 1 : -1 }, key === '*' ? 1 : -1, count);
+    }
     if (MOTIONS[key]) return runMotion('', key, { count, counted });
     return visual() ? visualKey(key) : normalKey(key, count);
+  }
+
+  // --- Searching ---
+
+  const escapeRegExp = (words) => words.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // Every place the words are found, in order, leaving out lines out of sight. A search ignores
+  // case unless it holds a capital, and * and # look for whole words.
+  function matchesOf({ text: wanted, whole }) {
+    const body = escapeRegExp(wanted);
+    const pattern = new RegExp(whole ? `(?<!\\w)${body}(?!\\w)` : body, /[A-Z]/.test(wanted) ? 'g' : 'gi');
+    const found = [];
+    for (let line = 0; line < text.lineCount; line++) {
+      if (text.hidden(line)) continue;
+      for (const match of text.line(line).matchAll(pattern)) found.push({ line, ch: match.index });
+    }
+    return found;
+  }
+
+  // The word under the cursor, or the next one along its line, for * and #.
+  function wordAt({ line, ch }) {
+    const words = [...text.line(line).matchAll(/\w+/g)];
+    const word = words.find((match) => match.index + match[0].length > ch);
+    return word?.[0] ?? '';
+  }
+
+  // Goes to the next place the search is found, `count` times, in `dir`, coming round from the
+  // other end of the script when it runs out, as Vim does.
+  function findAgain(search, dir, count) {
+    lastSearch = search;
+    const found = matchesOf(search);
+    if (!found.length) return done(`No match for “${search.text}”`);
+    let at = here();
+    let index = -1;
+    let wrapped = false;
+    for (let n = 0; n < count; n++) {
+      index = dir > 0 ? found.findIndex((match) => before(at, match)) : found.findLastIndex((match) => before(match, at));
+      if (index < 0) {
+        index = dir > 0 ? 0 : found.length - 1;
+        wrapped = true;
+      }
+      at = found[index];
+    }
+    column = null;
+    if (visual()) {
+      cursor = at;
+      drawVisual();
+    } else text.setCursor(at);
+    const round = wrapped ? (dir > 0 ? ', from the top' : ', from the bottom') : '';
+    return done(`Match ${index + 1} of ${found.length}${round}`);
+  }
+
+  function startSearch(dir, count) {
+    pending = { count: '', op: '', opCount: '', prefix: '' };
+    searching = { dir, count, text: '' };
+    keys = dir > 0 ? '/' : '?';
+    return wait(dir > 0 ? 'Type to search forward' : 'Type to search back');
+  }
+
+  // While a search is typed, keys go into it. Enter runs it, or the last one when it's empty;
+  // Backspace takes a character back, and on an empty search cancels it.
+  function searchKey(event) {
+    const typing = searching;
+    if (event.ctrlKey || event.metaKey || event.altKey) return false;
+    if (event.key === 'Enter') {
+      const words = typing.text || lastSearch?.text;
+      searching = null;
+      if (!words) return done('Nothing to search for');
+      return findAgain({ text: words, whole: !typing.text && !!lastSearch?.whole, dir: typing.dir }, typing.dir, typing.count);
+    }
+    if (event.key === 'Backspace') {
+      if (!typing.text) {
+        reset();
+        return done('Cancelled');
+      }
+      typing.text = typing.text.slice(0, -1);
+    } else if (event.key.length === 1) {
+      typing.text += event.key;
+    } else {
+      // Arrows and the like would only move the cursor out from under the search.
+      return true;
+    }
+    keys = (typing.dir > 0 ? '/' : '?') + typing.text;
+    // As it's typed, it counts what it would find.
+    const count = typing.text ? matchesOf({ text: typing.text, whole: false }).length : 0;
+    return wait(!typing.text ? 'Type to search' : `${count} ${count === 1 ? 'match' : 'matches'}`);
   }
 
   function runMotion(op, motion, { count, counted, char }) {
@@ -565,7 +667,7 @@ export function createVim({ options, onStatus }) {
       text?.setCaret(null);
       text = null;
     },
-    /** Switches between Normal and Insert, as tapping the bubble does. */
+    /** Switches between Normal and Insert, as tapping the widget's mode does. */
     toggleMode() {
       if (!text) return;
       reset();
@@ -593,6 +695,7 @@ export function createVim({ options, onStatus }) {
         enterNormal();
         return done('Normal');
       }
+      if (searching) return searchKey(event);
       if (mode === 'insert') return insertKey(event);
       // Ctrl and Cmd shortcuts belong to the app, apart from Ctrl+R, which redoes.
       if (event.ctrlKey || event.metaKey) {
