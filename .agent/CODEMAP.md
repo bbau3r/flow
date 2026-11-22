@@ -120,12 +120,12 @@ element changes tab itself; the PWA moves its tabs and address along, through `t
 | File | What it does |
 | --- | --- |
 | `main.js` | Boot: styles, theme, fonts, hash router (`#/edit/<id>` or home), `launchQueue` file opening, service-worker update banner |
-| `home.js` | Home page: header (wordmark, search, App settings gear), then a shelf of New, Open and recent scripts drawn as title-page covers |
-| `app-settings.js` | App settings on `openSettingsPanel`: Appearance (theme, and Settings tabs for extensions), Defaults (size, each standard cover field's text and an on/off switch), Sources (from `sources-section.js`), Extensions (from `extensions/manager.js`), App (install), then a rule and each app extension's settings. Reopens itself when extensions or palettes come and go. Holds the `beforeinstallprompt` handling |
+| `home.js` | Home page: header (wordmark, search, App settings gear), then a shelf of New, Open (this device), a sheet per cloud provider, and recent scripts drawn as title-page covers |
+| `app-settings.js` | App settings on `openSettingsPanel`: Appearance (theme, and Settings tabs for extensions), Defaults (size, each standard cover field's text and an on/off switch), Extensions (from `extensions/manager.js`), App (install), then a rule and each app extension's settings. Reopens itself when extensions or palettes come and go. Holds the `beforeinstallprompt` handling |
 | `defaults.js` | New-script defaults in local storage (`readDefaults`, `saveDefaults`) and `scriptFromDefaults()`, used by New |
 | `editor-view.js` | Hosts `<flow-script>` for one doc: fills slots (document name with its source, tabs), `menuItems` (Home, Save, Save as, Theme, App settings, then extension commands), autosave on `flow-change`, highlights, `?tab=` in the URL, provider chooser. Adds extension tabs, shortcuts and command widgets, and `attachEditor`s the script for extensions. |
-| `sources-section.js` | The Sources page of App settings: Temp, Local and Cloud sources, with Connect/Disconnect for cloud ones |
-| `store.js` | IndexedDB autosave. Doc: `{ id, name, value, savedValue, provider, source, ref, updatedAt, highlights }`; `source` is `{ kind, label }`, what the doc last knew of its provider |
+| `save-folder.js` | The save folder chosen in Defaults (`readSaveFolder`, `saveFolderSetting`), where the local provider's dialogs start; its handle is kept with `store.js`'s `getKept`/`putKept` |
+| `store.js` | IndexedDB autosave, and `getKept`/`putKept` for things this device keeps that local storage can't hold. Doc: `{ id, name, value, savedValue, provider, source, ref, updatedAt, highlights }`; `source` is `{ kind, label }`, what the doc last knew of its provider |
 | `launch.js` | Opening a file handed over by the OS, deduped against Recent |
 | `providers/index.js` | Provider interface (documented at the top, with `kind` and the optional `connection`/`connect`/`disconnect`), `providers` list, `addProvider` (for extensions' sources), `sourceOf` (Temp, Local or Cloud · name), `ensureConnected`, `ConflictError`, `fileNameFor` |
 | `providers/local.js` | "This device": File System Access API, or file input plus download fallback |
@@ -137,11 +137,10 @@ element changes tab itself; the PWA moves its tabs and address along, through `t
 | `extensions/manifest.js` | `readManifest`: checks and cleans a manifest (colors must be colors, icons only path data, `main` a .js name), `settingValue`, `PALETTE_COLORS`, `WIDGET_PLACES` |
 | `extensions/code-store.js` | IndexedDB for added apps' code (`{ main, files }`) and each extension's `flow.storage`; `loadModule` turns the files into modules, resolving `./name.js` imports |
 | `extensions/manager.js` | The Extensions page of App settings: a switch, Settings and Remove per extension, Add extension (file picker, then the trust warning for code), links to the guides |
-| `extensions/settings.js` | `extensionSection`: an app's settings, from its manifest, as a settings section |
+| `extensions/settings.js` | `extensionSection`: an app's settings, from its manifest, as a settings section, with a Connection topic for each cloud source it adds that signs in |
 | `extensions/shortcuts.js` | `matchesShortcut`, `shortcutLabel` for `Mod+Shift+K` style shortcuts |
 | `extensions/built-in.js` | The extensions that ship with Flow, all off by default (what someone adds starts on) |
 | `extensions/vim-lite/` | Vim lite: `manifest.json`, `index.js` (widget and keys per script, only through the API), `vim.js` (the engine, editing through the text API, with search) |
-| `extensions/proton-drive/` | Proton Drive: a cloud source through the Proton Drive app's synced folder, kept with `flow.storage` |
 | `extensions/typewriter/` | The Typewriter theme, a manifest only |
 
 `vite.config.js` holds the PWA manifest (file handlers, icons) and Workbox precaching.
@@ -161,7 +160,7 @@ element changes tab itself; the PWA moves its tabs and address along, through `t
 E2E specs: `packages/element/e2e/element.spec.js` (large; grouped by `test.describe`: phone
 width, outline tab, title page, project settings, Highlight Manager, ...),
 `element/e2e/dist.spec.js` (built bundles), `packages/pwa/e2e/pwa.spec.js`,
-`pwa/e2e/extensions.spec.js` (extensions, widgets, sources, code and its trust warning, Vim lite, Proton Drive), `pwa/e2e/scrollbars.spec.js`.
+`pwa/e2e/extensions.spec.js` (extensions, widgets, cloud providers, code and its trust warning, Vim lite), `pwa/e2e/scrollbars.spec.js`.
 
 CI: `.github/workflows/ci.yml` runs both test suites on branches and PRs. `deploy.yml` runs CI
 on push to `main`, then publishes `packages/pwa/dist` to `gh-pages`. Pushing to `main` deploys.
@@ -182,7 +181,7 @@ on push to `main`, then publishes `packages/pwa/dist` to `gh-pages`. Pushing to 
 | Saving, opening files, conflicts | `pwa/src/providers/`, `editor-view.js` |
 | A new storage provider | `providers/index.js` interface; `BACKLOG.md` for the plans |
 | Extensions, or a new built-in one | `pwa/src/extensions/host.js`, then `built-in.js`; the guides in `docs/extensions/` |
-| A cloud source | `pwa/src/providers/index.js`, `extensions/proton-drive/`, `docs/extensions/sources.md` |
+| A cloud provider | `pwa/src/providers/index.js`, `extensions/host.js` (`addSource`), `docs/extensions/sources.md` |
 | Vim lite's keys | `pwa/src/extensions/vim-lite/vim.js` |
 
 ## Conventions

@@ -1,6 +1,6 @@
 # Writing an app extension
 
-An app extension adds to what Flow does: settings, commands in the Document menu, widgets in the editor's bars, tabs beside Write, Outline and Read, and sources to open and save scripts in. Every app extension starts with a JSON manifest, and most bring code with it.
+An app extension adds to what Flow does: settings, commands in the Document menu, widgets in the editor's bars, tabs beside Write, Outline and Read, and cloud providers to open and save scripts in. Every app extension starts with a JSON manifest, and most bring code with it.
 
 | How it arrives | What it can be | Where it comes from |
 | --- | --- | --- |
@@ -145,7 +145,7 @@ export const countWords = (text) => text.split(/\s+/).filter(Boolean).length;
 | `flow.toast(message)` | A short message at the bottom of the screen |
 | `flow.addCommand(command)` | A command, as in the manifest, but with `run({ script })` in place of `insert`. `script` is the open `<flow-script>`. |
 | `flow.addTab(tab)` | A tab beside Write, Outline and Read: `{ id, label, icon, title, render(root, context) }` |
-| `flow.addSource(provider)` | A place to open and save scripts. [The sources guide](sources.md) covers them. |
+| `flow.addSource(provider)` | A cloud provider, to open and save scripts in. It gets a sheet beside Open on the home page, and, when it signs in, a Connection topic on the extension's settings page. [The sources guide](sources.md) covers them. |
 | `flow.onEditor(fn)` | Calls `fn(script)` for each script that opens, and for any already open. `fn` can return a cleanup, which runs as the script closes or the extension turns off. |
 
 Every `add` returns a function that takes it away again.
@@ -217,7 +217,5 @@ It's checked like any other manifest, then listed as "Added by code" and "Runs i
 
 ## Worked examples
 
-Both are built into Flow, in `packages/pwa/src/extensions/`, and use only this API.
-
-- **Vim lite** (`vim-lite/`): a manifest with four settings and its own icon; `index.js`, which uses `flow.onEditor` to give each script a widget beside undo and redo and a key handler; and `vim.js`, the engine, which edits only through `text`.
-- **Proton Drive** (`proton-drive/`): a cloud source, which [the sources guide](sources.md) walks through.
+- **Vim lite**, built into Flow in `packages/pwa/src/extensions/vim-lite/`, uses only this API. It has a manifest with four settings and its own icon; `index.js`, which uses `flow.onEditor` to give each script a widget beside undo and redo and a key handler; and `vim.js`, the engine, which edits only through `text`.
+- [The sources guide](sources.md) has a worked example of a cloud provider.

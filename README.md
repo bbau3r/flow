@@ -192,7 +192,7 @@ Two decisions shape the code:
 
 ## The PWA
 
-The home page is a shelf of sheets: New, Open, then each recent script drawn as its own title page, wrapping onto as many rows as they need, two to a row on a phone. The search box above filters the recent scripts by name and title page, and the gear opens App settings: Appearance (the theme, and which extensions' settings get a tab), Defaults, Sources, Extensions and App (installing Flow). New scripts begin with a title page containing every field Flow prints, to keep or delete. Defaults changes that for this device: the page size new scripts start at, and the text of each standard title page field after Title, each with a switch to leave it off. `{date}` and `{year}` fill in when a script is made, and empty fields are left off too. Core's `newScript(today, { cover, dimensions })` builds the text. With one place to open from, Open goes straight to its picker; with several, it asks which.
+The home page is a shelf of sheets: New, Open, then each recent script drawn as its own title page, wrapping onto as many rows as they need, two to a row on a phone. The search box above filters the recent scripts by name and title page, and the gear opens App settings: Appearance (the theme, and which extensions' settings get a tab), Defaults (page size, cover fields and the save folder), Extensions and App (installing Flow). After New and Open come a sheet for each cloud provider an extension adds. New scripts begin with a title page containing every field Flow prints, to keep or delete. Defaults changes that for this device: the page size new scripts start at, and the text of each standard title page field after Title, each with a switch to leave it off. `{date}` and `{year}` fill in when a script is made, and empty fields are left off too. Core's `newScript(today, { cover, dimensions })` builds the text. With one place to open from, Open goes straight to its picker; with several, it asks which.
 
 Scripts autosave to IndexedDB on the device, so work survives closing the tab or losing the connection. The recent scripts are that local copy. **Save** writes to the file, and won't overwrite a file that changed elsewhere without asking. After the first visit, the whole app works offline, including PDF export.
 
@@ -202,31 +202,29 @@ Every script shows where it lives, its source, in the document pill and on its c
 | --- | --- |
 | **Temp** | Not in a file yet: only in this browser's storage, on this device |
 | **Local** | A file on this device |
-| **Cloud** | A cloud service, with its name, such as **Cloud · Proton Drive** |
+| **Cloud** | A cloud service, with its name, such as **Cloud · Example Drive** |
 
-App settings has a **Sources** page listing them, with **Connect** and **Disconnect** for cloud sources that need signing in. Open and the first Save say whether each choice is local or cloud. Storage options live in `packages/pwa/src/providers/`, as providers with the interface described in `providers/index.js`. Cloud sources come from extensions, through `flow.addSource`; [the sources guide](docs/extensions/sources.md) shows how to add one.
+Open on the home page goes straight to this device's files. **Defaults** in App settings has a **save folder**: choose one, and opening and saving start there, so a new script saves into it with a single Enter, while a script with a file of its own still saves beside it. It needs Chrome or Edge on a computer. Cloud providers come from extensions, through `flow.addSource`: each has a sheet of its own beside Open, with its icon, a **Connection** topic with **Connect** and **Disconnect** on its extension's settings page when it signs in, and a place in the first Save's choices, marked Cloud. Storage options live in `packages/pwa/src/providers/`, as providers with the interface described in `providers/index.js`; [the sources guide](docs/extensions/sources.md) shows how to add a cloud provider.
 
 | Provider | Opening | Saving |
 | --- | --- | --- |
 | This device, Chromium browsers | File picker | OS save dialog, opened in the file's folder with its name filled in |
 | This device, other browsers, including iOS | File picker | Downloads a copy, because these browsers can't choose a folder |
-| Proton Drive, an extension | File picker, in the Proton Drive app's synced folder | Into that folder, which the Proton Drive app syncs |
 
 ### Extensions
 
-Extensions add to Flow on this device. Each is a JSON manifest, with code for most apps. **Themes** add palettes to the theme chooser. **Apps** can add settings, commands in the Document menu with keyboard shortcuts, widgets in the editor's bars (along the bottom on either side, and in the top right corner), tabs beside Write, Outline and Read, and cloud sources. An extension someone adds starts turned on; those built into Flow start off. Each shows its own icon, or a jigsaw piece.
+Extensions add to Flow on this device. Each is a JSON manifest, with code for most apps. **Themes** add palettes to the theme chooser. **Apps** can add settings, commands in the Document menu with keyboard shortcuts, widgets in the editor's bars (along the bottom on either side, and in the top right corner), tabs beside Write, Outline and Read, and cloud providers. An extension someone adds starts turned on; those built into Flow start off. Each shows its own icon, or a jigsaw piece.
 
 App settings has an **Extensions** page listing apps and then themes, each with a switch, a **Settings** button for an app with settings, and **Remove** for one added from files. **Add extension** opens the file picker for a manifest `.json` and any `.js` files with it, which Flow checks before adding: theme colors have to be colors, icons only path data, ids can't clash, and anything wrong is explained under the button. Each app with settings that's on also gets a page after a rule at the bottom of the rail, which **Appearance**, under **Settings tabs**, can take out of the rail.
 
 **Code asks first.** An app's code runs inside Flow with everything Flow can do, so whenever files bring code, Flow shows **Do you trust this extension?**, naming it, its author and its files, before adding it, and again for every update. Cancel is the default. The code is kept in IndexedDB and loaded as modules when the extension is turned on; files import each other as `./name.js`. Code running on the page can also register an extension with `window.flowExtensions.register(manifest, activate)`.
 
-Three extensions are built in:
+Two extensions are built in:
 
 - **Vim lite** gives the editor a small set of Vim's keys. Normal, Insert, Visual and Visual line modes; the motions `h j k l w b e W B E 0 ^ $ gg G f F t T`, with counts; the operators `d c y` over any of them, and doubled for whole lines; and `i a I A o O x X s S D C Y p P u J r ~`, Ctrl+R to redo, and Escape or Ctrl+[ to leave a mode. A count before `i a I A o O` types what's typed that many times on leaving Insert, so `3ihey` then Escape gives `heyheyhey`. `/` and `?` search forward and back for words, ignoring case unless the search has a capital; `n` and `N` find the next and previous, coming round from the other end, and `*` and `#` find the word under the cursor. A widget just before undo and redo shows the mode, the keys of the command being typed, and what the last one did: while a search is typed the mode reads Search, with how many matches there are, and after it, which match it's on, such as Match 3 of 7. Tapping its mode switches between Normal and Insert, for screens with no Escape key. Its settings choose the mode a script opens in, a two-key chord such as `jk` that works like Escape, the block cursor and the widget. It's written only against the extension API, in `packages/pwa/src/extensions/vim-lite/`.
-- **Proton Drive** is a cloud source. Proton has no sign-in for apps like Flow yet, so it works through the folder the Proton Drive desktop app syncs: **Connect** on the Sources page chooses that folder, and scripts open from it and save into it, while files outside it are turned away. It needs Chrome or Edge on a computer.
 - **Typewriter** is a theme: black ink and a red ribbon on warm paper, with a charcoal dark version.
 
-**Writing one:** [the themes guide](docs/extensions/themes.md) covers palettes and their colors, [the apps guide](docs/extensions/apps.md) covers the manifest, icons, settings, commands, code and the API for tabs, widgets and keys, and [the sources guide](docs/extensions/sources.md) covers adding a cloud source.
+**Writing one:** [the themes guide](docs/extensions/themes.md) covers palettes and their colors, [the apps guide](docs/extensions/apps.md) covers the manifest, icons, settings, commands, code and the API for tabs, widgets and keys, and [the sources guide](docs/extensions/sources.md) covers adding a cloud provider.
 
 ### Deploying to GitHub Pages
 
