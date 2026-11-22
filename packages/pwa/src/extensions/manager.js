@@ -5,7 +5,7 @@
 // are linked beside it.
 
 import { button, icon, openModal, toggleSwitch } from '@flow/element/source';
-import { addExtension, checkExtension, listExtensions, removeExtension, setEnabled } from './host.js';
+import { addExtension, checkExtension, hasSettingsPage, listExtensions, removeExtension, setEnabled } from './host.js';
 import { sectionId } from './settings.js';
 import { h, toast } from '../ui.js';
 
@@ -29,7 +29,7 @@ function swatches(manifest) {
 
 function property({ manifest, source, enabled, error }, panel) {
   const { id, name, version, author, description, kind } = manifest;
-  const hasSettings = kind === 'app' && manifest.settings.length > 0;
+  const hasSettings = kind === 'app' && (manifest.settings.length > 0 || hasSettingsPage(id));
   let settings = null;
   const toggle = toggleSwitch({
     label: `Turn ${name} on`,
@@ -186,7 +186,7 @@ export function extensionsSection(panel) {
           {
             label: 'Writing extensions',
             keywords: 'write make author documentation guide help json manifest theme app',
-            description: 'How to make a theme, with its colors; how an app extension works; and how to add a cloud source.',
+            description: 'How to make a theme, with its colors; how an app extension works; and how to add a cloud provider.',
             control: h('div', { class: 'ext-guides' }, guide('Themes guide', 'themes.md'), guide('Apps guide', 'apps.md'), guide('Sources guide', 'sources.md')),
             wide: true,
           },

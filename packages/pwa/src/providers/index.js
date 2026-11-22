@@ -3,6 +3,8 @@
 //
 //   id, label, description
 //   kind                'local' for files on this device, or 'cloud' for a cloud service
+//   icon                optional: a name or { paths }, for a cloud provider's sheet on the home
+//                       page; an extension's own icon otherwise
 //   status()            { ok } or { ok: false, reason } if it can't be used right now
 //   open()              { name, text, ref }, or null if the user cancelled
 //   save(doc, options)  { name, ref } after writing to the doc's file, or null if the user
@@ -18,7 +20,8 @@
 //   connect()           signs in or sets up, resolving to connection(), or null if cancelled
 //   disconnect()        signs out or forgets the setup
 //
-// Flow connects before opening or saving with it, and App settings' Sources page offers both.
+// Flow connects before opening or saving with it, and the settings page of the extension that
+// adds it offers both. Each cloud provider has a sheet of its own on the home page, beside Open.
 //
 // A script that isn't in any file yet lives only in this browser's storage: its source is Temp.
 //

@@ -9,24 +9,30 @@
 
 const DB_NAME = 'flow';
 const STORE = 'docs';
+// Things for this device that local storage can't hold, such as the save folder's handle.
+const KEPT = 'kept';
 
 let dbPromise = null;
 
 function openDb() {
   dbPromise ??= new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE, { keyPath: 'id' });
+    const request = indexedDB.open(DB_NAME, 2);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(KEPT)) db.createObjectStore(KEPT);
+    };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
   return dbPromise;
 }
 
-async function run(mode, action) {
+async function run(mode, action, store = STORE) {
   const db = await openDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, mode);
-    const request = action(tx.objectStore(STORE));
+    const tx = db.transaction(store, mode);
+    const request = action(tx.objectStore(store));
     tx.oncomplete = () => resolve(request.result);
     tx.onerror = () => reject(tx.error);
   });
@@ -35,6 +41,11 @@ async function run(mode, action) {
 export const getDoc = (id) => run('readonly', (s) => s.get(id));
 export const putDoc = (doc) => run('readwrite', (s) => s.put(doc));
 export const deleteDoc = (id) => run('readwrite', (s) => s.delete(id));
+
+/** Something kept for this device under `key`, which can be anything IndexedDB holds. */
+export const getKept = (key) => run('readonly', (s) => s.get(key), KEPT);
+export const putKept = (key, value) => run('readwrite', (s) => s.put(value, key), KEPT);
+export const deleteKept = (key) => run('readwrite', (s) => s.delete(key), KEPT);
 
 export async function listDocs() {
   const docs = await run('readonly', (s) => s.getAll());

@@ -1,16 +1,17 @@
 // The app's own settings, which belong to this device rather than to any script: the theme, what
-// new scripts start with, which extension settings get a tab, the sources scripts can live in,
-// the extensions themselves, and installing Flow as an app. Each app extension that's on and has settings follows Flow's own
+// new scripts start with and where they're saved, which extension settings get a tab, the
+// extensions themselves, and installing Flow as an app. A cloud source connects on the settings
+// page of the extension that adds it. Each app extension that's on and has settings follows Flow's own
 // sections, after a rule. They open from the gear on the home page and from App settings in a
 // script's Document menu, and every change applies at once.
 
 import { button, openSettingsPanel, pageSizeSetting, PALETTES, toggleSwitch } from '@flow/element/source';
 import { DEFAULT_COVER } from '@flow/core';
 import { readDefaults, saveDefaults } from './defaults.js';
+import { saveFolderSetting } from './save-folder.js';
 import { themeControls } from './ui.js';
-import { getExtension, isEnabled, listExtensions, onExtensionsChange, setShowsInSettings, showsInSettings } from './extensions/host.js';
+import { getExtension, hasSettingsPage, isEnabled, listExtensions, onExtensionsChange, setShowsInSettings, showsInSettings } from './extensions/host.js';
 import { extensionsSection } from './extensions/manager.js';
-import { sourcesSection } from './sources-section.js';
 import { providers } from './providers/index.js';
 import { extensionSection, sectionId } from './extensions/settings.js';
 
@@ -116,6 +117,10 @@ function defaultsSection() {
         properties: [size.property],
       },
       {
+        label: 'Saving',
+        properties: [saveFolderSetting()],
+      },
+      {
         label: 'Cover page',
         properties: defaults.cover.map(fieldProperty),
       },
@@ -164,7 +169,7 @@ export function openAppSettings({ onClose, start } = {}) {
   let panel = null;
   let reopening = false;
   // Every app with settings has a section, kept out of the rail while it's off or hidden.
-  const apps = listExtensions().filter(({ manifest }) => manifest.kind === 'app' && manifest.settings.length);
+  const apps = listExtensions().filter(({ manifest }) => manifest.kind === 'app' && (manifest.settings.length || hasSettingsPage(manifest.id)));
   const extensionSections = apps.map(({ manifest }) => extensionSection(manifest, { hidden: !tabShown(manifest.id) }));
 
   const sourceCount = providers.length;
@@ -214,7 +219,6 @@ export function openAppSettings({ onClose, start } = {}) {
         }, settingsTabsTopic(apps, () => panel)],
       },
       defaultsSection(),
-      sourcesSection(),
       extensionsSection(() => panel),
       {
         id: 'app',

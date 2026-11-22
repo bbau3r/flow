@@ -22,7 +22,8 @@
 //                                   the bars when `widget` names a place
 //   flow.addTab(tab)                { id, label, icon, title, render(root, context) }, a tab
 //                                   beside Write, Outline and Read; see <flow-script> addWorkspace
-//   flow.addSource(provider)        a place to open and save scripts, as in providers/index.js
+//   flow.addSource(provider)        a place to open and save scripts, as in providers/index.js;
+//                                   one that connects gets Connect on the extension's settings page
 //   flow.onEditor(fn)               fn(script) for each open <flow-script>, which can call its
 //                                   addWidget and addEditorKeys; fn may return a cleanup
 //
@@ -231,7 +232,7 @@ async function activate(entry) {
 
 function start(entry) {
   const { manifest } = entry;
-  const active = { commands: new Set(), tabs: new Set(), editorHooks: new Set(), undo: [], attached: new Map() };
+  const active = { commands: new Set(), tabs: new Set(), sources: new Set(), editorHooks: new Set(), undo: [], attached: new Map() };
   entry.active = active;
   entry.error = '';
   if (manifest.kind === 'theme') {
@@ -275,11 +276,18 @@ function start(entry) {
     addCommand: (command) => listed(active.commands, { ...command }),
     addTab: (tab) => listed(active.tabs, { ...tab }),
     addSource: (provider) => {
+      // A source without an icon of its own shows the extension's, on its sheet on the home page.
+      if (provider && provider.icon == null) provider.icon = manifest.icon;
       const remove = addProvider(provider);
-      active.undo.push(remove);
+      active.sources.add(provider);
+      const take = () => {
+        remove();
+        active.sources.delete(provider);
+      };
+      active.undo.push(take);
       emit({ type: 'contributions', id: manifest.id });
       return () => {
-        remove();
+        take();
         emit({ type: 'contributions', id: manifest.id });
       };
     },
@@ -358,6 +366,15 @@ const activeEntries = () => [...entries.values()].filter((entry) => entry.active
 export const extensionCommands = () => activeEntries().flatMap((entry) => [...entry.active.commands].map((command) => ({ ...command, extension: entry.manifest })));
 
 /** Tabs from every extension that's on, as { extension, id, label, icon, title, render }. */
+/** The sources an extension has added while it's on, which its settings page lets connect. */
+export const extensionSources = (id) => [...(entries.get(id)?.active?.sources ?? [])];
+
+/** Whether an app has a settings page: settings of its own, or a source that connects. */
+export const hasSettingsPage = (id) => {
+  const entry = entries.get(id);
+  return entry?.manifest.kind === 'app' && (entry.manifest.settings.length > 0 || extensionSources(id).some((source) => source.connection));
+};
+
 export const extensionTabs = () => activeEntries().flatMap((entry) => [...entry.active.tabs].map((tab) => ({ ...tab, extension: entry.manifest })));
 
 /**

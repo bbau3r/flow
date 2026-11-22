@@ -6,7 +6,7 @@ import { renderHome } from './home.js';
 import { renderEditor } from './editor-view.js';
 import { currentTheme, toast } from './ui.js';
 import { openLaunchedFile } from './launch.js';
-import { startExtensions } from './extensions/host.js';
+import { onExtensionsChange, startExtensions } from './extensions/host.js';
 
 const app = document.getElementById('app');
 let leaveView = null;
@@ -29,6 +29,10 @@ document.body.classList.add('fl-desk');
 document.documentElement.dataset.theme = currentTheme();
 loadFonts();
 window.addEventListener('hashchange', () => route().catch((err) => toast(err.message)));
+// A cloud provider has a sheet on the home page while its extension is on, so the page follows.
+onExtensionsChange((change) => {
+  if (onHome() && ['enabled', 'added', 'removed', 'error'].includes(change.type)) route().catch((err) => toast(err.message));
+});
 // Provider availability depends on the connection, so keep the home page's cards current.
 for (const event of ['online', 'offline']) {
   window.addEventListener(event, () => { if (onHome()) route(); });

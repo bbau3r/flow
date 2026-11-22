@@ -1,9 +1,11 @@
 // An app extension's settings as a section of the settings panel, built from the settings its
 // manifest lists: a switch, a choice, text or a number each, grouped into the topics they name.
-// App settings shows it after its own sections, below a rule.
+// A cloud source the extension adds, when it connects, gets a topic of its own there too, with
+// Connect or Disconnect. App settings shows the section after its own, below a rule.
 
-import { toggleSwitch } from '@flow/element/source';
-import { setSetting, settingsOf } from './host.js';
+import { button, toggleSwitch } from '@flow/element/source';
+import { extensionSources, setSetting, settingsOf } from './host.js';
+import { h, toast } from '../ui.js';
 
 function control(manifest, setting, value) {
   const save = (next) => setSetting(manifest.id, setting.key, next);
@@ -36,11 +38,50 @@ function control(manifest, setting, value) {
 
 export const sectionId = (id) => `extension-${id}`;
 
-/** The section for an app's settings, or null for an app with none. */
+// A source's connection: who or where it's connected to, and the button that connects it or
+// lets go. An extension with one source calls it Connection, since its page has its name already.
+function sourceTopic(source, only) {
+  const account = h('p', { class: 'source-account', 'data-source': source.id });
+  const action = button({ label: 'Connect', cls: 'fl-btn-outline', attrs: { 'data-action': 'connect', 'data-source': source.id } });
+  const draw = () => {
+    const status = source.status();
+    const connection = source.connection();
+    action.disabled = !status.ok;
+    if (!status.ok) account.textContent = status.reason;
+    else account.textContent = connection?.connected ? `Connected${connection.account ? `: ${connection.account}` : ''}` : 'Not connected';
+    const label = connection?.connected ? 'Disconnect' : 'Connect';
+    action.lastChild.textContent = label;
+    action.setAttribute('aria-label', `${label} ${source.label}`);
+    action.title = `${label} ${source.label}`;
+  };
+  action.addEventListener('click', async () => {
+    try {
+      if (source.connection()?.connected) await source.disconnect();
+      else await source.connect();
+    } catch (err) {
+      toast(`${source.label}: ${err.message}`);
+    }
+    draw();
+  });
+  draw();
+  return {
+    label: only ? 'Connection' : source.label,
+    description: source.description,
+    properties: [{
+      label: 'Account',
+      keywords: 'cloud source connect sign in sign out account',
+      control: action,
+      below: account,
+    }],
+  };
+}
+
+/** The section for an app's settings, or null for an app with none and no source to connect. */
 export function extensionSection(manifest, { hidden = false } = {}) {
-  if (!manifest.settings?.length) return null;
+  const sources = extensionSources(manifest.id).filter((source) => source.connection);
+  if (!manifest.settings?.length && !sources.length) return null;
   const values = settingsOf(manifest.id);
-  const topics = [];
+  const topics = sources.map((source) => sourceTopic(source, sources.length === 1));
   for (const setting of manifest.settings) {
     let topic = topics.find(({ label }) => label === setting.topic);
     if (!topic) {
