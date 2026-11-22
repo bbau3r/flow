@@ -576,10 +576,10 @@ const CONTROL_TOKENS = {
   'danger-hover': 'var(--flow-danger)',
   // The pages: a hard shadow, offset and barely blurred, so it reads as paper on a desk.
   'page-shadow': '3px 4px 0.5px color-mix(in srgb, var(--flow-shadow) 65%, transparent)',
-  // The desk under them: a faint grain, and a soft wash of the theme's colors. Either can be
-  // set to none.
-  'desk-noise': `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.07'/%3E%3C/svg%3E")`,
-  'desk-gradient': 'linear-gradient(155deg, color-mix(in srgb, var(--flow-accent) 2%, transparent), transparent 55%, color-mix(in srgb, var(--flow-secondary) 1.5%, transparent))',
+  // The desk under them: a faint grain that only darkens, so the desk keeps apart from the paper
+  // in light and dark, and a barely-there wash of the theme's colors. Either can be set to none.
+  'desk-noise': `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='luminanceToAlpha'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.12'/%3E%3C/svg%3E")`,
+  'desk-gradient': 'linear-gradient(155deg, color-mix(in srgb, var(--flow-accent) 1%, transparent), transparent 55%, color-mix(in srgb, var(--flow-secondary) 0.75%, transparent))',
 };
 
 /** The token's value, falling back to its default when nobody has set it. */
