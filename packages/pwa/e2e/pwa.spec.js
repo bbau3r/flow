@@ -44,7 +44,7 @@ const fakePickers = () => {
   };
   window.pickerCalls = [];
   window.showOpenFilePicker = async (options) => {
-    window.pickerCalls.push({ kind: 'open', id: options.id });
+    window.pickerCalls.push({ kind: 'open', id: options.id, startInName: options.startIn?.name });
     return [await write('existing.fountain', 'INT. ROOM - DAY\r\n\r\nFrom disk.')];
   };
   window.showSaveFilePicker = async (options) => {
@@ -58,6 +58,7 @@ const fakePickers = () => {
     if (window.pickerCancels) throw new DOMException('cancelled', 'AbortError');
     return (await root()).getFileHandle(window.pickerChoice ?? options.suggestedName, { create: true });
   };
+  window.showDirectoryPicker = async () => (await root()).getDirectoryHandle('Scripts', { create: true });
 };
 
 test.describe('home page', () => {
@@ -374,7 +375,7 @@ test.describe('local files with direct saving', () => {
     await newScript(page);
     await fromMenu(page, 'home');
     await page.evaluate(() => new Promise((resolve) => {
-      const open = indexedDB.open('flow', 1);
+      const open = indexedDB.open('flow');
       open.onsuccess = () => {
         const store = open.result.transaction('docs', 'readwrite').objectStore('docs');
         store.getAll().onsuccess = (event) => {
@@ -421,6 +422,41 @@ test.describe('local files with direct saving', () => {
     await expect(page.locator('dialog')).toHaveCount(0);
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     expect(await page.evaluate(() => window.readFile('Untitled Screenplay.fountain'))).toContain('More.');
+  });
+
+  test('a save folder chosen in Defaults is where opening and saving start', async ({ page }) => {
+    await page.goto(HOME);
+    await page.locator('#app-settings').click();
+    const dialog = page.locator('dialog.fl-settings-dialog');
+    await dialog.locator('.fl-settings-rail').getByRole('button', { name: 'Defaults' }).click();
+    const shown = dialog.locator('[data-save-folder]');
+    await expect(shown).toContainText('None chosen');
+    await dialog.locator('#choose-save-folder').click();
+    await expect(shown).toHaveText('Saving in Scripts');
+    await page.keyboard.press('Escape');
+
+    // A new script's first save starts in it.
+    await page.locator('#new-script').click();
+    await expect(editor(page)).toBeVisible();
+    await page.keyboard.press('ControlOrMeta+s');
+    await expect(page.locator('.doc-state')).toHaveText('Saved');
+    const calls = await page.evaluate(() => window.pickerCalls);
+    expect(calls.at(-1)).toMatchObject({ kind: 'save', startInName: 'Scripts' });
+
+    // So does opening, and it lasts through a reload.
+    await page.goto(HOME);
+    await page.reload();
+    await page.locator('#open-script').click();
+    await expect(editor(page)).toBeVisible();
+    expect((await page.evaluate(() => window.pickerCalls)).at(-1)).toMatchObject({ kind: 'open', startInName: 'Scripts' });
+
+    // Cleared, the dialogs go back to where they were last left.
+    await page.goto(HOME);
+    await page.locator('#app-settings').click();
+    await dialog.locator('.fl-settings-rail').getByRole('button', { name: 'Defaults' }).click();
+    await expect(shown).toHaveText('Saving in Scripts');
+    await dialog.locator('#clear-save-folder').click();
+    await expect(shown).toContainText('None chosen');
   });
 
   test('cancelling the open picker stays home', async ({ page }) => {

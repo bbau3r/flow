@@ -1,6 +1,6 @@
 // The extension system: the Extensions page of App settings, extension settings after the rule,
 // theme extensions, extensions added from files, with or without code, or registered by code,
-// widgets, sources, and the built-in Vim lite and Proton Drive.
+// widgets, cloud providers, and the built-in Vim lite.
 
 import { test, expect } from '@playwright/test';
 
@@ -100,7 +100,7 @@ test.describe('extension settings in App settings', () => {
     await expect(rail(page).locator('.fl-settings-rule')).toBeVisible();
     // The rule comes after Flow's own sections and before the extension's.
     const order = await rail(page).locator(':scope > :not([hidden])').evaluateAll((nodes) => nodes.map((n) => n.getAttribute('data-tip') ?? 'rule'));
-    expect(order).toEqual(['Appearance', 'Defaults', 'Sources', 'Extensions', 'App', 'rule', 'Vim lite']);
+    expect(order).toEqual(['Appearance', 'Defaults', 'Extensions', 'App', 'rule', 'Vim lite']);
     await vimTab.click();
     await expect(settings(page).getByRole('heading', { name: 'Vim lite', exact: true })).toBeVisible();
 
@@ -268,9 +268,11 @@ test.describe('extensions registered by code', () => {
     await toggleFor(page, 'probe').check();
     await page.keyboard.press('Escape');
 
-    // Open now asks where, offering the new source.
-    await page.locator('#open-script').click();
-    await page.locator('[data-provider="probe-source"]').click();
+    // The cloud source has a sheet of its own beside Open, with the extension's icon.
+    const sheet = page.locator('.shelf [data-provider="probe-source"]');
+    await expect(sheet).toContainText('Probe drive');
+    await expect(sheet).toContainText('Cloud');
+    await sheet.click();
     await expect.poll(() => value(page)).toBe('INT. PROBE - DAY');
 
     await page.getByRole('tab', { name: 'Stats' }).click();
@@ -626,18 +628,6 @@ test.describe('widgets', () => {
   });
 });
 
-test.describe('sources', () => {
-  test('App settings lists where scripts can live: Temp, Local and Cloud', async ({ page }) => {
-    await page.goto(HOME);
-    await page.locator('#app-settings').click();
-    await rail(page).getByRole('button', { name: 'Sources' }).click();
-    const topics = await settings(page).locator('.fl-settings-section:not([hidden]) .fl-settings-topic-head').allTextContents();
-    expect(topics).toEqual(['Temp', 'Local', 'Cloud']);
-    await expect(settings(page).getByText('This device', { exact: true })).toBeVisible();
-    await expect(settings(page).getByText('No cloud sources')).toBeVisible();
-  });
-});
-
 test.describe('App settings on a small screen', () => {
   test('the theme modes fold into a dropdown when their labels don’t fit, and come back when they do', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -667,90 +657,78 @@ test.describe('App settings on a small screen', () => {
   });
 });
 
-test.describe('Proton Drive', () => {
-  // Stand-ins for the system's pickers, over the browser's private file system: a folder called
-  // Proton Drive, as the Proton Drive app keeps in sync, holding scene.fountain, and a file
-  // outside it. Everything after the pickers is the real API.
-  const fakeProton = () => {
-    const root = () => navigator.storage.getDirectory();
-    const folder = async () => (await root()).getDirectoryHandle('Proton Drive', { create: true });
-    const write = async (dir, name, text) => {
-      const handle = await dir.getFileHandle(name, { create: true });
-      const writable = await handle.createWritable();
-      await writable.write(text);
-      await writable.close();
-      return handle;
-    };
-    window.readProton = async (name) => (await (await (await folder()).getFileHandle(name)).getFile()).text();
-    window.showDirectoryPicker = async () => folder();
-    window.showOpenFilePicker = async () => [window.pickOutside
-      ? await write(await root(), 'elsewhere.fountain', 'INT. ELSEWHERE - DAY')
-      : await write(await folder(), 'scene.fountain', 'INT. CLOUD - DAY\n\nSynced.')];
-    window.showSaveFilePicker = async (options) => (await folder()).getFileHandle(options.suggestedName, { create: true });
-  };
-  test.beforeEach(({ page }) => page.addInitScript(fakeProton));
-
-  const connect = async (page) => {
-    await openExtensions(page);
-    await toggleFor(page, 'proton-drive').check();
-    await rail(page).getByRole('button', { name: 'Sources' }).click();
-    const account = settings(page).locator('.source-account[data-source="proton-drive"]');
-    await expect(account).toHaveText('Not connected');
-    await settings(page).locator('[data-action="connect"][data-source="proton-drive"]').click();
-    await expect(account).toHaveText('Connected: the Proton Drive folder');
-    await page.keyboard.press('Escape');
-  };
-
-  test('is built in and off, and turned on it’s a cloud source on the Sources page', async ({ page }) => {
-    await openExtensions(page);
-    await expect(toggleFor(page, 'proton-drive')).not.toBeChecked();
-    await rail(page).getByRole('button', { name: 'Sources' }).click();
-    await expect(settings(page).getByText('No cloud sources')).toBeVisible();
-    await page.keyboard.press('Escape');
-    await connect(page);
+test.describe('cloud providers', () => {
+  // A provider that has to be connected, as one that signs in would, and remembers it in its storage.
+  const register = () => window.flowExtensions.register({
+    id: 'sky', kind: 'app', name: 'Sky Drive', icon: { paths: ['M7 18a4.5 4.5 0 0 1-.5-9 6 6 0 0 1 11.5 1.5A3.75 3.75 0 0 1 17.5 18z'] },
+  }, (flow) => {
+    let account = null;
+    flow.storage.get('account').then((saved) => { account = saved ?? null; });
+    flow.addSource({
+      id: 'sky', kind: 'cloud', label: 'Sky Drive', description: 'Scripts in the sky',
+      status: () => ({ ok: true }),
+      connection: () => ({ connected: !!account, account: account ?? '' }),
+      connect: async () => {
+        account = 'writer@example.com';
+        await flow.storage.set('account', account);
+        return { connected: true, account };
+      },
+      disconnect: async () => {
+        account = null;
+        await flow.storage.delete('account');
+      },
+      open: async () => ({ name: 'sky.fountain', text: 'EXT. SKY - DAY', ref: {} }),
+      save: async () => null, saveAs: async () => null, saveHint: () => 'Saves to the sky.', location: () => '',
+    });
   });
 
-  test('opens from its folder and saves back to it, shown as Cloud · Proton Drive', async ({ page }) => {
-    await connect(page);
-    await page.locator('#open-script').click();
-    // With two sources, Open asks which, saying whether each is local or cloud.
-    const card = page.locator('[data-provider="proton-drive"]');
-    await expect(card).toContainText('Cloud');
-    await card.click();
-    await expect.poll(() => value(page)).toBe('INT. CLOUD - DAY\n\nSynced.');
-    await expect(page.locator('.doc-where')).toHaveText('Cloud · Proton Drive · scene.fountain');
-    await page.locator('flow-script').evaluate((el) => el.selectText(2, 7, 7));
-    await page.keyboard.type(' Again');
-    await expect(page.locator('.doc-state')).toHaveText('Unsaved changes');
-    await page.keyboard.press('ControlOrMeta+s');
-    await expect(page.locator('.doc-state')).toHaveText('Saved');
-    expect(await page.evaluate(() => window.readProton('scene.fountain'))).toBe('INT. CLOUD - DAY\n\nSynced. Again');
+  async function turnOnSky(page) {
     await page.goto(HOME);
-    await expect(page.locator('.recent-row', { hasText: 'scene.fountain' }).locator('.recent-source')).toHaveText('Cloud · Proton Drive');
-  });
-
-  test('connects on first use, and turns away a file outside its folder', async ({ page }) => {
-    await openExtensions(page);
-    await toggleFor(page, 'proton-drive').check();
-    await page.keyboard.press('Escape');
-    await page.evaluate(() => { window.pickOutside = true; });
-    await page.locator('#open-script').click();
-    await page.locator('[data-provider="proton-drive"]').click();
-    await expect(page.locator('#toast')).toContainText('isn’t in your Proton Drive folder');
-    await expect(page.locator('#new-script')).toBeVisible();
-    // Choosing the folder on the way connected it.
+    await page.evaluate(register);
     await page.locator('#app-settings').click();
-    await rail(page).getByRole('button', { name: 'Sources' }).click();
-    await expect(settings(page).locator('.source-account[data-source="proton-drive"]')).toHaveText('Connected: the Proton Drive folder');
+    await rail(page).getByRole('button', { name: 'Extensions', exact: true }).click();
+    await toggleFor(page, 'sky').check();
+  }
+
+  test('connect on their extension’s own settings page, not a page of sources', async ({ page }) => {
+    await turnOnSky(page);
+    await expect(rail(page).getByRole('button', { name: 'Sources' })).toHaveCount(0);
+    // Its settings page has its connection, though the extension has no settings of its own.
+    const tab = rail(page).getByRole('button', { name: 'Sky Drive' });
+    await expect(tab).toBeVisible();
+    await tab.click();
+    await expect(settings(page).getByRole('heading', { name: 'Sky Drive', exact: true })).toBeVisible();
+    const account = settings(page).locator('.source-account[data-source="sky"]');
+    await expect(account).toHaveText('Not connected');
+    await settings(page).getByRole('button', { name: 'Connect Sky Drive' }).click();
+    await expect(account).toHaveText('Connected: writer@example.com');
+    await settings(page).getByRole('button', { name: 'Disconnect Sky Drive' }).click();
+    await expect(account).toHaveText('Not connected');
   });
 
-  test('a new script saves into the folder as a cloud script', async ({ page }) => {
-    await connect(page);
-    await page.locator('#new-script').click();
-    await expect(editor(page)).toBeVisible();
-    await page.keyboard.press('ControlOrMeta+s');
-    await page.locator('dialog.fl-dialog .card', { hasText: 'Proton Drive' }).click();
-    await expect(page.locator('.doc-where')).toHaveText('Cloud · Proton Drive · Untitled Screenplay.fountain');
-    expect(await page.evaluate(() => window.readProton('Untitled Screenplay.fountain'))).toMatch(/^Title:/);
+  test('have a sheet beside Open, with their icon, which connects first and then opens', async ({ page }) => {
+    await turnOnSky(page);
+    await page.keyboard.press('Escape');
+    const sheet = page.locator('.shelf [data-provider="sky"]');
+    await expect(sheet).toContainText('Sky Drive');
+    await expect(sheet.locator('.tile-face path')).toHaveAttribute('d', /^M7 18a4.5/);
+    // Open stays this device's own.
+    await expect(page.locator('#open-script')).toContainText('From this device');
+    await sheet.click();
+    await expect.poll(() => value(page)).toBe('EXT. SKY - DAY');
+    await expect(page.locator('.doc-where')).toHaveText('Cloud · Sky Drive');
+    // Opening connected it. (A reload would lose an extension registered by code.)
+    await docPill(page).click();
+    await docMenu(page).locator('#home').click();
+    await page.locator('#app-settings').click();
+    await rail(page).getByRole('button', { name: 'Sky Drive' }).click();
+    await expect(settings(page).locator('.source-account[data-source="sky"]')).toHaveText('Connected: writer@example.com');
+  });
+
+  test('come and go from the home page with their extension', async ({ page }) => {
+    await turnOnSky(page);
+    await expect(page.locator('.shelf [data-provider="sky"]')).toBeVisible();
+    await toggleFor(page, 'sky').uncheck();
+    await expect(page.locator('.shelf [data-provider="sky"]')).toHaveCount(0);
   });
 });
