@@ -1,8 +1,9 @@
 // The Extensions page of App settings: every extension Flow knows, apps and then themes, each
 // with a switch to turn it on, a button that turns to its settings if it has any, and Remove for
-// one added from a file. Add extension takes a JSON file, or its text pasted in.
+// one added from a file. Add extension opens the file picker for a JSON file, and the guides to
+// writing one are linked beside it.
 
-import { button, icon, openModal, toggleSwitch } from '@flow/element/source';
+import { button, icon, toggleSwitch } from '@flow/element/source';
 import { addExtension, listExtensions, removeExtension, setEnabled } from './host.js';
 import { sectionId } from './settings.js';
 import { h, toast } from '../ui.js';
@@ -78,41 +79,38 @@ function property({ manifest, source, enabled, error }, panel) {
   };
 }
 
-export function openAddDialog() {
+// The guides to writing one, kept with the code.
+const GUIDES = 'https://github.com/bbau3r/flow/blob/main/docs/extensions';
+
+// Adding goes straight to the system's file picker. What's wrong with a file shows under the
+// button; once it's added, App settings reopens with it listed.
+function addControls() {
   const message = h('p', { class: 'ext-add-error', role: 'alert' });
-  const pasted = h('textarea', { class: 'ext-paste', rows: '8', spellcheck: 'false', 'aria-label': 'Extension JSON', placeholder: '{ "id": "my-theme", "kind": "theme", … }' });
-  const tryAdd = (json) => {
-    try {
-      const manifest = addExtension(json);
-      modal.close();
-      toast(`Added ${manifest.name}. Turn it on when you’re ready.`);
-    } catch (err) {
-      message.textContent = err.message;
-    }
-  };
-  const file = h('input', { type: 'file', accept: '.json,application/json', hidden: true });
+  const file = h('input', { type: 'file', accept: '.json,application/json', hidden: true, 'aria-label': 'Extension file' });
   file.addEventListener('change', async () => {
     const chosen = file.files?.[0];
     file.value = '';
-    if (chosen) tryAdd(await chosen.text());
+    if (!chosen) return;
+    message.textContent = '';
+    try {
+      const manifest = addExtension(await chosen.text());
+      toast(`Added ${manifest.name}. Turn it on when you’re ready.`);
+    } catch (err) {
+      message.textContent = `${chosen.name}: ${err.message}`;
+    }
   });
-  const modal = openModal(document.body, {
-    title: 'Add extension',
-    icon: 'extensions',
-    body: [
-      h('p', { class: 'ext-add-note' }, 'An extension is a JSON file: a theme, or an app whose commands type text. Flow checks it before adding it, and it starts turned off.'),
-      button({ label: 'Choose a file', icon: 'upload', cls: 'fl-btn-outline', attrs: { id: 'extension-file' }, onClick: () => file.click() }),
-      file,
-      h('label', { class: 'ext-paste-label' }, 'Or paste its JSON', pasted),
-      message,
-    ],
-    actions: [
-      button({ label: 'Cancel', cls: 'fl-btn-outline', onClick: () => modal.close() }),
-      button({ label: 'Add', cls: 'fl-btn-primary', attrs: { id: 'extension-add' }, onClick: () => tryAdd(pasted.value) }),
-    ],
-  });
-  return modal;
+  const add = button({ label: 'Add extension', icon: 'upload', cls: 'fl-btn-primary', attrs: { id: 'add-extension' }, onClick: () => file.click() });
+  return { control: [add, file], message };
 }
+
+const guide = (label, page) => button({
+  label,
+  title: `${label}, on GitHub`,
+  icon: 'info',
+  cls: 'fl-btn-outline',
+  href: `${GUIDES}/${page}`,
+  attrs: { target: '_blank', rel: 'noopener', 'data-guide': page },
+});
 
 /** The Extensions section for App settings. `panel()` is the open panel, for turning pages. */
 export function extensionsSection(panel) {
@@ -121,6 +119,7 @@ export function extensionsSection(panel) {
   const apps = group('app');
   const themes = group('theme');
   const none = (label) => [{ label, description: 'Add one below.', control: null }];
+  const adding = addControls();
   return {
     id: 'extensions',
     label: 'Extensions',
@@ -130,12 +129,21 @@ export function extensionsSection(panel) {
       { label: 'Themes', properties: themes.length ? themes : none('No theme extensions') },
       {
         label: 'Add Custom',
-        properties: [{
-          label: 'Add extension',
-          keywords: 'install add import json file extension theme',
-          description: 'Apps can add commands, tabs, places to open scripts from, and bubbles along the bottom of the editor. Themes add palettes to the theme chooser.',
-          control: button({ label: 'Add extension', icon: 'plus', cls: 'fl-btn-primary', attrs: { id: 'add-extension' }, onClick: openAddDialog }),
-        }],
+        properties: [
+          {
+            label: 'Add extension',
+            keywords: 'install add import json file extension theme',
+            description: 'Choose an extension’s JSON file. Flow checks it before adding it, and it starts turned off.',
+            control: adding.control,
+            below: adding.message,
+          },
+          {
+            label: 'Writing extensions',
+            keywords: 'write make author documentation guide help json manifest theme app',
+            description: 'How to make a theme, with its colors, and how an app extension works.',
+            control: [guide('Themes guide', 'themes.md'), guide('Apps guide', 'apps.md')],
+          },
+        ],
       },
     ],
   };

@@ -110,11 +110,18 @@ export function setEnabled(id, on) {
   emit({ type: 'enabled', id });
 }
 
-/** Adds an extension from the text of a JSON file. Throws an error that says what's wrong. */
+/**
+ * Adds an extension from the text of a JSON file. Throws an error that says what's wrong. A file
+ * is only ever read as JSON: no code comes with it, so an app from a file has to have commands
+ * that type text, or it would do nothing.
+ */
 export function addExtension(json) {
   const manifest = readManifest(json);
   const existing = entries.get(manifest.id);
   if (existing && existing.source !== 'added') throw new Error(`Flow already has an extension called "${manifest.id}".`);
+  if (manifest.kind === 'app' && !manifest.commands.length) {
+    throw new Error('This app has nothing Flow can run from a file. Flow doesn’t load code from files, so an app added this way needs commands that type text. The Apps guide explains more.');
+  }
   if (existing) deactivate(existing);
   add(manifest, 'added');
   store.added = [...store.added.filter((saved) => saved?.id !== manifest.id), manifest];

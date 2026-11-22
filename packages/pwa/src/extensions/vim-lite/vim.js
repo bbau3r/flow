@@ -70,6 +70,8 @@ export function createVim({ options, onStatus }) {
   let cursor = null; // Visual mode's moving end; the other modes use the editor's own cursor
   let column = null; // the column j and k try to keep
   let lastInsert = { key: '', at: 0 };
+  // A count before i, a, I, A, o or O, kept until Insert is left.
+  let insertRepeat = null;
   let text = null;
 
   const visual = () => mode === 'visual' || mode === 'visual-line';
@@ -288,14 +290,43 @@ export function createVim({ options, onStatus }) {
 
   function enterInsert(at) {
     if (at) text.setCursor(at);
+    insertRepeat = null;
     mode = 'insert';
     anchor = null;
     cursor = null;
     caret();
   }
 
+  // Where `chunk` ends when it goes in at `at`.
+  const endOf = (at, chunk) => {
+    const parts = chunk.split('\n');
+    return parts.length > 1 ? { line: at.line + parts.length - 1, ch: parts.at(-1).length } : { line: at.line, ch: at.ch + chunk.length };
+  };
+
+  // Types a counted insert's text the rest of its times: 3ihey gives heyheyhey, and 3ofoo gives
+  // three lines of foo. A cursor moved back before where typing began repeats nothing.
+  function repeatInsert() {
+    const repeat = insertRepeat;
+    insertRepeat = null;
+    if (!repeat || mode !== 'insert') return;
+    const end = text.cursor();
+    if (before(end, repeat.from)) return;
+    if (repeat.lines) {
+      const typed = linesOf(repeat.from.line, end.line);
+      const at = { line: end.line, ch: len(end.line) };
+      const rows = end.line - repeat.from.line + 1;
+      text.replace(at, at, `\n${typed}`.repeat(repeat.count - 1), { line: end.line + rows * (repeat.count - 1), ch: end.ch });
+      return;
+    }
+    const typed = between(repeat.from, end);
+    if (!typed) return;
+    const chunk = typed.repeat(repeat.count - 1);
+    text.replace(end, end, chunk, endOf(end, chunk));
+  }
+
   // Leaving Insert steps back onto the last character typed, as in Vim.
   function enterNormal() {
+    repeatInsert();
     const pos = visual() ? cursor : text.cursor();
     const back = mode === 'insert' && pos.ch > 0;
     mode = 'normal';
@@ -413,6 +444,13 @@ export function createVim({ options, onStatus }) {
     return done('Replace character');
   }
 
+  // With a count, what's typed goes in that many times, once Insert is left.
+  function countedInsert(at, name, count, lines = false) {
+    enterInsert(at);
+    if (count > 1) insertRepeat = { count, from: text.cursor(), lines };
+    return done(count > 1 ? `${name}, ${count} times` : name);
+  }
+
   function normalKey(key, count) {
     const pos = text.cursor();
     const lineEnd = { line: pos.line, ch: len(pos.line) };
@@ -420,18 +458,16 @@ export function createVim({ options, onStatus }) {
     const chars = { line: pos.line, ch: Math.min(len(pos.line), pos.ch + count) };
     column = null;
     switch (key) {
-      case 'i': enterInsert(); return done('Insert before');
-      case 'a': enterInsert({ line: pos.line, ch: Math.min(pos.ch + 1, len(pos.line)) }); return done('Insert after');
-      case 'I': enterInsert({ line: pos.line, ch: firstNonBlank(pos.line) }); return done('Insert at line start');
-      case 'A': enterInsert(lineEnd); return done('Insert at line end');
+      case 'i': return countedInsert(null, 'Insert before', count);
+      case 'a': return countedInsert({ line: pos.line, ch: Math.min(pos.ch + 1, len(pos.line)) }, 'Insert after', count);
+      case 'I': return countedInsert({ line: pos.line, ch: firstNonBlank(pos.line) }, 'Insert at line start', count);
+      case 'A': return countedInsert(lineEnd, 'Insert at line end', count);
       case 'o':
         text.replace(lineEnd, lineEnd, '\n', { line: pos.line + 1, ch: 0 });
-        enterInsert();
-        return done('Open line below');
+        return countedInsert(null, 'Open line below', count, true);
       case 'O':
         text.replace({ line: pos.line, ch: 0 }, { line: pos.line, ch: 0 }, '\n', { line: pos.line, ch: 0 });
-        enterInsert();
-        return done('Open line above');
+        return countedInsert(null, 'Open line above', count, true);
       case 'x':
         if (len(pos.line)) operate('d', pos, chars);
         return done('Delete character');
