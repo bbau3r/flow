@@ -1,0 +1,47 @@
+{
+  "id": "vim-lite",
+  "kind": "app",
+  "name": "Vim lite",
+  "version": "1.0.0",
+  "author": "Flow",
+  "icon": "vim",
+  "description": "A small set of Vim's keys for writing: Normal, Insert and Visual modes, motions, operators, counts and a register. A bubble beside undo and redo shows the mode and what each command just did.",
+  "settings": [
+    {
+      "key": "startMode",
+      "type": "choice",
+      "topic": "Modes",
+      "label": "Start in",
+      "default": "normal",
+      "options": [
+        { "value": "normal", "label": "Normal" },
+        { "value": "insert", "label": "Insert" }
+      ],
+      "description": "The mode a script opens in."
+    },
+    {
+      "key": "chord",
+      "type": "text",
+      "topic": "Modes",
+      "label": "Leave Insert with",
+      "default": "",
+      "description": "Two keys typed quickly, such as jk, that work like Escape. Leave it empty to use only Escape."
+    },
+    {
+      "key": "blockCursor",
+      "type": "boolean",
+      "topic": "Display",
+      "label": "Block cursor",
+      "default": true,
+      "description": "Outside Insert mode, draws the cursor over the character it's on."
+    },
+    {
+      "key": "bubble",
+      "type": "boolean",
+      "topic": "Display",
+      "label": "Mode bubble",
+      "default": true,
+      "description": "Shows the mode, the keys typed and what they did, beside undo and redo. Tap its mode to switch between Normal and Insert."
+    }
+  ]
+}

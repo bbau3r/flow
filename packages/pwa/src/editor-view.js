@@ -1,9 +1,17 @@
+// The editor page, at #/edit/<id>: one script in a <flow-script>, with the app's parts around it.
+// It fills the element's slots and Document menu, autosaves, saves to files through providers,
+// and keeps the tab in the address. Extensions that are on reach the script from here: their
+// tabs join Write, Outline and Read, their commands join the Document menu, and their editor
+// hooks run on the script.
+
 import { button, openModal, tabs } from '@flow/element/source';
 import { parse, scriptTitle } from '@flow/core';
 import { putDoc } from './store.js';
 import { getProvider, providers } from './providers/index.js';
 import { currentTheme, h, themeControls, toast } from './ui.js';
 import { openAppSettings } from './app-settings.js';
+import { attachEditor, extensionCommands, extensionTabs, onExtensionsChange } from './extensions/host.js';
+import { matchesShortcut, shortcutLabel } from './extensions/shortcuts.js';
 
 const AUTOSAVE_DELAY_MS = 300;
 const SCALE_KEY = 'flow-scale';
@@ -39,19 +47,36 @@ function chooseProvider() {
   });
 }
 
+// The tabs: Flow's own, then each one an extension adds, named in the address by its
+// extension's id and its own.
+const OWN_TABS = [
+  { id: 'write', label: 'Write', icon: 'write' },
+  { id: 'outline', label: 'Outline', icon: 'outline', title: 'Plan the script with acts, sequences and synopses' },
+  { id: 'read', label: 'Read', icon: 'read', title: 'The pages as they print, with editing off' },
+];
+
+const tabList = () => [
+  ...OWN_TABS,
+  ...extensionTabs().map((tab) => ({
+    id: `${tab.extension.id}-${tab.id}`,
+    label: tab.label,
+    icon: tab.icon || tab.extension.icon,
+    title: tab.title,
+    render: tab.render,
+  })),
+];
+
 // The tab lives in the address as #/edit/<id>?tab=outline or ?tab=read, so reloading or going
 // back keeps it. Write is the default and adds nothing.
-const TABS = ['Write', 'Outline', 'Read'];
-
 const tabInAddress = () => {
   const tab = new URLSearchParams(location.hash.split('?')[1]).get('tab');
-  return TABS.find((name) => name.toLowerCase() === tab) ?? 'Write';
+  return tabList().find(({ id }) => id === tab)?.id ?? 'write';
 };
 
-const setTabInAddress = (tab) => {
+const setTabInAddress = (id) => {
   const [route] = location.hash.split('?');
   // Replacing the entry doesn't fire hashchange, which would reopen the script.
-  history.replaceState(history.state, '', tab === 'Write' ? route : `${route}?tab=${tab.toLowerCase()}`);
+  history.replaceState(history.state, '', id === 'write' ? route : `${route}?tab=${encodeURIComponent(id)}`);
 };
 
 const readStored = (key) => {
@@ -73,8 +98,7 @@ const store = (key, value) => {
 
 export function renderEditor(root, doc) {
   const script = document.createElement('flow-script');
-  const openTab = tabInAddress();
-  script.setAttribute('workspace', openTab.toLowerCase());
+  script.setAttribute('workspace', tabInAddress());
   script.setAttribute('theme', currentTheme());
   const scale = readStored(SCALE_KEY);
   if (scale) script.setAttribute('scale', scale);
@@ -155,7 +179,23 @@ export function renderEditor(root, doc) {
     })();
   };
 
+  // An extension's command runs on this script, and anything it throws is told rather than lost.
+  const runCommand = (command) => {
+    try {
+      const result = command.run({ script });
+      if (result && typeof result.catch === 'function') result.catch((err) => toast(`${command.extension.name}: ${err.message}`));
+    } catch (err) {
+      toast(`${command.extension.name}: ${err.message}`);
+    }
+  };
+
   const onKeyDown = (event) => {
+    const command = extensionCommands().find(({ shortcut }) => matchesShortcut(event, shortcut));
+    if (command) {
+      event.preventDefault();
+      runCommand(command);
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault();
       if (event.shiftKey) saveAs();
@@ -196,7 +236,7 @@ export function renderEditor(root, doc) {
   window.addEventListener('flow-theme', onTheme);
   refreshHeader();
 
-  script.menuItems = [
+  const ownMenu = [
     [{ label: 'Home', title: 'Back to all scripts', icon: 'home', attrs: { id: 'home' }, onClick: () => { location.hash = '#/'; } }],
     [
       { label: 'Save', title: 'Save (Ctrl/Cmd+S)', icon: 'save', shortcut: SAVE_KEY, attrs: { id: 'save' }, onClick: save },
@@ -209,35 +249,81 @@ export function renderEditor(root, doc) {
       { label: 'App settings', title: 'Settings for Flow on this device', icon: 'settings', attrs: { id: 'app-settings' }, onClick: () => openAppSettings({ onClose: () => script.focus() }) },
     ],
   ];
-  const workspaceTabs = tabs({
-    label: 'Workspace',
-    attrs: { slot: 'tabs' },
-    onSelect: (tab) => {
-      script.setAttribute('workspace', tab.toLowerCase());
-      setTabInAddress(tab);
-    },
-  }, [
-    { label: 'Write', icon: 'write', selected: openTab === 'Write' },
-    { label: 'Outline', icon: 'outline', title: 'Plan the script with acts, sequences and synopses', selected: openTab === 'Outline' },
-    { label: 'Read', icon: 'read', title: 'The pages as they print, with editing off', selected: openTab === 'Read' },
-  ]);
-  // The outline can send the writer to Write or Read itself.
+  // Extensions' commands come last, as a group of their own.
+  const drawMenu = () => {
+    const commands = extensionCommands().map((command) => ({
+      label: command.label,
+      title: command.title || `${command.label} (${command.extension.name})`,
+      icon: command.icon || command.extension.icon,
+      shortcut: shortcutLabel(command.shortcut),
+      attrs: { 'data-command': `${command.extension.id}.${command.id}` },
+      onClick: () => runCommand(command),
+    }));
+    script.menuItems = commands.length ? [...ownMenu, commands] : ownMenu;
+  };
+
+  // Extension tabs are added to the element as they come and taken away as they go. Redrawing
+  // leaves alone any that are still there, so a tab that's open stays open.
+  const added = new Map();
+  let shownTabs = [];
+  let workspaceTabs = null;
+  const drawTabs = () => {
+    shownTabs = tabList();
+    for (const [id, entry] of added) {
+      if (!shownTabs.some((tab) => tab.id === id && tab.render === entry.render)) {
+        added.delete(id);
+        entry.remove();
+      }
+    }
+    for (const tab of shownTabs.filter(({ render, id }) => render && !added.has(id))) {
+      try {
+        added.set(tab.id, { render: tab.render, remove: script.addWorkspace({ id: tab.id, render: tab.render }) });
+      } catch (err) {
+        toast(err.message);
+      }
+    }
+    // A tab the element turned down isn't offered.
+    shownTabs = shownTabs.filter((tab) => !tab.render || added.has(tab.id));
+    const current = script.workspace;
+    const node = tabs({
+      label: 'Workspace',
+      attrs: { slot: 'tabs' },
+      onSelect: (label) => {
+        const tab = shownTabs.find((each) => each.label === label);
+        script.setAttribute('workspace', tab.id);
+        setTabInAddress(tab.id);
+      },
+    }, shownTabs.map((tab) => ({ label: tab.label, icon: tab.icon, title: tab.title, selected: tab.id === current })));
+    if (workspaceTabs) workspaceTabs.replaceWith(node);
+    else script.append(node);
+    workspaceTabs = node;
+  };
+
+  // The outline, or an extension's tab going away, can move the element to another tab itself.
   script.addEventListener('flow-workspace', (event) => {
-    const tab = event.detail.workspace.replace(/^./, (c) => c.toUpperCase());
-    workspaceTabs.selectTab(tab);
-    setTabInAddress(tab);
+    const { workspace } = event.detail;
+    const tab = shownTabs.find(({ id }) => id === workspace);
+    if (tab) workspaceTabs?.selectTab(tab.label);
+    setTabInAddress(workspace);
   });
-  script.append(
-    h('span', { class: 'doc', slot: 'document' }, name, h('span', { class: 'doc-meta' }, date, where, state)),
-    workspaceTabs,
-  );
+  script.append(h('span', { class: 'doc', slot: 'document' }, name, h('span', { class: 'doc-meta' }, date, where, state)));
+  drawMenu();
+  drawTabs();
 
   root.replaceChildren(h('div', { class: 'editor' }, script));
+  const detach = attachEditor(script);
+  const stopListening = onExtensionsChange((change) => {
+    if (change.type === 'setting' || change.type === 'layout') return;
+    drawMenu();
+    drawTabs();
+  });
 
   return () => {
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('pagehide', onPageHide);
     window.removeEventListener('flow-theme', onTheme);
+    stopListening();
+    detach();
     if (timer) persist();
   };
 }

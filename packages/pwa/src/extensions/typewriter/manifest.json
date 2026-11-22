@@ -1,0 +1,45 @@
+{
+  "id": "typewriter",
+  "kind": "theme",
+  "name": "Typewriter",
+  "version": "1.0.0",
+  "author": "Flow",
+  "description": "Black ink and a red ribbon on warm off-white paper, with a dark version in charcoal. Adds the Typewriter palette to the theme chooser.",
+  "palettes": {
+    "typewriter": {
+      "label": "Typewriter",
+      "light": {
+        "desk": "#e4e1da",
+        "paper": "#faf8f3",
+        "ink": "#1f1d1a",
+        "muted": "#5c5750",
+        "accent": "#a8322a",
+        "accent-ink": "#faf8f3",
+        "secondary": "#2f4f6f",
+        "secondary-ink": "#faf8f3",
+        "rule": "#d3cec4",
+        "ribbon-bg": "#f2efe8",
+        "ribbon-ink": "#1f1d1a",
+        "bubble-bg": "#ece3d6",
+        "bubble-ink": "#3a2f26",
+        "shadow": "rgb(40 34 26 / 0.22)"
+      },
+      "dark": {
+        "desk": "#1a1a19",
+        "paper": "#252523",
+        "ink": "#e8e5df",
+        "muted": "#aaa59c",
+        "accent": "#e2766b",
+        "accent-ink": "#252523",
+        "secondary": "#93b2d3",
+        "secondary-ink": "#252523",
+        "rule": "#3c3b38",
+        "ribbon-bg": "#1f1f1d",
+        "ribbon-ink": "#e8e5df",
+        "bubble-bg": "#3d2c29",
+        "bubble-ink": "#f0dfdb",
+        "shadow": "rgb(0 0 0 / 0.6)"
+      }
+    }
+  }
+}

@@ -307,6 +307,46 @@ h2 {
   .home-search:focus-within, .home-search.fl-search-filled { flex: 1; width: auto; padding: 0 14px; gap: 8px; }
 }
 
+/* The Extensions page of App settings: under each extension's name and switch, what it is. */
+.ext-details { display: flex; flex-direction: column; gap: 8px; }
+
+.ext-meta { display: flex; align-items: center; gap: 6px; color: var(--flow-muted); font-size: 12.5px; }
+
+.ext-meta .fl-svg { width: 1.2em; height: 1.2em; color: var(--flow-accent); }
+
+.ext-desc { margin: 0; font-size: 13.5px; }
+
+.ext-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.ext-swatch { display: inline-flex; gap: 3px; padding: 5px 8px; border: 1px solid; border-radius: 999px; }
+
+.ext-dot { width: 12px; height: 12px; border-radius: 50%; }
+
+.ext-error, .ext-add-error { margin: 0; color: var(--flow-danger); font-size: 13px; }
+
+.ext-add-error { margin-top: 10px; }
+
+.ext-add-error:empty { display: none; }
+
+.ext-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.ext-remove:hover:not(:disabled) { color: var(--flow-danger); }
+
+.ext-add-note { margin: 0 0 12px; }
+
+.ext-paste-label { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; font-weight: 500; }
+
+.ext-paste {
+  width: 100%;
+  padding: 8px;
+  color: var(--flow-ink);
+  background: var(--flow-paper);
+  border: 1px solid var(--flow-rule);
+  border-radius: 6px;
+  font: 12.5px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+  resize: vertical;
+}
+
 /* Editor */
 .editor { display: flex; flex-direction: column; height: 100dvh; }
 
