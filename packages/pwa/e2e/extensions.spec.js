@@ -166,18 +166,19 @@ test.describe('extensions added from JSON', () => {
     id: 'snippets', kind: 'app', name: 'Snippets',
     commands: [{ id: 'interior', label: 'Insert INT.', shortcut: 'Mod+Shift+1', insert: 'INT. ' }],
   });
-  const modal = (page) => page.locator('dialog.fl-dialog');
+  const fileInput = (page) => settings(page).locator('input[type="file"]');
+  const error = (page) => settings(page).locator('.ext-add-error');
 
-  async function add(page, json) {
+  // Add extension opens the system's file picker; choosing a file adds it.
+  async function add(page, json, name = 'extension.json') {
     await openExtensions(page);
+    const chooser = page.waitForEvent('filechooser');
     await settings(page).locator('#add-extension').click();
-    await modal(page).getByRole('textbox', { name: 'Extension JSON' }).fill(json);
-    await modal(page).locator('#extension-add').click();
+    await (await chooser).setFiles({ name, mimeType: 'application/json', buffer: Buffer.from(json) });
   }
 
   test('a theme is checked, added off, and can be removed', async ({ page }) => {
-    await add(page, THEME);
-    await expect(modal(page)).toHaveCount(0);
+    await add(page, THEME, 'mint.json');
     await expect(details(page, 'mint')).toBeVisible();
     await expect(toggleFor(page, 'mint')).not.toBeChecked();
     await expect(details(page, 'mint')).toContainText('Added from a file');
@@ -194,36 +195,35 @@ test.describe('extensions added from JSON', () => {
     await expect(details(page, 'mint')).toHaveCount(0);
   });
 
-  test('a file can be chosen instead of pasted', async ({ page }) => {
-    await openExtensions(page);
-    await settings(page).locator('#add-extension').click();
-    await modal(page).locator('input[type="file"]').setInputFiles({ name: 'mint.json', mimeType: 'application/json', buffer: Buffer.from(THEME) });
-    await expect(details(page, 'mint')).toBeVisible();
-    await expect(modal(page)).toHaveCount(0);
+  test('anything that isn’t right is turned away with a reason, under the button', async ({ page }) => {
+    const choose = async (json, name = 'bad.json') => fileInput(page).setInputFiles({ name, mimeType: 'application/json', buffer: Buffer.from(json) });
+    await add(page, '{ not json', 'broken.json');
+    await expect(error(page)).toHaveText('broken.json: That isn’t JSON Flow can read.');
+    await choose(JSON.stringify({ id: 'x1', kind: 'widget', name: 'X' }));
+    await expect(error(page)).toContainText('kind');
+    // Colors go into a stylesheet, so only colors get in.
+    await choose(JSON.stringify({ id: 'bad', kind: 'theme', name: 'Bad', palettes: { bad: { light: { paper: 'red; } body { display: none' } } } }));
+    await expect(error(page)).toContainText('isn’t a color');
+    // Built-in ids are taken, so Vim lite's own manifest can't be added again.
+    await choose(JSON.stringify({ id: 'vim-lite', kind: 'theme', name: 'Fake', palettes: { fake: { light: { paper: '#fff' } } } }));
+    await expect(error(page)).toContainText('already has');
+    // A file brings no code, so an app with nothing to run is turned away.
+    await choose(JSON.stringify({ id: 'empty-app', kind: 'app', name: 'Empty', settings: [{ key: 'on', label: 'On' }] }));
+    await expect(error(page)).toContainText('doesn’t load code from files');
+    await expect(details(page, 'empty-app')).toHaveCount(0);
   });
 
-  test('anything that isn’t right is turned away with a reason', async ({ page }) => {
-    const error = modal(page).locator('.ext-add-error');
-    const box = modal(page).getByRole('textbox', { name: 'Extension JSON' });
-    const addButton = modal(page).locator('#extension-add');
-    await add(page, '{ not json');
-    await expect(error).toHaveText('That isn’t JSON Flow can read.');
-    await box.fill(JSON.stringify({ id: 'x1', kind: 'widget', name: 'X' }));
-    await addButton.click();
-    await expect(error).toContainText('kind');
-    // Colors go into a stylesheet, so only colors get in.
-    await box.fill(JSON.stringify({ id: 'bad', kind: 'theme', name: 'Bad', palettes: { bad: { light: { paper: 'red; } body { display: none' } } } }));
-    await addButton.click();
-    await expect(error).toContainText('isn’t a color');
-    // Built-in ids are taken.
-    await box.fill(JSON.stringify({ id: 'vim-lite', kind: 'theme', name: 'Fake', palettes: { fake: { light: { paper: '#fff' } } } }));
-    await addButton.click();
-    await expect(error).toContainText('already has');
-    await expect(modal(page)).toBeVisible();
+  test('the guides to writing one are linked beside Add extension', async ({ page }) => {
+    await openExtensions(page);
+    for (const guide of ['themes.md', 'apps.md']) {
+      const link = settings(page).locator(`a[data-guide="${guide}"]`);
+      await expect(link).toHaveAttribute('href', `https://github.com/bbau3r/flow/blob/main/docs/extensions/${guide}`);
+      await expect(link).toHaveAttribute('target', '_blank');
+    }
   });
 
   test('an app’s commands join the Document menu and run on their shortcut', async ({ page }) => {
-    await add(page, APP);
+    await add(page, APP, 'snippets.json');
     await toggleFor(page, 'snippets').check();
     await page.keyboard.press('Escape');
     await scriptWith(page, 'one\n\ntwo', 2);
@@ -368,6 +368,21 @@ test.describe('Vim lite', () => {
     await page.keyboard.press('Escape');
     await expect(bubble(page)).toContainText('Cancelled');
     await expect.poll(() => value(page)).toBe('one two');
+  });
+
+  test('a count before an insert repeats what was typed on leaving it', async ({ page }) => {
+    await turnOn(page, 'vim-lite');
+    await scriptWith(page, 'end');
+    await page.keyboard.type('3ihey ');
+    await expect(bubble(page)).toContainText('Insert before, 3 times');
+    await page.keyboard.press('Escape');
+    await expect.poll(() => value(page)).toBe('hey hey hey end');
+    await page.keyboard.type('2ofoo');
+    await page.keyboard.press('Escape');
+    await expect.poll(() => value(page)).toBe('hey hey hey end\nfoo\nfoo');
+    // One undo takes the repeats away, a second the typing.
+    await page.keyboard.type('u');
+    await expect.poll(() => value(page)).toBe('hey hey hey end\nfoo');
   });
 
   test('selects in Visual mode', async ({ page }) => {
