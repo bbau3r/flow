@@ -3,19 +3,15 @@
 // only Save writes it into the script; closing any other way puts the page back.
 
 import { button } from './controls.js';
-import { dimensionsField } from './dimensions-field.js';
-import { pagePreview } from './page-preview.js';
+import { pageSizeSetting } from './dimensions-field.js';
 import { openSettingsPanel } from './settings-panel.js';
 
 export function openSettingsDialog(parent, actions) {
-  const preview = pagePreview(actions.getDimensions());
-  const dimensions = dimensionsField({
-    bare: true,
+  const dimensions = pageSizeSetting({
+    label: 'Dimensions',
     value: actions.getDimensions(),
-    onChange: (size) => {
-      preview.show(size);
-      actions.preview(size);
-    },
+    onChange: (size) => actions.preview(size),
+    description: 'Saved in the script, in a Settings boneyard on its title page. Only Fountain view shows it.',
   });
 
   let saved = false;
@@ -35,13 +31,7 @@ export function openSettingsDialog(parent, actions) {
       icon: 'page-size',
       topics: [{
         label: 'Paper',
-        properties: [{
-          label: 'Dimensions',
-          keywords: 'paper size letter a4 custom width height inches centimetres millimetres',
-          control: dimensions.select,
-          below: [...dimensions.nodes, preview.root],
-          description: 'Saved in the script, in a Settings boneyard on its title page. Only Fountain view shows it.',
-        }],
+        properties: [dimensions.property],
       }],
     }],
     onClose: () => {

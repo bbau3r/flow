@@ -1,5 +1,7 @@
 import { CONTROLS_CSS, DESK_BACKGROUND, token } from './controls.js';
 import { THEME_CSS } from './themes.js';
+import { DIMENSIONS_CSS } from './dimensions-field.js';
+import { PAGE_PREVIEW_CSS } from './page-preview.js';
 import { DOC_MENU_CSS } from './doc-menu.js';
 import { SETTINGS_PANEL_CSS } from './settings-panel.js';
 import { THEME_CHOOSER_CSS } from './theme-chooser.js';
@@ -13,6 +15,8 @@ ${CONTROLS_CSS}
 ${DOC_MENU_CSS}
 ${SETTINGS_PANEL_CSS}
 ${THEME_CHOOSER_CSS}
+${DIMENSIONS_CSS}
+${PAGE_PREVIEW_CSS}
 :host {
   display: flex;
   flex-direction: column;
@@ -141,35 +145,6 @@ ${THEME_CHOOSER_CSS}
 .fl-page-total { padding: 0 6px 0 4px; color: var(--flow-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fl-status { padding: 0 8px; color: var(--flow-muted); }
 .fl-spacer { flex: 1; }
-.fl-field { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
-.fl-field input[type="number"] { width: 6em; font: inherit; color: ${token('field-ink')}; background: ${token('field-bg')}; border: 1px solid ${token('field-border')}; border-radius: 4px; padding: 2px 4px; }
-.fl-field input[type="number"]:invalid { border-color: var(--flow-danger); }
-.fl-custom-size { justify-content: flex-end; gap: 6px; }
-.fl-custom-size[hidden], .fl-hint[hidden] { display: none; }
-.fl-unit { color: var(--flow-muted); }
-.fl-hint { margin: 2px 0 6px; color: var(--flow-muted); font-size: 12.5px; line-height: 1.35; }
-.fl-hint-error { color: var(--flow-danger); }
-.fl-preview {
-  display: flex; align-items: center; justify-content: center;
-  height: 190px; margin-top: 8px; padding: 0 0 28px 64px;
-  background: color-mix(in srgb, var(--flow-ink) 4%, transparent); border-radius: 8px;
-}
-.fl-preview-sheet {
-  position: relative; box-sizing: border-box;
-  background: var(--flow-paper); border: 1px solid var(--flow-rule); border-radius: 2px;
-  box-shadow: 0 1px 4px var(--flow-shadow);
-  transition: width 160ms ease, height 160ms ease;
-}
-@media (prefers-reduced-motion: reduce) { .fl-preview-sheet { transition: none; } }
-.fl-measure { position: absolute; box-sizing: border-box; border: 0 solid var(--flow-secondary); }
-.fl-measure::before { content: ""; position: absolute; background: var(--flow-secondary); }
-.fl-measure-width { left: 0; right: 0; top: calc(100% + 8px); height: 7px; border-width: 0 1px; }
-.fl-measure-width::before { left: 0; right: 0; top: 3px; height: 1px; }
-.fl-measure-height { top: 0; bottom: 0; right: calc(100% + 8px); width: 7px; border-width: 1px 0; }
-.fl-measure-height::before { top: 0; bottom: 0; left: 3px; width: 1px; }
-.fl-measure-label { position: absolute; color: var(--flow-secondary); font-size: 11px; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.fl-measure-width > .fl-measure-label { top: 11px; left: 50%; transform: translateX(-50%); }
-.fl-measure-height > .fl-measure-label { right: 11px; top: 50%; transform: translateY(-50%); }
 .fl-info { display: flex; align-items: flex-start; gap: 6px; margin-top: 10px; }
 .fl-info > .fl-svg { flex: none; width: 1.15em; height: 1.15em; margin-top: 0.05em; }
 /* The Highlight Manager: each row reads as one field holding its terms, color and remove button.
@@ -243,7 +218,6 @@ ${THEME_CHOOSER_CSS}
 }
 .fl-hl-dot[aria-pressed="false"] .fl-hl-swatch { background: transparent; opacity: 0.7; }
 @media (prefers-reduced-motion: reduce) { .fl-hl-swatch { transition: none; } }
-.fl-field select { margin-left: auto; font: inherit; color: ${token('field-ink')}; background: ${token('field-bg')}; border: 1px solid ${token('field-border')}; border-radius: 4px; padding: 2px 4px; }
 
 /* Read-only pages */
 .fl-pages { display: flex; flex-direction: column; align-items: safe center; gap: 1.5em; padding: 1.5em 0; }

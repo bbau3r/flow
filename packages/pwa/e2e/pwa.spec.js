@@ -747,6 +747,15 @@ test('Defaults set the size and cover fields that new scripts start with', async
   await expect(dialog.getByRole('textbox', { name: 'Source' })).toBeDisabled();
   await expect(dialog.getByRole('textbox', { name: 'Source' })).toHaveValue('Based On Blank');
   await expect(dialog.getByRole('textbox', { name: 'New field name' })).toHaveCount(0);
+  // The same drawing of the sheet as the project settings, following the choice.
+  const preview = dialog.getByRole('img', { name: /^Page / });
+  await expect(preview).toHaveAttribute('aria-label', 'Page 8.5 by 11 in');
+  await dialog.getByLabel('Size').selectOption('a4');
+  await expect(preview).toHaveAttribute('aria-label', 'Page 210 by 297 mm');
+  // Styled outside the editor too: the sheet is drawn in the paper color, not left blank.
+  await expect(preview.locator('.fl-preview-sheet')).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await dialog.getByLabel('Size').selectOption('custom');
+  await expect(dialog.getByLabel('Width')).toHaveCSS('border-top-style', 'solid');
   await dialog.getByLabel('Size').selectOption('a4');
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);

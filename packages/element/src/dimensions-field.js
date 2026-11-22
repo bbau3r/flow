@@ -1,8 +1,11 @@
 // A page size picker: a dropdown of named sizes and Custom, which shows a width, a height and
-// their unit. Shared by the project settings and the PDF export, which adds its own first
-// choice.
+// their unit. Shared by the project settings, an app's defaults and the PDF export, which adds its
+// own first choice. `pageSizeSetting` pairs it with a drawing of the sheet, as a settings panel
+// property.
 
 import { customLimits, PAPER_NAMES, parseDimensions, UNITS } from '@flow/core';
+import { token } from './controls.js';
+import { pagePreview } from './page-preview.js';
 
 const CUSTOM = 'custom';
 const UNIT_NAMES = { in: 'in', cm: 'cm', mm: 'mm' };
@@ -99,3 +102,42 @@ export function dimensionsField({ label = 'Page size', value, first, onChange, b
     get value() { return current(); },
   };
 }
+
+/**
+ * A page size as a settings panel property: the picker beside its name, then the drawing of the
+ * sheet under it, which follows each choice. `onChange` gets each valid size. Returns
+ * { property, value }, where `value` is the size chosen, or null while a custom one is invalid.
+ */
+export function pageSizeSetting({ label = 'Size', value, description, keywords = '', onChange }) {
+  const preview = pagePreview(value);
+  const field = dimensionsField({
+    bare: true,
+    value,
+    onChange: (size) => {
+      preview.show(size);
+      onChange?.(size);
+    },
+  });
+  return {
+    property: {
+      label,
+      keywords: `paper page size dimensions letter a4 custom width height ${keywords}`.trim(),
+      control: field.select,
+      below: [...field.nodes, preview.root],
+      description,
+    },
+    get value() { return field.value; },
+  };
+}
+
+export const DIMENSIONS_CSS = `
+.fl-field { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.fl-field input[type="number"] { width: 6em; font: inherit; color: ${token('field-ink')}; background: ${token('field-bg')}; border: 1px solid ${token('field-border')}; border-radius: 4px; padding: 2px 4px; }
+.fl-field input[type="number"]:invalid { border-color: var(--flow-danger); }
+.fl-custom-size { justify-content: flex-end; gap: 6px; }
+.fl-custom-size[hidden], .fl-hint[hidden] { display: none; }
+.fl-unit { color: var(--flow-muted); }
+.fl-hint { margin: 2px 0 6px; color: var(--flow-muted); font-size: 12.5px; line-height: 1.35; }
+.fl-hint-error { color: var(--flow-danger); }
+.fl-field select { margin-left: auto; font: inherit; color: ${token('field-ink')}; background: ${token('field-bg')}; border: 1px solid ${token('field-border')}; border-radius: 4px; padding: 2px 4px; }
+`;
