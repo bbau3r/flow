@@ -1,6 +1,6 @@
 // Small DOM helpers shared by the views.
 
-import { icon, Menu, PALETTES } from '@flow/element/source';
+import { PALETTES, THEME_MODES, themeChooser } from '@flow/element/source';
 
 export function h(tag, props = {}, ...children) {
   const node = document.createElement(tag);
@@ -32,15 +32,14 @@ export function timeAgo(when) {
   return new Date(when).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-const MODES = [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']];
 const THEME_KEY = 'flow-theme';
 const DEFAULT_THEME = { palette: 'sage', mode: 'auto' };
 
 // Palettes that have been renamed, so that a choice saved under the old name still holds.
 const RENAMED = { amber: 'sand', ocean: 'sea', tulip: 'lavender', volcano: 'romance' };
 
-// Stored as a theme name such as sea-dark. Older versions also stored plain "auto".
-function readTheme() {
+/** The chosen theme as { palette, mode }, stored as a name such as sea-dark. Older versions also stored plain "auto". */
+export function readTheme() {
   let stored = null;
   try {
     stored = localStorage.getItem(THEME_KEY);
@@ -49,44 +48,24 @@ function readTheme() {
   }
   const [saved, mode] = (stored ?? '').split('-');
   const palette = RENAMED[saved] ?? saved;
-  return PALETTES[palette] && MODES.some(([value]) => value === mode) ? { palette, mode } : DEFAULT_THEME;
+  return PALETTES[palette] && THEME_MODES.some(([value]) => value === mode) ? { palette, mode } : DEFAULT_THEME;
 }
 
 const themeName = ({ palette, mode }) => `${palette}-${mode}`;
 
 export const currentTheme = () => themeName(readTheme());
 
-/** Chooses the palette and light or dark. `up` opens it upward, for a bottom bar. */
-export function themePicker({ onChange, up } = {}) {
-  let theme = readTheme();
-  const paletteValue = (name) => `palette:${name}`;
-  const modeValue = (name) => `mode:${name}`;
-  const menu = new Menu({
-    up,
-    cls: 'theme',
-    sections: [
-      { label: 'Theme', icon: 'palette', items: Object.entries(PALETTES).map(([name, { label }]) => ({ value: paletteValue(name), label })) },
-      { label: 'Mode', icon: 'contrast', items: MODES.map(([name, label]) => ({ value: modeValue(name), label })) },
-    ],
-    isChecked: (value) => value === paletteValue(theme.palette) || value === modeValue(theme.mode),
-    trigger: () => {
-      const { label } = PALETTES[theme.palette];
-      const mode = MODES.find(([value]) => value === theme.mode)[1];
-      return { label: `Theme: ${label}, ${mode}`, content: [icon('palette'), h('span', { class: 'fl-compact-hide' }, label)] };
-    },
-    onSelect: (value) => {
-      const [kind, name] = value.split(':');
-      theme = { ...theme, [kind]: name };
-      const chosen = themeName(theme);
-      try {
-        localStorage.setItem(THEME_KEY, chosen);
-      } catch {
-        // Private browsing can refuse storage; the theme still applies for this visit.
-      }
-      document.documentElement.dataset.theme = chosen;
-      menu.refresh();
-      onChange?.(chosen);
-    },
-  });
-  return menu.root;
+/** Keeps a theme, applies it to the page, and tells open views with a `flow-theme` event. */
+export function saveTheme(theme) {
+  const chosen = themeName(theme);
+  try {
+    localStorage.setItem(THEME_KEY, chosen);
+  } catch {
+    // Private browsing can refuse storage; the theme still applies for this visit.
+  }
+  document.documentElement.dataset.theme = chosen;
+  window.dispatchEvent(new CustomEvent('flow-theme', { detail: { theme: chosen } }));
 }
+
+/** The palette grid and mode switch, keeping whatever is chosen. */
+export const themeControls = () => themeChooser({ value: readTheme(), onChange: saveTheme });

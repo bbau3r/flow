@@ -20,8 +20,10 @@ function numberInput(label) {
 /**
  * `value` is 'letter', 'a4', { width, height, unit } or, with a `first` choice of
  * { value, label }, that choice's value. `onChange` gets the same, once the size is valid.
+ * `bare` leaves the dropdown out of `nodes` and unlabelled, for a settings panel to place and
+ * name; it's `select` either way.
  */
-export function dimensionsField({ label = 'Page size', value, first, onChange }) {
+export function dimensionsField({ label = 'Page size', value, first, onChange, bare = false }) {
   const size = parseDimensions(value);
   const custom = size && typeof size === 'object' ? size : null;
   const chosen = first && value === first.value ? first.value : custom ? CUSTOM : size ?? 'letter';
@@ -33,7 +35,7 @@ export function dimensionsField({ label = 'Page size', value, first, onChange })
   for (const [key, name] of Object.entries(PAPER_NAMES)) select.add(new Option(name, key));
   select.add(new Option('Custom', CUSTOM));
   select.value = chosen;
-  field.append(label, select);
+  if (!bare) field.append(label, select);
 
   const start = custom ?? { width: 8.5, height: 11, unit: 'in' };
   const width = numberInput('Width');
@@ -91,7 +93,8 @@ export function dimensionsField({ label = 'Page size', value, first, onChange })
   hint.hidden = sizes.hidden;
 
   return {
-    nodes: [field, sizes, hint],
+    nodes: bare ? [sizes, hint] : [field, sizes, hint],
+    select,
     /** The size as chosen, or null while a custom size is out of range. */
     get value() { return current(); },
   };

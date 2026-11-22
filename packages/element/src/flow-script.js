@@ -25,7 +25,7 @@ export function loadFonts() {
 }
 
 export class FlowScript extends HTMLElement {
-  static observedAttributes = ['readonly', 'view', 'read-view', 'workspace', 'theme', 'paper', 'scale'];
+  static observedAttributes = ['readonly', 'view', 'read-view', 'workspace', 'theme', 'paper', 'scale', 'text-width'];
 
   #value = '';
   #valueSet = false;
@@ -40,7 +40,7 @@ export class FlowScript extends HTMLElement {
   #statusbar = null;
   #read = null;
   #outline = null;
-  #exportActions = [];
+  #menuItems = DEFAULT_MENU;
   #highlights = [];
   #highlightTools = null;
   #painter = null;
@@ -78,7 +78,7 @@ export class FlowScript extends HTMLElement {
     if (this.#started) return;
     // Properties set before this element was defined sit on the instance and would
     // shadow the accessors, so reapply them through the class.
-    for (const prop of ['value', 'readonly', 'view', 'readView', 'workspace', 'printOptions', 'exportActions', 'highlights']) {
+    for (const prop of ['value', 'readonly', 'view', 'readView', 'workspace', 'printOptions', 'menuItems', 'highlights']) {
       if (Object.hasOwn(this, prop)) {
         const pending = this[prop];
         delete this[prop];
@@ -117,6 +117,7 @@ export class FlowScript extends HTMLElement {
     if (oldValue === newValue || !this.#started) return;
     if (name === 'theme') this.applyTheme();
     if (name === 'scale') this.#applyScale();
+    if (name === 'text-width') this.#statusbar?.setTextWidth(this.textWidth);
     if (name === 'paper') {
       this.#options.paper = parseDimensions(newValue) ?? 'letter';
       this.#applyPaper();
@@ -213,6 +214,19 @@ export class FlowScript extends HTMLElement {
     this.setAttribute('workspace', w);
   }
 
+  /**
+   * How wide Seamless and Fountain views run on a large screen: 'wide' for most of the window,
+   * or null for the column they have by default. Paged view and small screens ignore it.
+   */
+  get textWidth() {
+    return this.getAttribute('text-width') === 'wide' ? 'wide' : null;
+  }
+
+  set textWidth(value) {
+    if (value === 'wide') this.setAttribute('text-width', 'wide');
+    else this.removeAttribute('text-width');
+  }
+
   /** How large the script is shown, as a percentage. */
   get scale() {
     const scale = Number(this.getAttribute('scale') ?? 100);
@@ -224,16 +238,24 @@ export class FlowScript extends HTMLElement {
   }
 
   /**
-   * The app's own export actions, shown before PDF: { label, title, icon, attrs, onClick }.
-   * They appear as labeled buttons, then icons alone, then in a menu as space runs short.
+   * What the Document menu holds, as groups kept apart by rules. Each item is
+   * { label, icon, shortcut, title, attrs, onClick } or, to open a card of its own, has
+   * `panel: { title, build(menu) }` in place of `onClick`, returning the card's nodes. The
+   * strings 'pdf' and 'project-settings' stand for the element's own Export to PDF and
+   * Project settings, wherever the app wants them.
    */
-  get exportActions() {
-    return this.#exportActions;
+  get menuItems() {
+    return this.#menuItems;
   }
 
-  set exportActions(actions) {
-    this.#exportActions = actions;
-    this.#ribbon?.setExportActions(actions);
+  set menuItems(groups) {
+    this.#menuItems = groups ?? DEFAULT_MENU;
+    this.#ribbon?.setMenuItems(this.#resolveMenu());
+  }
+
+  /** Closes the Document menu if it's open. */
+  closeMenu() {
+    this.#ribbon?.menu.close();
   }
 
   /**
@@ -582,7 +604,7 @@ export class FlowScript extends HTMLElement {
       const line = this.#scroll.getBoundingClientRect().top + (this.#ribbon?.root.offsetHeight ?? 0) + 24;
       let current = 1;
       starts.forEach((top, i) => { if (top <= line) current = i + 1; });
-      this.#statusbar.setPage(current, starts.length);
+      this.#statusbar?.setPage(current, starts.length);
     });
   }
 
@@ -699,7 +721,7 @@ export class FlowScript extends HTMLElement {
     this.#barObserver = new ResizeObserver(() => this.#applyInsets());
     this.#barObserver.observe(this.#ribbon.root);
     this.#barObserver.observe(this.#statusbar.root);
-    this.#ribbon.setExportActions(this.#exportActions);
+    this.#ribbon.setMenuItems(this.#resolveMenu());
     this.#highlightTools = createHighlightTools({
       open: () => openHighlightDialog(this.shadowRoot, {
         highlights: this.#highlights,
@@ -712,6 +734,7 @@ export class FlowScript extends HTMLElement {
     this.#ribbon.setActions('read', { label: 'Reading', pills: [this.#highlightTools.root] });
     this.#syncBars();
     this.#statusbar.setScale(this.scale);
+    this.#statusbar.setTextWidth(this.textWidth);
   }
 
   #applyInsets() {
@@ -744,6 +767,10 @@ export class FlowScript extends HTMLElement {
       setReadView: (view) => { this.readView = view; },
       goToPage: (number) => this.#goToPage(number),
       setScale: (percent) => this.#chooseScale(percent),
+      setTextWidth: (value) => {
+        this.textWidth = value;
+        this.dispatchEvent(new CustomEvent('flow-text-width', { detail: { textWidth: this.textWidth } }));
+      },
     });
   }
 
@@ -755,21 +782,40 @@ export class FlowScript extends HTMLElement {
       dual: edit((e) => e.dual()),
       boneyard: edit((e) => e.boneyard()),
       pageBreak: edit((e) => e.pageBreak()),
-      openExport: () => openExportDialog(this.shadowRoot, {
-        getOptions: () => this.#options,
-        setOption: (key, value) => { this.printOptions = { [key]: value }; },
-        getScriptPaper: () => this.#scriptPaper(),
-        getExportPaper: () => this.#exportPaper,
-        setExportPaper: (size) => { this.#exportPaper = size; },
-        exportPdf: () => this.#exportFromDialog(),
-        onClose: () => this.focus(),
-      }),
-      openSettings: () => openSettingsDialog(this.shadowRoot, {
-        getDimensions: () => this.#scriptPaper(),
-        setDimensions: (size) => this.#setDimensions(size),
-        preview: (size) => this.#preview(size),
-        onClose: () => this.focus(),
-      }),
+      // A menu closed without choosing anything gives the script its focus back.
+      onMenuClose: ({ chose }) => { if (!chose) this.focus(); },
+    });
+  }
+
+  // The element's own menu items, for the names an app uses to place them.
+  #builtInItem(name) {
+    if (name === 'pdf') return { label: 'Export to PDF', title: 'Export a PDF', icon: 'pdf', attrs: { 'data-item': 'pdf' }, onClick: () => this.#openExport() };
+    if (name === 'project-settings') return { label: 'Project settings', title: 'Page size and the settings kept in the script', icon: 'page-size', attrs: { 'data-item': 'project-settings' }, onClick: () => this.#openSettings() };
+    return null;
+  }
+
+  #resolveMenu() {
+    return this.#menuItems.map((group) => group.map((item) => (typeof item === 'string' ? this.#builtInItem(item) : item)).filter(Boolean));
+  }
+
+  #openExport() {
+    openExportDialog(this.shadowRoot, {
+      getOptions: () => this.#options,
+      setOption: (key, value) => { this.printOptions = { [key]: value }; },
+      getScriptPaper: () => this.#scriptPaper(),
+      getExportPaper: () => this.#exportPaper,
+      setExportPaper: (size) => { this.#exportPaper = size; },
+      exportPdf: () => this.#exportFromDialog(),
+      onClose: () => this.focus(),
+    });
+  }
+
+  #openSettings() {
+    openSettingsDialog(this.shadowRoot, {
+      getDimensions: () => this.#scriptPaper(),
+      setDimensions: (size) => this.#setDimensions(size),
+      preview: (size) => this.#preview(size),
+      onClose: () => this.focus(),
     });
   }
 
@@ -796,6 +842,8 @@ export class FlowScript extends HTMLElement {
     }
   }
 }
+
+const DEFAULT_MENU = [['pdf'], ['project-settings']];
 
 const workspaceOf = (value) => (value === 'outline' || value === 'read' ? value : 'write');
 

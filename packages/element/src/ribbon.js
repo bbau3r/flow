@@ -1,9 +1,10 @@
-// What sits above the script: the document, tabs, export and settings controls, which an app fills
-// through named slots, and the action center, which holds the current tab's commands, such as
+// What sits above the script: the document menu and the tabs, which an app fills through named
+// slots, and the action center, which holds the current tab's commands, such as
 // the formatting controls that follow the line the cursor is on. They share a row when there's room. All of it goes inside the scrolling area, so that the
 // script can pass beneath it.
 
-import { actionPill, button, centerGlyphs, glyphBadge, Menu, pill, pillSep } from './controls.js';
+import { button, centerGlyphs, glyphBadge, Menu, pill, pillSep } from './controls.js';
+import { createDocMenu } from './doc-menu.js';
 import { createActionCenter } from './action-center.js';
 
 const STYLE_BUTTONS = [
@@ -62,26 +63,15 @@ const cell = (className, ...children) => {
   return node;
 };
 
+// The document menu leads the row, followed by the app's tabs. The end of the row is kept for
+// the action center to lean against when everything fits on one row.
 function createTopBar(actions) {
-  const pdf = { label: 'PDF', title: 'Export a PDF', icon: 'pdf', onClick: () => actions.openExport() };
-  const openSettings = () => actions.openSettings();
-  // In the ... menu, beside Export's actions, it needs no more than its name.
-  const settingsAction = { label: 'Settings', title: 'Project settings', icon: 'settings', onClick: openSettings };
-  const exportHolder = cell('fl-export-holder');
-  // Once Export is a ... menu, settings go in it too.
-  const setExportActions = (appActions) => {
-    exportHolder.replaceChildren(actionPill(
-      { label: 'Export', cls: 'fl-export', menuGroups: [[settingsAction]] },
-      appActions.length ? [appActions, [pdf]] : [[pdf]],
-    ));
-  };
-  setExportActions([]);
-  const settings = cell('fl-wide-only', pill({ label: 'Settings', cls: 'fl-settings' }, button({ label: 'Project settings', icon: 'settings', iconOnly: true, onClick: openSettings })));
-  const end = cell('fl-topbar-end', exportHolder, settings);
+  const menu = createDocMenu({ onClose: actions.onMenuClose });
+  const end = cell('fl-topbar-end');
   const bar = document.createElement('div');
   bar.className = 'fl-topbar';
-  bar.append(cell('fl-topbar-start', slot('document'), cell('fl-topbar-tabs', slot('tabs'))), end);
-  return { bar, end, setExportActions };
+  bar.append(cell('fl-topbar-start', menu.root, cell('fl-topbar-tabs', slot('tabs'))), end);
+  return { bar, end, menu };
 }
 
 export function createRibbon(actions) {
@@ -166,10 +156,13 @@ export function createRibbon(actions) {
 
   return {
     root,
-    setExportActions: topBar.setExportActions,
+    /** Sets the document menu's items, as lists of groups. */
+    setMenuItems: (groups) => topBar.menu.setItems(groups),
+    menu: topBar.menu,
     destroy() {
       document.fonts.removeEventListener('loadingdone', recenter);
       topics.close();
+      topBar.menu.close();
       root.remove();
     },
     update(state) {

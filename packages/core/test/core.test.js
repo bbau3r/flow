@@ -1067,6 +1067,35 @@ describe('new script template', () => {
       expect(parse(`${without}Action.`).lines.at(-1).type, key).toBe('action');
     }
   });
+  it('takes its own fields, leaving out empty ones and filling in the date and year', () => {
+    const text = newScript(when, { cover: [
+      { key: 'Production', value: 'Blue Door Films' },
+      { key: 'Author', value: 'Ada Writer' },
+      { key: 'Source', value: '  ' },
+      { key: 'Contact', value: 'Ada Writer\n\nada@example.com' },
+      { key: 'Draft date', value: '{date}' },
+      { key: 'Copyright', value: '(c) {year}' },
+    ] });
+    expect(text).toBe([
+      'Title: Untitled',
+      'Production: Blue Door Films',
+      'Author: Ada Writer',
+      'Contact:',
+      '    Ada Writer',
+      '    ada@example.com',
+      'Draft date: November 3, 2026',
+      'Copyright: (c) 2026',
+      '', '',
+    ].join('\n'));
+    expect(parse(text).titlePage.map((e) => e.key)).toEqual(['title', 'production', 'author', 'contact', 'draft date', 'copyright']);
+  });
+  it('writes a page size into its settings, except for US Letter', () => {
+    expect(newScript(when, { dimensions: 'letter' })).toBe(newScript(when));
+    const a4 = parse(newScript(when, { cover: [], dimensions: 'a4' }));
+    expect(parseDimensions(a4.settings.dimensions)).toBe('a4');
+    expect(a4.titlePage.map((e) => e.key)).toEqual(['title']);
+    expect(parseDimensions(parse(newScript(when, { dimensions: { width: 8, height: 10, unit: 'in' } })).settings.dimensions)).toEqual({ width: 8, height: 10, unit: 'in' });
+  });
 });
 
 describe('source fidelity', () => {

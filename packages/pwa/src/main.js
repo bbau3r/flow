@@ -22,6 +22,7 @@ async function route() {
 const onHome = () => !/^#\/edit\//.test(location.hash);
 
 installControlStyles();
+document.body.classList.add('fl-desk');
 document.documentElement.dataset.theme = currentTheme();
 loadFonts();
 window.addEventListener('hashchange', () => route().catch((err) => toast(err.message)));

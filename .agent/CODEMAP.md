@@ -43,7 +43,7 @@ The PWA imports the element from source (`@flow/element/source`), not from its b
 | `settings.js` | Paper profiles, dimension parsing/formatting, reading/writing the Settings boneyard | `parseDimensions`, `formatDimensions`, `pageProfile`, `resolvePaper`, `writeSetting`, `PROFILES`, `CUSTOM_LIMITS` |
 | `convert.js` | Ribbon edits: change a line's type, emphasis, boneyard, dual dialogue, page break, title-page Enter/Backspace | `applyLineType`, `toggleEmphasis`, `emphasisAt`, `toggleBoneyard`, `toggleDual`, `dualAt`, `insertPageBreak`, `continueTitleField`, `joinTitleValue`, `lineTypeKey` |
 | `outline.js` | Outline-tab edits: cards from `#`/`##`/scenes/transitions, drop slots, moving blocks, adding/removing acts, sequences, synopses | `outlineCards`, `outlineSlots`, `moveOutlineBlock`, `addOutlineSection`, `addOutlineSynopsis`, `removeOutlineCard`, `setOutlineSceneNumber`, ... |
-| `template.js` | New-script title page | `newScript` |
+| `template.js` | New-script title page, from given fields and page size | `newScript`, `DEFAULT_COVER` |
 | `pdf.js` | Draws `layout()` output with pdf-lib. Separate entry `@flow/core/pdf`. | `renderPdf` |
 
 ### Data shapes
@@ -80,15 +80,18 @@ return new lines, plus a cursor where relevant.
 | `readonly.js` | Plain-DOM renderer for Read tab and `readonly`: paged (`renderPages`) or seamless (`renderFlow`), comment bubbles. No Tiptap. |
 | `outline.js` | Outline tab UI (`createOutline`): cards, drag and keyboard moves, add tools, the right-click menu (Show in Write / Read). Every change goes through core `outline.js` and back into the editor. |
 | `position.js` | Keeping your place between tabs and views: `placeOf` records the source line at the top and its offset, `restorePlace` scrolls another tab to it. `FlowScript.#placeIn`/`#keepPlace` wrap tab and view changes with them. |
-| `ribbon.js` | Top row: document/tabs slots, export and settings buttons, plus the action center. Formatting pills that follow the cursor's line. |
+| `ribbon.js` | Top row: the Document menu and tabs slot, plus the action center. Formatting pills that follow the cursor's line. |
+| `doc-menu.js` | `createDocMenu`: the Document pill (menu icon + `document` slot) and the card it opens, in a modal `<dialog>`. Items with a `panel` swap in a card of their own; on small screens it's a flyout sheet. Items come from `FlowScript.menuItems`, with `'pdf'`/`'project-settings'` resolved in `#builtInItem`. |
+| `settings-panel.js` | `openSettingsPanel`: the shared settings layout (search in the panel's head, a rail of section pages, collapse-all, folding topics, properties). Used by project settings and the PWA's App settings. |
+| `theme-chooser.js` | `themeChooser`: Auto/Light/Dark switch and palette swatch grid. Used by the PWA's Theme card and App settings. |
 | `action-center.js` | Per-tab command rows (`setActions(tab, ...)`), foldable |
-| `statusbar.js` | Bottom pills: view menu, scale, page jump, `status-end` slot. `SCALE_MIN/MAX/STEP`. |
+| `statusbar.js` | Bottom pills: view menu with the wide/narrow text toggle, scale, page jump, `status-end` slot. `SCALE_MIN/MAX/STEP`. |
 | `highlights.js` | Read-tab highlights via the CSS Custom Highlight API: painter, toolbar dots, Highlight Manager dialog, color popover (vanilla-colorful) |
 | `export-dialog.js` | PDF export options modal |
-| `settings-dialog.js` | Project settings modal (page dimensions), previews live, Save writes the boneyard |
-| `dimensions-field.js` | Paper size picker shared by both dialogs |
+| `settings-dialog.js` | Project settings (page dimensions) on `openSettingsPanel`, previews live, Save writes the boneyard |
+| `dimensions-field.js` | Paper size picker shared by project settings, the PDF export and the PWA's Defaults; `bare` hands over the select for a settings panel |
 | `page-preview.js` | Small drawing of the sheet with measurements |
-| `controls.js` | Shared UI kit: `button`, `pill`, `pillSep`, `foldingPill`, `tabs`, `actionPill`, `Menu`, `openModal`, `icon`, `CONTROL_TOKENS`, `CONTROLS_CSS`, `token()` |
+| `controls.js` | Shared UI kit: `button`, `pill`, `pillSep`, `foldingPill`, `tabs` (`fixed` keeps the pill at any width), `actionPill`, `searchField`, `Menu`, `openModal`, `icon`, `CONTROL_TOKENS` (including `page-shadow`, `desk-noise`, `desk-gradient`), `DESK_BACKGROUND` and the `.fl-desk` and `.fl-paper` classes, `CONTROLS_CSS`, `token()`. New components build on these and style with `token()`. |
 | `themes.js` | `PALETTES` (sage, sand, sea, romance, forest, lavender, graphite x light/dark), `registerTheme`, `THEME_CSS` (`:host`), `PAGE_THEME_CSS` (`:root[data-theme]`) |
 | `styles.js` | The shadow-root stylesheet `STYLES`, page geometry in em |
 | `fonts.js` / `pdf-fonts.js` | Courier Prime and Roboto inlined; WOFF2 on screen, WOFF for PDF |
@@ -107,7 +110,7 @@ Other folders: `demo/` (dev page with `sample.fountain`, opened by `npm run dev`
 
 ### Events fired by `<flow-script>`
 
-`flow-change`, `flow-selection`, `flow-ready`, `flow-scale`, `flow-highlights`
+`flow-change`, `flow-selection`, `flow-ready`, `flow-scale`, `flow-text-width`, `flow-highlights`
 (`{ highlights }`, used by the PWA to persist them), `flow-workspace` (`{ workspace }`, when the
 element changes tab itself; the PWA moves its tabs and address along, through `tabs().selectTab`).
 
@@ -116,13 +119,15 @@ element changes tab itself; the PWA moves its tabs and address along, through `t
 | File | What it does |
 | --- | --- |
 | `main.js` | Boot: styles, theme, fonts, hash router (`#/edit/<id>` or home), `launchQueue` file opening, service-worker update banner |
-| `home.js` | Home page: new script, provider cards, Recent list |
-| `editor-view.js` | Hosts `<flow-script>` for one doc: fills slots (Document pill, tabs, Appearance), `exportActions` (Save/Save as), autosave on `flow-change`, highlights, `?tab=` in the URL, provider chooser |
+| `home.js` | Home page: header (wordmark, search, App settings gear), then a shelf of New, Open and recent scripts drawn as title-page covers |
+| `app-settings.js` | App settings on `openSettingsPanel`: Appearance, Defaults (size, each standard cover field's text and an on/off switch), App (install); holds the `beforeinstallprompt` handling |
+| `defaults.js` | New-script defaults in local storage (`readDefaults`, `saveDefaults`) and `scriptFromDefaults()`, used by New |
+| `editor-view.js` | Hosts `<flow-script>` for one doc: fills slots (document name, tabs), `menuItems` (Home, Save, Save as, Theme, App settings), autosave on `flow-change`, highlights, `?tab=` in the URL, provider chooser |
 | `store.js` | IndexedDB autosave. Doc: `{ id, name, value, savedValue, provider, ref, updatedAt, highlights }` |
 | `launch.js` | Opening a file handed over by the OS, deduped against Recent |
 | `providers/index.js` | Provider interface (documented at the top), `providers` list, `ConflictError`, `fileNameFor` |
 | `providers/local.js` | "This device": File System Access API, or file input plus download fallback |
-| `ui.js` | `h()` DOM helper, `toast`, `timeAgo`, theme picker and persistence |
+| `ui.js` | `h()` DOM helper, `toast`, `timeAgo`, theme persistence (`readTheme`, `saveTheme`, which fires `flow-theme` on window) and `themeControls` |
 | `mark.js` | `flowMark()`: the logo mark as inline SVG, colored from `--flow-accent` / `--flow-secondary`. The home wordmark is the mark plus "low". |
 | `mark-paths.js` | Generated by `scripts/icons.mjs`: the mark's shapes and gradient lines. Don't edit by hand. |
 | `styles.css` | App page styles |
@@ -158,6 +163,7 @@ on push to `main`, then publishes `packages/pwa/dist` to `gh-pages`. Pushing to 
 | Something that looks wrong only in the editor | `element/src/editor.js` decorations, `styles.js` |
 | A formatting button | `ribbon.js` -> `FlowEditor` method -> `core/src/convert.js` |
 | Outline card behavior | `element/src/outline.js` -> `core/src/outline.js` |
+| The Document menu or a settings panel | `element/src/doc-menu.js`, `settings-panel.js`; PWA items in `editor-view.js` |
 | Colors, a new theme token | `themes.js`, `controls.js` (`CONTROL_TOKENS`), then the README tables |
 | Paper sizes / Settings boneyard | `core/src/settings.js`, `settings-dialog.js` |
 | PDF output | `core/src/pdf.js` (draws `layout()`), `pdf-fonts.js` |

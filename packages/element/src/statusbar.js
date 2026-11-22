@@ -173,9 +173,28 @@ export function createStatusbar(actions) {
   const end = document.createElement('slot');
   end.name = 'status-end';
 
+  // How wide Seamless and Fountain run: the column they have today, or most of the window.
+  // A switch rather than a pressed button: its icon shows the width it's at now. There's no room
+  // to choose on a small screen.
+  let wide = false;
+  const widthToggle = button({
+    label: 'Wide page',
+    iconOnly: true,
+    cls: 'fl-text-width',
+    attrs: { role: 'switch' },
+    onClick: () => actions.setTextWidth(wide ? null : 'wide'),
+  });
+  const widthSep = pillSep();
+  const showWidth = () => {
+    widthToggle.setAttribute('aria-checked', String(wide));
+    widthToggle.title = wide ? 'Shrink page width' : 'Expand page width';
+    widthToggle.replaceChildren(icon(wide ? 'text-wide' : 'text-narrow'));
+  };
+  showWidth();
+
   const bar = document.createElement('div');
   bar.className = 'fl-statusbar';
-  const viewPill = pill({ label: 'View' }, writeMenu.root);
+  const viewPill = pill({ label: 'View' }, writeMenu.root, widthSep, widthToggle);
   const readPill = pill({ label: 'Read view' }, readMenu.root);
   readPill.hidden = true;
   bar.append(
@@ -216,6 +235,8 @@ export function createStatusbar(actions) {
       if (workspace !== 'write') writeMenu.close();
       if (workspace !== 'read') readMenu.close();
       viewPill.hidden = workspace !== 'write';
+      widthToggle.hidden = view === 'page';
+      widthSep.hidden = view === 'page';
       readPill.hidden = workspace !== 'read';
       history.hidden = workspace === 'read';
       const paging = workspace === 'read' ? readView === 'page' : workspace === 'write' && view === 'page';
@@ -243,6 +264,10 @@ export function createStatusbar(actions) {
       if (!scaleTyping) scaleField.value = String(scale);
       bigger.disabled = scale >= SCALE_MAX;
       smaller.disabled = scale <= SCALE_MIN;
+    },
+    setTextWidth(next) {
+      wide = next === 'wide';
+      showWidth();
     },
     setStatus(text) {
       status.textContent = text;
