@@ -18,7 +18,8 @@ const ICONS = {
   write: '<path d="M12 20h9"/><path d="M16.4 3.6a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   outline: '<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/>',
   read: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
-  source: '<path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/>',
+  // </>, with the slash keeping it apart from the width switch's >< and <>.
+  source: '<path d="m7 7-5 5 5 5"/><path d="m17 7 5 5-5 5"/><path d="m14 4-4 16"/>',
   palette: '<path d="M12 22a10 10 0 1 1 10-10c0 2.5-2 4-4.5 4H15a2 2 0 0 0-1.5 3.3c.6.8 0 2.7-1.5 2.7z"/><circle cx="7.5" cy="10.5" r=".5"/><circle cx="12" cy="7.5" r=".5"/><circle cx="16.5" cy="10.5" r=".5"/>',
   plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
   menu: '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
@@ -394,14 +395,16 @@ function fitTabs(node, wide) {
     node.classList.toggle('fl-fit-compact', wide.scrollWidth > wide.clientWidth + 1);
   };
   const observer = new ResizeObserver(() => check());
-  // The room it has is its parent's, once it has one.
+  // Its parent may be only as wide as whichever form shows, so the ancestors above it, whose
+  // width follows the room there is, are watched too. Fonts arriving change the labels' width.
   const watch = () => {
     if (!node.isConnected || !node.parentElement) {
       requestAnimationFrame(watch);
       return;
     }
-    observer.observe(node.parentElement);
+    for (let parent = node.parentElement, n = 0; parent && n < 3; parent = parent.parentElement, n += 1) observer.observe(parent);
     check();
+    document.fonts?.ready.then(check);
   };
   requestAnimationFrame(watch);
 }
