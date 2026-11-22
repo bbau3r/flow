@@ -36,7 +36,8 @@ const ICONS = {
   'collapse-all': '<path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/>',
   app: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M7 6.5h.01"/><path d="M10 6.5h.01"/>',
   download: '<path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/>',
-  'page-size': '<rect x="7" y="3" width="12" height="16" rx="1.5"/><path d="M3 7v14h12"/>',
+  // A page, with its height measured down the left and its width along the bottom.
+  'page-size': '<rect x="10" y="2.5" width="10.5" height="13.5" rx="1.5"/><path d="M4.5 2.5v13.5"/><path d="M3 2.5h3"/><path d="M3 16h3"/><path d="M10 20.5h10.5"/><path d="M10 19v3"/><path d="M20.5 19v3"/>',
   minus: '<path d="M5 12h14"/>',
   close: '<path d="M6 6l12 12"/><path d="M18 6 6 18"/>',
   grip: '<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>',

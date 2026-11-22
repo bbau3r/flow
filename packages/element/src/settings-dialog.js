@@ -24,7 +24,7 @@ export function openSettingsDialog(parent, actions) {
   };
   const panel = openSettingsPanel(parent, {
     title: 'Project Settings',
-    icon: 'settings',
+    icon: 'page-size',
     sections: [{
       id: 'page',
       label: 'Page',
