@@ -6,7 +6,7 @@ import { THEME_CHOOSER_CSS } from './theme-chooser.js';
 
 export { FlowScript, loadFonts };
 export { registerTheme, PALETTES } from './themes.js';
-export { actionPill, button, icon, Menu, openModal, pill, pillSep, searchField, tabs } from './controls.js';
+export { actionPill, button, icon, iconSwitch, Menu, openModal, pill, pillSep, searchField, tabs } from './controls.js';
 export { openSettingsPanel } from './settings-panel.js';
 export { dimensionsField } from './dimensions-field.js';
 export { themeChooser, THEME_MODES } from './theme-chooser.js';

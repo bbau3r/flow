@@ -155,6 +155,25 @@ export function button({ label, title = label, icon: iconName, glyph, text, icon
   return node;
 }
 
+/**
+ * A switch drawn as an icon button that doesn't light up: its icon and tooltip show the state
+ * it's in. `states` is { off: { icon, title }, on: { icon, title } }, and `onChange(on)` gets
+ * the state asked for. The node's `set(on)` shows a state, without calling `onChange`.
+ */
+export function iconSwitch({ label, cls, states, onChange }) {
+  let on = false;
+  const node = button({ label, iconOnly: true, cls, attrs: { role: 'switch' }, onClick: () => onChange?.(!on) });
+  node.set = (next) => {
+    on = !!next;
+    const state = states[on ? 'on' : 'off'];
+    node.setAttribute('aria-checked', String(on));
+    node.title = state.title;
+    node.replaceChildren(icon(state.icon));
+  };
+  node.set(false);
+  return node;
+}
+
 /** A floating pill holding related controls. */
 export function pill({ cls, label, attrs } = {}, ...children) {
   const node = div(`fl-pill${cls ? ` ${cls}` : ''}`, ...children);

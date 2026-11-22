@@ -1,7 +1,7 @@
 // The floating pills along the bottom: how the script is shown on the left, whatever the
 // app adds on the right through the status-end slot.
 
-import { button, foldingPill, icon, Menu, pill, pillSep } from './controls.js';
+import { button, foldingPill, icon, iconSwitch, Menu, pill, pillSep } from './controls.js';
 
 export const SCALE_MIN = 50;
 export const SCALE_MAX = 200;
@@ -19,6 +19,41 @@ const READ_VIEWS = [
   { value: 'flow', icon: 'seamless', label: 'Seamless', title: 'Continuous text, with no pages' },
   { value: 'page', icon: 'paged', label: 'Paged', title: 'Standard script pages, as they print' },
 ];
+
+// How wide Seamless and Fountain run: the column they have today, or most of the window. There's
+// no room to choose on a small screen, where CSS hides it.
+const WIDTH_STATES = {
+  off: { icon: 'text-narrow', title: 'Expand page width' },
+  on: { icon: 'text-wide', title: 'Shrink page width' },
+};
+
+/**
+ * A tab's view pill: its view menu, then the width switch, shown in every view but Paged. Write
+ * and Read each get one from here, so whatever a view pill offers, both tabs offer.
+ */
+function viewPill({ label, views, current, onSelect, setTextWidth }) {
+  const menu = viewMenu(views, current, onSelect);
+  const width = iconSwitch({
+    label: 'Wide page',
+    cls: 'fl-text-width',
+    states: WIDTH_STATES,
+    onChange: (on) => setTextWidth(on ? 'wide' : null),
+  });
+  const sep = pillSep();
+  const root = pill({ label }, menu.root, sep, width);
+  return {
+    root,
+    menu,
+    setWide: (wide) => width.set(wide),
+    // Paged view keeps the page's own width, so there's nothing to choose.
+    refresh() {
+      menu.refresh();
+      const paged = current() === 'page';
+      width.hidden = paged;
+      sep.hidden = paged;
+    },
+  };
+}
 
 function viewMenu(views, current, onSelect) {
   return new Menu({
@@ -43,8 +78,9 @@ export function createStatusbar(actions) {
   let page = 1;
   let pages = 0;
 
-  const writeMenu = viewMenu(VIEWS, () => view, (value) => actions.setView(value));
-  const readMenu = viewMenu(READ_VIEWS, () => readView, (value) => actions.setReadView(value));
+  const writePill = viewPill({ label: 'View', views: VIEWS, current: () => view, onSelect: (value) => actions.setView(value), setTextWidth: actions.setTextWidth });
+  const readPill = viewPill({ label: 'Read view', views: READ_VIEWS, current: () => readView, onSelect: (value) => actions.setReadView(value), setTextWidth: actions.setTextWidth });
+  const viewPills = [writePill, readPill];
 
   const percent = button({
     label: 'Reset page scale',
@@ -173,33 +209,12 @@ export function createStatusbar(actions) {
   const end = document.createElement('slot');
   end.name = 'status-end';
 
-  // How wide Seamless and Fountain run: the column they have today, or most of the window.
-  // A switch rather than a pressed button: its icon shows the width it's at now. There's no room
-  // to choose on a small screen.
-  let wide = false;
-  const widthToggle = button({
-    label: 'Wide page',
-    iconOnly: true,
-    cls: 'fl-text-width',
-    attrs: { role: 'switch' },
-    onClick: () => actions.setTextWidth(wide ? null : 'wide'),
-  });
-  const widthSep = pillSep();
-  const showWidth = () => {
-    widthToggle.setAttribute('aria-checked', String(wide));
-    widthToggle.title = wide ? 'Shrink page width' : 'Expand page width';
-    widthToggle.replaceChildren(icon(wide ? 'text-wide' : 'text-narrow'));
-  };
-  showWidth();
-
   const bar = document.createElement('div');
   bar.className = 'fl-statusbar';
-  const viewPill = pill({ label: 'View' }, writeMenu.root, widthSep, widthToggle);
-  const readPill = pill({ label: 'Read view' }, readMenu.root);
-  readPill.hidden = true;
+  readPill.root.hidden = true;
   bar.append(
-    viewPill,
-    readPill,
+    writePill.root,
+    readPill.root,
     scalePill.root,
     pagePill.root,
     statusPill,
@@ -215,8 +230,7 @@ export function createStatusbar(actions) {
   return {
     root,
     destroy() {
-      writeMenu.close();
-      readMenu.close();
+      for (const each of viewPills) each.menu.close();
       scalePill.close();
       pagePill.close();
       root.remove();
@@ -230,14 +244,11 @@ export function createStatusbar(actions) {
     setView(next, workspace = 'write', nextRead = readView) {
       view = next;
       readView = nextRead;
-      writeMenu.refresh();
-      readMenu.refresh();
-      if (workspace !== 'write') writeMenu.close();
-      if (workspace !== 'read') readMenu.close();
-      viewPill.hidden = workspace !== 'write';
-      widthToggle.hidden = view === 'page';
-      widthSep.hidden = view === 'page';
-      readPill.hidden = workspace !== 'read';
+      for (const each of viewPills) each.refresh();
+      if (workspace !== 'write') writePill.menu.close();
+      if (workspace !== 'read') readPill.menu.close();
+      writePill.root.hidden = workspace !== 'write';
+      readPill.root.hidden = workspace !== 'read';
       history.hidden = workspace === 'read';
       const paging = workspace === 'read' ? readView === 'page' : workspace === 'write' && view === 'page';
       if (!paging) pagePill.close();
@@ -266,8 +277,7 @@ export function createStatusbar(actions) {
       smaller.disabled = scale <= SCALE_MIN;
     },
     setTextWidth(next) {
-      wide = next === 'wide';
-      showWidth();
+      for (const each of viewPills) each.setWide(next === 'wide');
     },
     setStatus(text) {
       status.textContent = text;

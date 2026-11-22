@@ -1453,6 +1453,27 @@ test('Seamless and Fountain can run wide on a large screen, and the choice is an
   await expect(toggle).toBeHidden();
 });
 
+test("Read's Seamless view has the same width switch, and Paged doesn't", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 800 });
+  await open(page);
+  await show(page, 'Read');
+  const toggle = statusbar(page).getByRole('switch', { name: 'Wide page' });
+  // Read opens on its pages.
+  await expect(toggle).toBeHidden();
+  await statusbar(page).getByRole('button', { name: 'View: Paged' }).click();
+  await page.getByRole('menuitemradio', { name: 'Seamless' }).click();
+  await expect(toggle).toBeVisible();
+  const read = page.locator('flow-script .fl-read');
+  const narrow = (await read.boundingBox()).width;
+  await toggle.click();
+  await expect(host(page)).toHaveAttribute('text-width', 'wide');
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect.poll(async () => (await page.locator('flow-script .fl-read').boundingBox()).width).toBeGreaterThan(narrow + 300);
+  // Back in Write, its switch shows the same width.
+  await show(page, 'Seamless');
+  await expect(statusbar(page).getByRole('switch', { name: 'Wide page' })).toHaveAttribute('aria-checked', 'true');
+});
+
 test('pages cast a hard shadow on a textured desk', async ({ page }) => {
   await open(page);
   await chooseView(page, 'Paged');

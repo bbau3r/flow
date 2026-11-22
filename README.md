@@ -50,7 +50,7 @@ The build produces two forms:
 | `read-view` | How the Read tab shows the script: `page` (the pages as they print) or `flow` (Seamless, continuous). Also the `readView` property. | `page` |
 | `workspace` | `write` (the script), `outline` (its acts, sequences, scenes and transitions as cards and blocks, which edit the same text) or `read` (the pages as they print, with editing off) | `write` |
 | `scale` | How large the script is shown, as a percentage from 50 to 200 | `100` |
-| `text-width` | `wide` runs Seamless and Fountain views across most of the window on a large screen; absent keeps their usual column. A switch beside the view menu, showing `><` or `<>` for the width it's at, changes it and fires `flow-text-width`. Also the `textWidth` property. | absent |
+| `text-width` | `wide` runs Seamless and Fountain views across most of the window on a large screen; absent keeps their usual column. A switch beside the view menu, in Write and Read alike, showing `><` or `<>` for the width it's at, changes it and fires `flow-text-width`. Also the `textWidth` property. | absent |
 | `theme` | `sage`, `sand`, `sea`, `romance`, `forest`, `lavender` or `graphite` followed by `-light`, `-dark` or `-auto`; plain `auto`, which means `sage-auto`; or a registered name | `sage-light` |
 | `paper` | `letter`, `a4` or a custom size such as `6in x 9in`. The size for a script whose own settings name none. | `letter` |
 
@@ -103,7 +103,7 @@ import { actionPill, button, dimensionsField, installControlStyles, Menu, openMo
 
 `themeChooser({ value, onChange })` is the Auto, Light and Dark switch and the palette grid, for `{ palette, mode }`. It returns `{ root, modes, grid }`, so the parts can also go into a settings panel separately. The modes are `tabs({ fixed: true })`, the same tabs as Write, Outline and Read, kept as a pill at any width.
 
-`searchField({ label, cls, onInput })` is a search box in a pill with its icon at the right, returning `{ root, input }`.
+`searchField({ label, cls, onInput })` is a search box in a pill with its icon at the right, returning `{ root, input }`. `iconSwitch({ label, states, onChange })` is a switch drawn as an icon button whose icon and tooltip show its current state, as the width switch does.
 
 ## Writing
 
