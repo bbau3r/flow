@@ -122,7 +122,7 @@ export function renderEditor(root, doc) {
     const source = sourceOf(doc);
     const location = doc.provider ? getProvider(doc.provider)?.location(doc) : '';
     where.textContent = location ? `${source.label} · ${location}` : source.label;
-    if (!doc.provider) state.textContent = 'Not in a file yet';
+    if (!doc.provider) state.textContent = '';
     else if (doc.value === doc.savedValue) state.textContent = 'Saved';
     else state.textContent = 'Unsaved changes';
   };

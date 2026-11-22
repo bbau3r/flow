@@ -4,7 +4,7 @@
   "name": "Vim lite",
   "version": "1.0.0",
   "author": "Flow",
-  "icon": "vim",
+  "icon": { "paths": ["M12 2.5 21.5 12 12 21.5 2.5 12z", "m8.5 8 3.5 8 3.5-8"] },
   "description": "A small set of Vim's keys for writing: Normal, Insert and Visual modes, motions, operators, counts and a register. A widget beside undo and redo shows the mode and what each command just did.",
   "settings": [
     {

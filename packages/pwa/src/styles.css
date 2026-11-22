@@ -331,7 +331,7 @@ h2 {
 
 .ext-add-error:empty { display: none; }
 
-.ext-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ext-actions, .ext-guides { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .ext-remove:hover:not(:disabled) { color: var(--flow-danger); }
 
