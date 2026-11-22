@@ -3,7 +3,7 @@
 // Storage-agnostic on purpose: it takes text in and emits text out, so the Google
 // Drive plugin and the PWA can each supply their own persistence around it.
 
-import { parse, layout, scriptTitle, DEFAULT_OPTIONS, formatDimensions, pageProfile, parseDimensions, resolvePaper, writeSetting } from '@flow/core';
+import { parse, layout, scriptTitle, DEFAULT_OPTIONS, formatDimensions, pageProfile, parseDimensions, resolvePaper, setTitleFields, titleFields, writeSetting } from '@flow/core';
 import { STYLES } from './styles.js';
 import { addedPaletteSheet, getTheme } from './themes.js';
 import { button, pill } from './controls.js';
@@ -968,20 +968,26 @@ export class FlowScript extends HTMLElement {
   #openSettings() {
     openSettingsDialog(this.shadowRoot, {
       getDimensions: () => this.#scriptPaper(),
-      setDimensions: (size) => this.#setDimensions(size),
+      getCover: () => titleFields(this.#editor ? this.#editor.parsed : parse(this.#value)),
+      save: (changes) => this.#saveProject(changes),
       preview: (size) => this.#preview(size),
       onClose: () => this.focus(),
     });
   }
 
-  // Writes the page size into the script's settings. A script that has none and keeps the size
-  // it already shows at stays as it is.
-  #setDimensions(size) {
+  // Writes Project settings into the script as one undo step: the cover's fields, as `cover`
+  // lists their values, and the page size. A script with no page size of its own that keeps the
+  // size it already shows at gets none written.
+  #saveProject({ dimensions, cover }) {
     this.#preview(null);
     if (!this.#editor) return;
-    const { parsed } = this.#editor;
-    if (parsed.settings.dimensions === undefined && JSON.stringify(size) === JSON.stringify(this.#scriptPaper())) return;
-    this.#editor.commitFromOutline(writeSetting(parsed, 'Dimensions', formatDimensions(size)));
+    const before = this.#editor.value;
+    let lines = setTitleFields(before.split('\n'), cover ?? []);
+    const parsed = parse(lines.join('\n'));
+    if (dimensions && !(parsed.settings.dimensions === undefined && JSON.stringify(dimensions) === JSON.stringify(this.#scriptPaper()))) {
+      lines = writeSetting(parsed, 'Dimensions', formatDimensions(dimensions));
+    }
+    if (lines.join('\n') !== before) this.#editor.commitFromOutline(lines);
   }
 
   async #exportFromDialog() {

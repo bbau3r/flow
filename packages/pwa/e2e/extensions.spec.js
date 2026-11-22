@@ -481,7 +481,7 @@ test.describe('Vim lite', () => {
     await expect(field).toHaveText('Press a key…');
     await page.keyboard.press('CapsLock');
     await expect(field).toHaveText('Caps Lock');
-    await settings(page).getByRole('button', { name: 'Clear Also works as Escape' }).click();
+    await settings(page).getByRole('button', { name: 'Clear Alternative Escape' }).click();
     await expect(field).toHaveText('None');
     await field.click();
     await page.keyboard.press('Escape');

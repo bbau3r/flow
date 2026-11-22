@@ -2973,6 +2973,42 @@ test.describe('project settings', () => {
     expect(await pageWidth(page)).toBe(`${8.27 * 6}em`);
   });
 
+  test('the Cover comes first, with the title page’s own fields in their order, saved with Save', async ({ page }) => {
+    await open(page);
+    await setValue(page, 'Title: BIG\nNotes: Shot on film\nContact:\n    Bob\n    bob@example.com\n\nAction.');
+    let dialog = await openSettings(page);
+    const topics = await dialog.locator('.fl-settings-topic-head').allTextContents();
+    expect(topics[0]).toBe('Cover');
+    const labels = await dialog.locator('.fl-settings-topic').first().locator('.fl-prop-label').allTextContents();
+    expect(labels).toEqual(['Title', 'Notes', 'Contact']);
+    await expect(dialog.getByRole('textbox', { name: 'Contact' })).toHaveValue('Bob\nbob@example.com');
+    await expect(dialog.getByRole('textbox', { name: 'Contact' })).toHaveJSProperty('rows', 2);
+
+    // Cancel changes nothing.
+    await dialog.getByRole('textbox', { name: 'Title' }).fill('BIGGER');
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    expect(await value(page)).toBe('Title: BIG\nNotes: Shot on film\nContact:\n    Bob\n    bob@example.com\n\nAction.');
+
+    // Save writes the fields, each kept in its own style, and the page size with them.
+    dialog = await openSettings(page);
+    await dialog.getByRole('textbox', { name: 'Title' }).fill('BIGGER');
+    await dialog.getByRole('textbox', { name: 'Contact' }).fill('Bob\nbob@example.com\n555-0100');
+    await dialog.getByLabel('Dimensions').selectOption('a4');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    expect(await value(page)).toBe('Title: BIGGER\nNotes: Shot on film\nContact:\n    Bob\n    bob@example.com\n    555-0100\n/*\nSettings:\n    Dimensions: A4\n*/\n\nAction.');
+    // As one undo step.
+    await host(page).evaluate((el) => el.focus());
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect.poll(() => value(page)).toBe('Title: BIG\nNotes: Shot on film\nContact:\n    Bob\n    bob@example.com\n\nAction.');
+  });
+
+  test('a script without a title page says how to start one', async ({ page }) => {
+    await open(page);
+    await setValue(page, 'INT. HOUSE - DAY\n\nAction.');
+    const dialog = await openSettings(page);
+    await expect(dialog.getByText('No title page')).toBeVisible();
+  });
+
   test('a custom size can be in centimetres', async ({ page }) => {
     await open(page);
     await setValue(page, 'Action.');

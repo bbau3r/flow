@@ -42,9 +42,9 @@
       "key": "escapeKey",
       "type": "key",
       "topic": "Modes",
-      "label": "Also works as Escape",
+      "label": "Alternative Escape",
       "default": "",
-      "description": "A key that does what Escape does, such as Caps Lock. Click it, then press the key. With Caps Lock, letters still type as if it were off."
+      "description": "Assigns an alternative key to act as escape. Click it, then press a key to set. Caps Lock works too, without turning on capitals."
     },
     {
       "key": "wrap",

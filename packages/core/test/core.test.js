@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { PDFDict, PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import { newScript, parse, parseInline, layout, titlePositions, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey, dualAt, scriptTitle, continueTitleField, joinTitleValue, outlineCards, outlineSlots, moveOutlineBlock, setOutlineSceneNumber, addOutlineSection, addOutlineSynopsis, setOutlineText, removeOutlineCard, removeOutlineSynopsis, parseDimensions, formatDimensions, pageProfile, resolvePaper, writeSetting } from '../src/index.js';
+import { newScript, parse, parseInline, layout, titlePositions, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey, dualAt, scriptTitle, continueTitleField, joinTitleValue, setTitleFields, titleFields, outlineCards, outlineSlots, moveOutlineBlock, setOutlineSceneNumber, addOutlineSection, addOutlineSynopsis, setOutlineText, removeOutlineCard, removeOutlineSynopsis, parseDimensions, formatDimensions, pageProfile, resolvePaper, writeSetting } from '../src/index.js';
 import { renderPdf } from '../src/pdf.js';
 
 const types = (src) => parse(src).lines.map((l) => l.type);
@@ -1213,6 +1213,54 @@ describe('dualAt', () => {
 
   it('is false on a normal speech and outside of speeches', () => {
     for (const index of [0, 1, 2, 3, 4, 9, 10]) expect(dualAt(lines, index)).toBe(false);
+  });
+});
+
+describe('title page fields as values, for Project settings', () => {
+  const cover = [
+    'Title: Big Fish',
+    'Credit: Written by',
+    'Contact:',
+    '\tBob',
+    '\tbob@example.com',
+    'Draft date: May 1',
+    '',
+    'INT. HOUSE - DAY',
+  ];
+
+  it('lists the fields in the script’s own order, with their values and how they’re written', () => {
+    expect(titleFields(parse(cover.join('\n')))).toEqual([
+      { key: 'title', label: 'Title', value: 'Big Fish', inline: true },
+      { key: 'credit', label: 'Credit', value: 'Written by', inline: true },
+      { key: 'contact', label: 'Contact', value: 'Bob\nbob@example.com', inline: false },
+      { key: 'draft date', label: 'Draft date', value: 'May 1', inline: true },
+    ]);
+    expect(titleFields(parse('INT. HOUSE - DAY\n\nNo title page.'))).toEqual([]);
+  });
+
+  it('leaves fields that didn’t change exactly as they were', () => {
+    expect(setTitleFields(cover, ['Big Fish', 'Written by', 'Bob\nbob@example.com', 'May 1'])).toEqual(cover);
+    expect(setTitleFields(cover, [])).toEqual(cover);
+  });
+
+  it('keeps each field’s style, with its own indent, and moves a value onto lines of its own when it grows', () => {
+    const lines = setTitleFields(cover, ['Big Fish 2', undefined, 'Bob', 'May 1\nJune 2']);
+    expect(lines).toEqual([
+      'Title: Big Fish 2',
+      'Credit: Written by',
+      'Contact:',
+      '\tBob',
+      'Draft date:',
+      '    May 1',
+      '    June 2',
+      '',
+      'INT. HOUSE - DAY',
+    ]);
+    expect(titleFields(parse(lines.join('\n'))).map((f) => f.value)).toEqual(['Big Fish 2', 'Written by', 'Bob', 'May 1\nJune 2']);
+  });
+
+  it('keeps a field that’s emptied, with nothing after its key', () => {
+    expect(setTitleFields(cover, [undefined, '']).slice(0, 2)).toEqual(['Title: Big Fish', 'Credit:']);
   });
 });
 

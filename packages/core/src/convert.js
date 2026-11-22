@@ -245,6 +245,50 @@ export function toggleEmphasis(raw, from, to, style, contentStart = 0, contentEn
 }
 
 /**
+ * The title page's fields, in the order the script has them: { key, label, value, inline }, where
+ * `label` is the key as written, such as Draft date, `value` is its text, with a line break between
+ * values on lines of their own, and `inline` says the value sits beside the key.
+ */
+export function titleFields(parsed) {
+  return parsed.titlePage.map(({ key, label, lines: at }) => {
+    const values = at.map((i) => {
+      const line = parsed.lines[i];
+      return line.raw.slice(line.contentStart, Math.max(line.contentStart, line.contentEnd ?? line.raw.length));
+    });
+    const inline = values[0] !== '';
+    return { key, label, value: (inline ? values : values.slice(1)).join('\n'), inline };
+  });
+}
+
+/**
+ * Writes new values into the title page's fields: `values` lists them in the fields' order, as
+ * titleFields gives them, and a field left out or unchanged stays exactly as it was. A field keeps
+ * its style: a single value beside its key stays there, and anything on several lines, or under
+ * its key already, goes on lines of its own, indented as the field was, or by four spaces.
+ * Returns the new lines.
+ */
+export function setTitleFields(input, values) {
+  const parsed = parse(input.join('\n'));
+  const fields = titleFields(parsed);
+  const lines = [...input];
+  // From the bottom up, so the lines above keep their places.
+  for (let n = parsed.titlePage.length - 1; n >= 0; n--) {
+    const next = values[n];
+    if (typeof next !== 'string') continue;
+    const value = next.replace(/\r\n?/g, '\n').replace(/\s+$/, '');
+    if (value === fields[n].value) continue;
+    const { label, lines: at } = parsed.titlePage[n];
+    const parts = value ? value.split('\n') : [];
+    const indent = at.slice(1).map((i) => TITLE_INDENT.exec(input[i])?.[0]).find(Boolean) ?? '    ';
+    const written = fields[n].inline && parts.length <= 1
+      ? [parts.length ? `${label}: ${parts[0]}` : `${label}:`]
+      : [`${label}:`, ...parts.map((part) => `${indent}${part.trim()}`)];
+    lines.splice(at[0], at[at.length - 1] - at[0] + 1, ...written);
+  }
+  return lines;
+}
+
+/**
  * Enter on a title page field with its value on the lines below. On a key with nothing beside it
  * this starts the values. On a value it splits as usual but stays a value, and on one still empty
  * it stops, leaving a regular line. Returns { lines, cursor }, or null for anything else, such as
