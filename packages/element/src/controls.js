@@ -57,8 +57,6 @@ const ICONS = {
   highlighter: '<path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>',
   // A jigsaw corner piece: a tab out of the top, a socket into the right, the other sides flat.
   extensions: '<path d="M4 7.5h5a3 3 0 0 1 6 0h5v4a3 3 0 0 0 0 6v3.5H4z"/>',
-  // A V in a diamond, after Vim's own mark.
-  vim: '<path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/><path d="m8.5 8 3.5 8 3.5-8"/>',
   keyboard: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01"/><path d="M10 9h.01"/><path d="M14 9h.01"/><path d="M18 9h.01"/><path d="M6 13h.01"/><path d="M18 13h.01"/><path d="M10 13h4"/><path d="M7 16h10"/>',
   layout: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>',
   trash: '<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/>',
@@ -80,10 +78,23 @@ function div(className, ...children) {
   return node;
 }
 
+/**
+ * An icon: the name of one of Flow's own, or { paths }, a list of SVG path data on a 24 by 24
+ * grid, which an extension brings and which is drawn in the same line style. Paths are set as
+ * data, never as markup, so they can't carry anything but shapes.
+ */
 export function icon(name) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.classList.add('fl-svg');
   setAttrs(svg, { viewBox: '0 0 24 24', 'aria-hidden': 'true' });
+  if (name && typeof name === 'object' && Array.isArray(name.paths)) {
+    for (const d of name.paths) {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', String(d));
+      svg.append(path);
+    }
+    return svg;
+  }
   // A name it doesn't know, such as an extension's, draws nothing rather than failing.
   svg.innerHTML = ICONS[name] ?? '';
   return svg;
@@ -319,9 +330,11 @@ function responsive(attrs, wide, compact) {
  * Items are { label, icon, selected, disabled, title }, and `onSelect` gets the label of a tab
  * the writer switches to. The returned node's `selectTab(label)` shows another tab as current
  * without calling `onSelect`, for when something else changed it. `fixed` keeps the pill of
- * tabs at any width, for a few short choices such as a mode.
+ * tabs at any width. `fit` measures instead of following the bar's width: the pill shows while
+ * its labels fit the room it has, and the dropdown when they don't, for tabs outside the bars,
+ * such as in a settings panel.
  */
-export function tabs({ label, attrs, onSelect, fixed = false }, items) {
+export function tabs({ label, attrs, onSelect, fixed = false, fit = false }, items) {
   let current = items.find((item) => item.selected);
   let menu = null;
   const show = (item) => {
@@ -368,7 +381,29 @@ export function tabs({ label, attrs, onSelect, fixed = false }, items) {
   });
   const node = responsive(attrs, wide, pill({ cls: 'fl-tabs', label }, menu.root));
   node.selectTab = selectTab;
+  if (fit) fitTabs(node, wide);
   return node;
+}
+
+// Shows the pill of tabs while every label fits beside the others, and the dropdown otherwise.
+// The pill is measured as it would show, whichever form is showing.
+function fitTabs(node, wide) {
+  node.classList.add('fl-fit');
+  const check = () => {
+    node.classList.remove('fl-fit-compact');
+    node.classList.toggle('fl-fit-compact', wide.scrollWidth > wide.clientWidth + 1);
+  };
+  const observer = new ResizeObserver(() => check());
+  // The room it has is its parent's, once it has one.
+  const watch = () => {
+    if (!node.isConnected || !node.parentElement) {
+      requestAnimationFrame(watch);
+      return;
+    }
+    observer.observe(node.parentElement);
+    check();
+  };
+  requestAnimationFrame(watch);
 }
 
 /**
@@ -793,6 +828,13 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 /* Space runs short in stages, measured from the bar the control sits in. */
 .fl-responsive, .fl-wide-only { display: contents; }
 .fl-compact-only { display: none; }
+/* Tabs that measure the room they have, rather than the bar's width. The pill never grows past
+   it, so its overflow says the labels don't fit. */
+.fl-fit > .fl-wide-only { display: contents !important; }
+.fl-fit > .fl-compact-only { display: none !important; }
+.fl-fit > .fl-wide-only > .fl-tabs { max-width: 100%; overflow: hidden; }
+.fl-fit.fl-fit-compact > .fl-wide-only { display: none !important; }
+.fl-fit.fl-fit-compact > .fl-compact-only { display: contents !important; }
 @container (max-width: 760px) {
   .fl-collapse { display: none; }
 }
