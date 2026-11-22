@@ -1,33 +1,37 @@
 # Writing an app extension
 
-An app extension adds to what Flow does: settings, commands in the Document menu, tabs beside Write, Outline and Read, places to open scripts from on the home page, and bubbles along the bottom of the editor. Every app extension starts with a JSON manifest. What it can do beyond that depends on how it reaches Flow.
+An app extension adds to what Flow does: settings, commands in the Document menu, widgets in the editor's bars, tabs beside Write, Outline and Read, and sources to open and save scripts in. Every app extension starts with a JSON manifest, and most bring code with it.
 
 | How it arrives | What it can be | Where it comes from |
 | --- | --- | --- |
-| A JSON file, added in App settings | The manifest only: settings and commands that type text | **App settings**, **Extensions**, **Add extension** |
-| Registered by code on the page | The manifest and an `activate` function, so anything below | `window.flowExtensions.register(manifest, activate)` |
-| Built in | The same as code, shipped with Flow | A folder in `packages/pwa/src/extensions/` |
+| Files, added in App settings | A manifest, and its `.js` files if it has code | **App settings**, **Extensions**, **Add extension** |
+| Registered by code on the page | A manifest and an `activate` function | `window.flowExtensions.register(manifest, activate)` |
+| Built in | The same, shipped with Flow | A folder in `packages/pwa/src/extensions/` |
 
-**Flow never loads code from a file.** Adding a `manifest.json` reads that file and nothing else, even if a `.js` file sits beside it. An app added from a file needs at least one command that types text, or Flow turns it away, since it would have nothing to run.
+An extension someone adds starts turned on. The ones built into Flow start off. On or off, and its settings, are kept on this device.
 
-Every extension starts turned off, and its on or off, and its settings, are kept on this device.
+## Adding one
+
+Choose **Add extension** on the **Extensions** page of App settings, then pick the manifest, a `.json` file, together with any `.js` files it uses. Flow checks the manifest first, and says what's wrong under the button if anything is.
+
+**Code asks first, every time.** When the files include code, Flow shows **Do you trust this extension?** before adding anything. It names the extension, its author and its files. Code from a file runs inside Flow with everything Flow can do: it can read and change your scripts, and reach the files and accounts Flow is connected to on this device. Flow can't check what the code does, so only add code from someone you trust. Cancel is the default, and an update asks again.
+
+To update an extension, add its files again: the same `id` replaces the one before. **Remove** takes it out of Flow, with its settings and anything it kept on this device.
 
 ## The manifest
 
 ```json
 {
-  "id": "scene-starters",
+  "id": "word-count",
   "kind": "app",
-  "name": "Scene starters",
+  "name": "Word count",
   "version": "1.0.0",
   "author": "Your name",
-  "icon": "scene",
-  "description": "Types the start of a scene heading.",
+  "icon": { "paths": ["M4 6h16", "M4 12h10", "M4 18h7"] },
+  "description": "Counts the words in the script, in the top right corner.",
+  "main": "index.js",
   "settings": [],
-  "commands": [
-    { "id": "interior", "label": "Insert INT.", "shortcut": "Mod+Shift+1", "insert": "INT. " },
-    { "id": "exterior", "label": "Insert EXT.", "shortcut": "Mod+Shift+2", "insert": "EXT. " }
-  ]
+  "commands": []
 }
 ```
 
@@ -36,23 +40,43 @@ Every extension starts turned off, and its on or off, and its settings, are kept
 | `id` | yes | 2 to 40 lowercase letters, digits or dashes, starting with a letter. It can't be the id of an extension Flow already has. |
 | `kind` | yes | `"app"` |
 | `name` | yes | What App settings calls it, up to 60 characters |
-| `version`, `author`, `description` | no | Shown on its card on the Extensions page |
-| `icon` | no | One of Flow's icon names, such as `scene`, `keyboard` or `info`. Unknown names draw nothing. |
+| `version`, `author`, `description` | no | Shown with it on the Extensions page |
+| `icon` | no | Its icon, below. Without one it shows a jigsaw piece. |
+| `main` | no | The `.js` file its code starts from, such as `index.js` |
 | `settings` | no | Its settings, below |
 | `commands` | no | Commands that type text, below |
 
+An app needs code (`main`) or at least one command, or there's nothing for it to do and Flow turns it away.
+
+### Icons
+
+An icon is its own drawing, as SVG path data on a 24 by 24 grid, drawn in Flow's line style: two pixels wide, rounded, in the color around it.
+
+```json
+"icon": { "paths": ["M12 2.5 21.5 12 12 21.5 2.5 12z", "m8.5 8 3.5 8 3.5-8"] }
+```
+
+Up to twelve paths. Only path data is taken, letters and numbers, so an icon can't carry anything but shapes. The name of one of Flow's own icons, such as `"settings"`, also works. Commands and tabs take an icon the same way, and use the extension's own when they have none.
+
 ### Commands that type text
 
-Each command goes in the Document menu, in a group of its own after Flow's items, while a script is open. Choosing it types its `insert` text at the cursor in the Write tab, replacing any selection, as pasting would; in the other tabs, which have no cursor, it does nothing. Text with line breaks becomes several lines.
+These need no code. Each goes in the Document menu, in a group of its own after Flow's items, while a script is open. Choosing it types its `insert` text at the cursor in the Write tab, replacing any selection, as pasting would; in the other tabs, which have no cursor, it does nothing. Text with line breaks becomes several lines.
+
+```json
+"commands": [
+  { "id": "interior", "label": "Insert INT.", "shortcut": "Mod+Shift+1", "widget": "top-end", "insert": "INT. " }
+]
+```
 
 | Field | Required | What it is |
 | --- | --- | --- |
 | `id` | yes | Unique within the extension |
 | `label` | yes | The menu item's name |
 | `title` | no | Its tooltip |
-| `icon` | no | An icon name; the extension's own icon otherwise |
+| `icon` | no | Its icon; the extension's own otherwise |
 | `shortcut` | no | Such as `Mod+Shift+K`. `Mod` is Cmd on a Mac and Ctrl elsewhere; `Ctrl`, `Alt`, `Shift` and `Meta` can be used too, and the last part is one letter or digit. The menu shows it as the system writes it. |
-| `insert` | yes, from a file | The text it types |
+| `widget` | no | Also shows it as a button in the editor's bars: `"top-end"`, the top right corner, `"bottom-start"`, after the pills along the bottom, or `"bottom-end"`, just before undo and redo |
+| `insert` | yes | The text it types |
 
 Pick shortcuts that Flow and browsers don't already use. Ctrl+S, Ctrl+B, Ctrl+I, Ctrl+U and Ctrl+Z, for instance, are taken.
 
@@ -62,44 +86,66 @@ An app with settings gets a page of its own in App settings, after a rule below 
 
 ```json
 "settings": [
-  { "key": "startMode", "type": "choice", "topic": "Modes", "label": "Start in", "default": "normal",
-    "options": [{ "value": "normal", "label": "Normal" }, { "value": "insert", "label": "Insert" }],
-    "description": "The mode a script opens in." },
-  { "key": "bubble", "type": "boolean", "topic": "Display", "label": "Mode bubble", "default": true }
+  { "key": "goal", "type": "number", "topic": "Counting", "label": "Daily goal", "default": 1000, "min": 0,
+    "description": "Words to write each day." },
+  { "key": "pages", "type": "boolean", "topic": "Counting", "label": "Count pages too", "default": false }
 ]
 ```
 
 | Field | What it is |
 | --- | --- |
 | `key` | How code reads it, unique within the extension |
-| `type` | `boolean` (a switch), `choice` (a dropdown of `options`), `text` or `number` (with optional `min` and `max`) |
+| `type` | `boolean` (a switch), `choice` (a dropdown of `options`, each `{ value, label }`), `text`, or `number` (with optional `min` and `max`) |
 | `label` | Its name on the page |
 | `description` | A line under it |
 | `topic` | The heading it's grouped under, `General` when left out. Topics appear in the order their first setting does. |
 | `default` | Its value until it's changed |
 
-## Extensions with code
+## Code
 
-Code can register an extension on the page, as a userscript or a page that hosts Flow would:
+The `main` file is an ES module. It exports `activate`, or a default function, which Flow calls each time the extension is turned on, including when Flow starts with it on.
 
 ```js
-window.flowExtensions.register(manifest, activate);
+// index.js
+import { countWords } from './count.js';
+
+export function activate(flow) {
+  flow.onEditor((script) => {
+    const node = document.createElement('span');
+    const show = () => { node.textContent = `${countWords(script.value)} words`; };
+    show();
+    script.addEventListener('flow-change', show);
+    const remove = script.addWidget({ node, place: 'top-end', label: 'Word count' });
+    return () => {
+      script.removeEventListener('flow-change', show);
+      remove();
+    };
+  });
+}
 ```
 
-It's checked like any other manifest, then listed on the Extensions page as "Added by code". Its on or off is kept, but the code itself has to register again on every visit. Flow's built-in extensions work the same way, but ship with it: each is a folder in `packages/pwa/src/extensions/` holding `manifest.json` and `index.js`, listed in `built-in.js`.
+```js
+// count.js
+export const countWords = (text) => text.split(/\s+/).filter(Boolean).length;
+```
+
+**Files import each other as `./name.js`,** from the same folder, and every one has to be chosen in Add extension. Each is loaded as a module of its own, after the files it imports, so files can't import each other in a circle. Code from a file can't import Flow's own modules, or packages by name such as `lodash`; bundle those into your files, or use `flow.ui` for Flow's controls.
 
 ### activate(flow)
 
-Flow calls `activate` each time the extension is turned on, including when Flow starts with it on. It can return a function, which runs when it's turned off. Everything it added through `flow` is taken away by itself.
+`activate` can return a function, which runs when the extension is turned off. Everything it added through `flow` is taken away by itself.
 
 | Member | What it does |
 | --- | --- |
 | `flow.manifest` | Its checked manifest |
 | `flow.settings.get(key)` | A setting's value, or its default |
 | `flow.settings.onChange(fn)` | Calls `fn(key, value)` after one of its settings changes. Returns a function that stops it. |
+| `flow.storage` | Its own storage on this device: `get(key)`, `set(key, value)`, `delete(key)` and `keys()`, all returning promises. It holds anything IndexedDB can, such as a folder handle, and other extensions can't read it. |
+| `flow.ui` | Flow's controls, so an extension's look matches: `button`, `icon`, `pill`, `pillSep`, `toggleSwitch`, `iconSwitch`, `tabs`, `searchField`, `actionPill`, `Menu`, `openModal`. The [README](../../README.md#shared-controls) describes each. |
+| `flow.toast(message)` | A short message at the bottom of the screen |
 | `flow.addCommand(command)` | A command, as in the manifest, but with `run({ script })` in place of `insert`. `script` is the open `<flow-script>`. |
 | `flow.addTab(tab)` | A tab beside Write, Outline and Read: `{ id, label, icon, title, render(root, context) }` |
-| `flow.addSource(provider)` | A place to open and save scripts, which the home page's Open offers beside This device |
+| `flow.addSource(provider)` | A place to open and save scripts. [The sources guide](sources.md) covers them. |
 | `flow.onEditor(fn)` | Calls `fn(script)` for each script that opens, and for any already open. `fn` can return a cleanup, which runs as the script closes or the extension turns off. |
 
 Every `add` returns a function that takes it away again.
@@ -115,41 +161,26 @@ Every `add` returns a function that takes it away again.
 
 A tab's place in the address is `?tab=<extension id>-<tab id>`, so a reload stays on it. Undo, redo and the view menus hide while it's showing, and the page scale applies to its text through `font-size`.
 
-```js
-flow.addTab({
-  id: 'stats',
-  label: 'Stats',
-  icon: 'info',
-  render(root, { lines }) {
-    const words = lines().join(' ').split(/\s+/).filter(Boolean).length;
-    root.textContent = `${words} words`;
-  },
-});
-```
+### Widgets
 
-### Sources
-
-A source follows the provider interface at the top of `packages/pwa/src/providers/index.js`: `id`, `label`, `description`, `status()`, `open()`, `save(doc, options)`, `saveAs(doc)`, `saveHint()` and `location(doc)`.
-
-### Bubbles
-
-Bubbles go along the bottom of the editor through `script.addBubble`, usually from `flow.onEditor`:
-
-```js
-flow.onEditor((script) => {
-  const node = document.createElement('span');
-  node.textContent = 'Hello';
-  return script.addBubble({ node, side: 'end', label: 'Hello', tabs: ['write'] });
-});
-```
+Widgets are an extension's own pills in the editor's bars, through `script.addWidget`, usually from `flow.onEditor`:
 
 | Option | What it is |
 | --- | --- |
-| `node` | What the bubble holds |
-| `side` | `'start'`, after the editor's own pills on the left, or `'end'`, on the right just before undo and redo |
-| `label` | Its accessible name |
+| `place` | `'top-end'`, the top right corner; `'bottom-start'`, after the editor's own pills along the bottom (the default); or `'bottom-end'`, at the bottom right, just before undo and redo |
+| `node` | What the widget holds |
+| `onClick`, `icon`, `label`, `title` | In place of `node`, a button: `label` names it, `icon` draws it, and `onClick` runs when it's pressed |
 | `tabs` | The tabs it shows in, such as `['write']`; every tab when left out |
-| `css` | Styles for it. The bubble is inside the editor's shadow root, where the page's styles don't reach. The theme's `--flow-*` colors do. |
+| `css` | Styles for it. A widget is inside the editor's shadow root, where the page's styles don't reach. The theme's `--flow-*` colors do. |
+
+```js
+flow.onEditor((script) => script.addWidget({
+  place: 'top-end',
+  label: 'Insert the date',
+  icon: { paths: ['M4 6h16v14H4z', 'M4 10h16', 'M8 3v4', 'M16 3v4'] },
+  onClick: () => script.insertText(new Date().toLocaleDateString()),
+}));
+```
 
 ### Keys
 
@@ -174,6 +205,19 @@ flow.onEditor((script) => {
 
 Shortcuts with Ctrl or Cmd are best left alone, so the app's own keep working.
 
-## A worked example: Vim lite
+## Registering from code on the page
 
-Vim lite, built into Flow, is written only against this API. Its folder, `packages/pwa/src/extensions/vim-lite/`, has its manifest with four settings, `index.js`, which uses `flow.onEditor` to give each script a bubble beside undo and redo and a key handler, and `vim.js`, the engine, which edits only through `text`.
+Code already running on the page, such as a userscript or a page that hosts Flow, can register an extension without files:
+
+```js
+window.flowExtensions.register(manifest, activate);
+```
+
+It's checked like any other manifest, then listed as "Added by code" and "Runs its own code". Its on or off is kept, but the code has to register again on every visit. No trust question is asked, since the code is already running.
+
+## Worked examples
+
+Both are built into Flow, in `packages/pwa/src/extensions/`, and use only this API.
+
+- **Vim lite** (`vim-lite/`): a manifest with four settings and its own icon; `index.js`, which uses `flow.onEditor` to give each script a widget beside undo and redo and a key handler; and `vim.js`, the engine, which edits only through `text`.
+- **Proton Drive** (`proton-drive/`): a cloud source, which [the sources guide](sources.md) walks through.

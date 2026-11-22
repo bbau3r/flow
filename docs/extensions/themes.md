@@ -7,9 +7,9 @@ A theme extension adds one or more palettes to Flow's theme chooser. It's a sing
 1. Save the JSON below as a file ending in `.json`.
 2. In Flow, open **App settings**, then **Extensions**, and choose **Add extension**.
 3. Pick the file. Flow checks it, and if anything's wrong it says what, under the button.
-4. Turn it on with its switch. Its palettes then show under **Appearance**.
+4. It's added turned on, and its palettes show under **Appearance**. Its switch turns it off.
 
-Added extensions stay on this device. To change one, edit the file and add it again: a file with the same `id` replaces the one before, and stays on if it was on. **Remove** takes it out of Flow.
+Added extensions stay on this device. To change one, edit the file and add it again: a file with the same `id` replaces the one before, and stays on or off as it was. **Remove** takes it out of Flow.
 
 ## An example
 
@@ -55,7 +55,7 @@ Added extensions stay on this device. To change one, edit the file and add it ag
 | `version` | no | Shown on its card. Defaults to `1.0.0`. |
 | `author` | no | Shown on its card |
 | `description` | no | Shown on its card, and searched, up to 400 characters |
-| `icon` | no | One of Flow's icon names, such as `palette` (the default) |
+| `icon` | no | Its own drawing, as `{ "paths": [...] }`, SVG path data on a 24 by 24 grid, or one of Flow's icon names, such as `"palette"`. Without one it shows a jigsaw piece. [The apps guide](apps.md#icons) has more. |
 | `palettes` | yes | One or more palettes, by name |
 
 A palette's name, such as `mint` above, is what Flow stores as the chosen theme, as `mint-light`, `mint-dark` or `mint-auto`. It has to be 2 to 24 lowercase letters and digits, starting with a letter, with no dashes. It can't be the name of a palette Flow has built in (`sage`, `sand`, `sea`, `romance`, `forest`, `lavender`, `graphite`), or of one another extension that's on already uses.
