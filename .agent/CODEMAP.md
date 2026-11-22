@@ -89,8 +89,8 @@ return new lines, plus a cursor where relevant.
 | `highlights.js` | Read-tab highlights via the CSS Custom Highlight API: painter, toolbar dots, Highlight Manager dialog, color popover (vanilla-colorful) |
 | `export-dialog.js` | PDF export options modal |
 | `settings-dialog.js` | Project settings (page dimensions) on `openSettingsPanel`, previews live, Save writes the boneyard |
-| `dimensions-field.js` | Paper size picker shared by project settings, the PDF export and the PWA's Defaults; `bare` hands over the select for a settings panel |
-| `page-preview.js` | Small drawing of the sheet with measurements |
+| `dimensions-field.js` | Paper size picker (`dimensionsField`, used by the PDF export) and `pageSizeSetting`, the picker plus the sheet drawing as one settings property, used by project settings and the PWA's Defaults. `DIMENSIONS_CSS` |
+| `page-preview.js` | Small drawing of the sheet with measurements. `PAGE_PREVIEW_CSS` |
 | `controls.js` | Shared UI kit: `button`, `pill`, `pillSep`, `foldingPill`, `tabs` (`fixed` keeps the pill at any width), `actionPill`, `searchField`, `iconSwitch`, `Menu`, `openModal`, `icon`, `CONTROL_TOKENS` (including `page-shadow`, `desk-noise`, `desk-gradient`), `DESK_BACKGROUND` and the `.fl-desk` and `.fl-paper` classes, `CONTROLS_CSS`, `token()`. New components build on these and style with `token()`. |
 | `themes.js` | `PALETTES` (sage, sand, sea, romance, forest, lavender, graphite x light/dark), `registerTheme`, `THEME_CSS` (`:host`), `PAGE_THEME_CSS` (`:root[data-theme]`) |
 | `styles.js` | The shadow-root stylesheet `STYLES`, page geometry in em |

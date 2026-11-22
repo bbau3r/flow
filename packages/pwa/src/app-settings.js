@@ -2,7 +2,7 @@
 // new scripts start with, and installing Flow as an app. They open from the gear on the home page and from App settings in a
 // script's Document menu, and every change applies at once.
 
-import { button, dimensionsField, openSettingsPanel, PALETTES } from '@flow/element/source';
+import { button, openSettingsPanel, pageSizeSetting, PALETTES } from '@flow/element/source';
 import { DEFAULT_COVER } from '@flow/core';
 import { readDefaults, saveDefaults } from './defaults.js';
 import { themeControls } from './ui.js';
@@ -64,9 +64,11 @@ function defaultsSection() {
   const defaults = readDefaults();
   const save = () => saveDefaults(defaults);
 
-  const size = dimensionsField({
-    bare: true,
+  // The same picker and drawing of the sheet as the project settings.
+  const size = pageSizeSetting({
     value: defaults.dimensions,
+    keywords: 'new script',
+    description: 'New scripts start at this size. US Letter adds no setting to the script.',
     onChange: (value) => {
       defaults.dimensions = value;
       save();
@@ -104,13 +106,7 @@ function defaultsSection() {
     topics: [
       {
         label: 'Page',
-        properties: [{
-          label: 'Size',
-          keywords: 'paper dimensions letter a4 custom new script',
-          control: size.select,
-          below: size.nodes,
-          description: 'New scripts start at this size. US Letter adds no setting to the script.',
-        }],
+        properties: [size.property],
       },
       {
         label: 'Cover page',

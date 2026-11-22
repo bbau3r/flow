@@ -93,13 +93,15 @@ The editor has a top row, the action center that joins it when there is room, an
 
 ### Shared controls
 
-The pills, buttons, menus, tabs, search field, modals, the settings panel, the paper size picker and the theme chooser are exported so that an app's own controls match the editor's. Call `installControlStyles()` once to use them outside the element, which also adds the theme colors for `<html data-theme="...">`.
+The pills, buttons, menus, tabs, search field, modals, the settings panel, the paper size picker, the page size setting and the theme chooser are exported so that an app's own controls match the editor's. Call `installControlStyles()` once to use them outside the element, which also adds the theme colors for `<html data-theme="...">`.
 
 ```js
 import { actionPill, button, dimensionsField, installControlStyles, Menu, openModal, openSettingsPanel, pill, pillSep, searchField, tabs, themeChooser } from '@flow/element/source';
 ```
 
 `openSettingsPanel(parent, { title, icon, sections, actions, onClose })` lays settings out the same way everywhere: a search box floating above the panel, a rail of section icons down its left when there's more than one section, each section with a button that folds or unfolds all its topics, and topics that fold on their own. Sections are `{ id, label, icon, topics }`, topics `{ label, open, properties }`, and properties `{ label, description, control, below, wide, keywords }`. A property's control sits beside its name, or under it when `wide`, and `below` runs the full width beneath, such as a preview. The search sits at the top of the panel, and each section is a page of its own that the rail turns to. Searching looks through every section, matching names, descriptions and keywords, and shows matching topics open.
+
+`pageSizeSetting({ label, value, description, onChange })` is a page size as a settings property: the picker, with a drawing of the sheet under it that follows each choice. It returns `{ property, value }`.
 
 `themeChooser({ value, onChange })` is the Auto, Light and Dark switch and the palette grid, for `{ palette, mode }`. It returns `{ root, modes, grid }`, so the parts can also go into a settings panel separately. The modes are `tabs({ fixed: true })`, the same tabs as Write, Outline and Read, kept as a pill at any width.
 
