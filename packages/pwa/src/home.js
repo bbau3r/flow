@@ -6,7 +6,7 @@
 import { parse } from '@flow/core';
 import { button, icon, openModal, searchField } from '@flow/element/source';
 import { createDoc, deleteDoc, listDocs } from './store.js';
-import { providers } from './providers/index.js';
+import { ensureConnected, providers, sourceOf, sourceRecord, SOURCE_KINDS } from './providers/index.js';
 import { h, timeAgo, toast } from './ui.js';
 import { flowMark } from './mark.js';
 import { openAppSettings } from './app-settings.js';
@@ -25,9 +25,10 @@ async function startNew() {
 
 async function openFrom(provider) {
   try {
+    if (!(await ensureConnected(provider))) return;
     const file = await provider.open();
     if (!file) return;
-    edit(await createDoc({ name: file.name, value: file.text.replace(/\r\n?/g, '\n'), provider: provider.id, ref: file.ref, saved: true }));
+    edit(await createDoc({ name: file.name, value: file.text.replace(/\r\n?/g, '\n'), provider: provider.id, source: sourceRecord(provider), ref: file.ref, saved: true }));
   } catch (err) {
     toast(err.message);
   }
@@ -54,6 +55,7 @@ function chooseAndOpen() {
           openFrom(provider);
         },
       },
+      h('span', { class: 'card-kind' }, SOURCE_KINDS[provider.kind]),
       h('span', { class: 'card-title' }, provider.label),
       h('span', { class: 'card-text' }, provider.description),
       status.ok ? null : h('span', { class: 'badge' }, status.reason));
@@ -93,13 +95,14 @@ function cover(doc) {
 
 function recentCard(doc, refresh) {
   const unsaved = doc.value !== doc.savedValue;
-  const where = providers.find((p) => p.id === doc.provider)?.label ?? 'Not saved to a file';
+  // Where it lives: Temp, Local, or Cloud and the service's name.
+  const where = sourceOf(doc).label;
   const card = h('li', { class: 'tile recent-row' },
     h('button', { type: 'button', class: 'recent-open', title: `Open ${doc.name}`, onclick: () => edit(doc) },
       cover(doc),
       h('span', { class: 'tile-label recent-name' }, doc.name),
       h('span', { class: 'recent-meta' }, timeAgo(doc.updatedAt)),
-      h('span', { class: 'recent-meta' }, unsaved ? `${where} · unsaved changes` : where)),
+      h('span', { class: 'recent-meta recent-source' }, unsaved && doc.provider ? `${where} · unsaved changes` : where)),
     h('button', {
       type: 'button',
       class: 'recent-remove',

@@ -1,6 +1,6 @@
 // The app's own settings, which belong to this device rather than to any script: the theme, what
-// new scripts start with, which extension settings get a tab, the extensions themselves, and
-// installing Flow as an app. Each app extension that's on and has settings follows Flow's own
+// new scripts start with, which extension settings get a tab, the sources scripts can live in,
+// the extensions themselves, and installing Flow as an app. Each app extension that's on and has settings follows Flow's own
 // sections, after a rule. They open from the gear on the home page and from App settings in a
 // script's Document menu, and every change applies at once.
 
@@ -10,6 +10,8 @@ import { readDefaults, saveDefaults } from './defaults.js';
 import { themeControls } from './ui.js';
 import { getExtension, isEnabled, listExtensions, onExtensionsChange, setShowsInSettings, showsInSettings } from './extensions/host.js';
 import { extensionsSection } from './extensions/manager.js';
+import { sourcesSection } from './sources-section.js';
+import { providers } from './providers/index.js';
 import { extensionSection, sectionId } from './extensions/settings.js';
 
 // The browser offers installing once, through this event, and only while it's not installed.
@@ -165,10 +167,14 @@ export function openAppSettings({ onClose, start } = {}) {
   const apps = listExtensions().filter(({ manifest }) => manifest.kind === 'app' && manifest.settings.length);
   const extensionSections = apps.map(({ manifest }) => extensionSection(manifest, { hidden: !tabShown(manifest.id) }));
 
+  const sourceCount = providers.length;
   const stopListening = onExtensionsChange((change) => {
     const kind = getExtension(change.id)?.manifest.kind;
-    // Extensions coming or going, or a theme's palette, change what the panel holds.
-    if (change.type === 'added' || change.type === 'removed' || (change.type === 'enabled' && kind === 'theme')) {
+    // Extensions coming or going, a theme's palette, a source, or an extension that couldn't
+    // start, change what the panel holds.
+    const reopen = ['added', 'removed', 'error'].includes(change.type)
+      || (change.type === 'enabled' && (kind === 'theme' || providers.length !== sourceCount || getExtension(change.id)?.error));
+    if (reopen) {
       reopening = true;
       stopListening();
       panel.close();
@@ -208,6 +214,7 @@ export function openAppSettings({ onClose, start } = {}) {
         }, settingsTabsTopic(apps, () => panel)],
       },
       defaultsSection(),
+      sourcesSection(),
       extensionsSection(() => panel),
       {
         id: 'app',

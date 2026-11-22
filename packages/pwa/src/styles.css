@@ -294,6 +294,9 @@ h2 {
 
 .card-title { font-size: 17px; font-weight: 600; }
 
+/* Local or Cloud, above a source's name. */
+.card-kind { color: var(--flow-accent); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+
 .card-text { font-size: 14px; opacity: 0.85; }
 
 /* On a phone the sheets go two to a row, New and Open first, then a rule across. The search

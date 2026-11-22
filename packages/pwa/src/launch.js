@@ -4,6 +4,7 @@
 
 import { createDoc, listDocs, putDoc } from './store.js';
 import { localProvider } from './providers/local.js';
+import { sourceRecord } from './providers/index.js';
 
 const sameFile = async (doc, handle) => doc.provider === 'local' && !!doc.ref?.handle && doc.ref.handle.isSameEntry(handle);
 
@@ -18,5 +19,5 @@ export async function openLaunchedFile(handle) {
     }
     return doc;
   }
-  return createDoc({ name: file.name, value: text, provider: localProvider.id, ref: file.ref, saved: true });
+  return createDoc({ name: file.name, value: text, provider: localProvider.id, source: sourceRecord(localProvider), ref: file.ref, saved: true });
 }

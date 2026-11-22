@@ -56,6 +56,7 @@ async function pickSaveTarget(doc) {
 
 export const localProvider = {
   id: 'local',
+  kind: 'local',
   label: 'This device',
   description: 'Open a Fountain file from your computer or phone.',
 
@@ -65,8 +66,9 @@ export const localProvider = {
     ? 'Choose the folder and file name.'
     : 'Downloads a copy. This browser can\u2019t choose a folder.'),
 
-  // Browsers can open a file's folder but never reveal its path.
-  location: (doc) => (doc.ref?.handle ? 'On this device' : 'Downloaded copy'),
+  // Browsers can open a file's folder but never reveal its path, so there's only more to say
+  // about a copy that was downloaded.
+  location: (doc) => (doc.ref?.handle ? '' : 'Downloaded copy'),
 
   async open() {
     if (!canWriteFiles()) {

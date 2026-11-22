@@ -1,9 +1,11 @@
 // Scripts autosave here, so work survives a closed tab or a dropped connection
 // whether or not it has been saved to a file yet.
 //
-// A doc is { id, name, value, savedValue, provider, ref, updatedAt, highlights }. `savedValue`
-// is what was last written to the provider (null if never), `ref` is whatever the provider
-// needs to find the file again, and `highlights` are the Read tab's, kept on this device.
+// A doc is { id, name, value, savedValue, provider, source, ref, updatedAt, highlights }.
+// `savedValue` is what was last written to the provider (null if never), `source` is what the
+// doc last knew of its provider ({ kind, label }), `ref` is whatever the provider needs to find
+// the file again, and `highlights` are the Read tab's, kept on this device. A doc with no
+// provider is only here: its source is Temp.
 
 const DB_NAME = 'flow';
 const STORE = 'docs';
@@ -39,13 +41,14 @@ export async function listDocs() {
   return docs.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export async function createDoc({ name, value, provider = null, ref = null, saved = false }) {
+export async function createDoc({ name, value, provider = null, source = null, ref = null, saved = false }) {
   const doc = {
     id: crypto.randomUUID(),
     name,
     value,
     savedValue: saved ? value : null,
     provider,
+    source,
     ref,
     updatedAt: Date.now(),
   };
