@@ -15,6 +15,11 @@ const ID = /^[a-z][a-z0-9-]{1,39}$/;
 const PALETTE_ID = /^[a-z][a-z0-9]{1,23}$/;
 const KEY = /^[a-zA-Z][a-zA-Z0-9_-]{0,39}$/;
 const SHORTCUT = /^((Mod|Ctrl|Alt|Shift|Meta)\+)*[A-Za-z0-9]$/;
+// An app's code file, named in its manifest as `main`.
+const MAIN = /^[\w.-]{1,96}\.m?js$/;
+
+/** Where a widget can go: after the pills along the bottom, before undo and redo, or top right. */
+export const WIDGET_PLACES = ['bottom-start', 'bottom-end', 'top-end'];
 
 class ManifestError extends Error {
   name = 'ManifestError';
@@ -105,12 +110,14 @@ function readCommand(command) {
   const shortcut = text(command.shortcut, `shortcut for command "${id}"`, { max: 30 });
   if (shortcut && !SHORTCUT.test(shortcut)) fail(`Command "${id}" has a shortcut Flow can’t read: ${shortcut}. Write it like Mod+Shift+K.`);
   if (typeof command.insert !== 'string' || !command.insert) fail(`Command "${id}" needs the text it inserts.`);
+  if (command.widget != null && !WIDGET_PLACES.includes(command.widget)) fail(`Command "${id}" can only be a widget at ${WIDGET_PLACES.join(', ')}.`);
   return {
     id,
     label: text(command.label, `label for command "${id}"`, { max: 60, required: true }),
     title: text(command.title, `title for command "${id}"`, { max: 200 }),
     icon: text(command.icon, `icon for command "${id}"`, { max: 30 }),
     shortcut,
+    widget: command.widget ?? null,
     insert: command.insert.slice(0, 5000),
   };
 }
@@ -151,5 +158,10 @@ export function readManifest(json) {
   if (new Set(keys).size !== keys.length) fail('Two of its settings have the same key.');
   if (data.commands != null && !Array.isArray(data.commands)) fail('Its commands have to be a list.');
   manifest.commands = (data.commands ?? []).map(readCommand);
+  // Code an app brings with it, in a file of its own beside the manifest.
+  if (data.main != null) {
+    if (typeof data.main !== 'string' || !MAIN.test(data.main)) fail('Its main has to be the name of a .js file, such as index.js.');
+    manifest.main = data.main;
+  }
   return manifest;
 }
