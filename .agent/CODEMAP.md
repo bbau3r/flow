@@ -85,13 +85,13 @@ return new lines, plus a cursor where relevant.
 | `settings-panel.js` | `openSettingsPanel`: the shared settings layout (search in the panel's head, a rail of section pages, collapse-all, folding topics, properties). Used by project settings and the PWA's App settings. |
 | `theme-chooser.js` | `themeChooser`: Auto/Light/Dark switch and palette swatch grid. Used by the PWA's Theme card and App settings. |
 | `action-center.js` | Per-tab command rows (`setActions(tab, ...)`), foldable |
-| `statusbar.js` | Bottom pills: view menu with the wide/narrow text toggle, scale, page jump, `status-end` slot. `SCALE_MIN/MAX/STEP`. |
+| `statusbar.js` | Bottom pills: each tab's view pill (built by `viewPill()`: view menu plus the width `iconSwitch`), scale, page jump, `status-end` slot. `SCALE_MIN/MAX/STEP`. Add view controls inside `viewPill()` so Write and Read both get them. |
 | `highlights.js` | Read-tab highlights via the CSS Custom Highlight API: painter, toolbar dots, Highlight Manager dialog, color popover (vanilla-colorful) |
 | `export-dialog.js` | PDF export options modal |
 | `settings-dialog.js` | Project settings (page dimensions) on `openSettingsPanel`, previews live, Save writes the boneyard |
 | `dimensions-field.js` | Paper size picker shared by project settings, the PDF export and the PWA's Defaults; `bare` hands over the select for a settings panel |
 | `page-preview.js` | Small drawing of the sheet with measurements |
-| `controls.js` | Shared UI kit: `button`, `pill`, `pillSep`, `foldingPill`, `tabs` (`fixed` keeps the pill at any width), `actionPill`, `searchField`, `Menu`, `openModal`, `icon`, `CONTROL_TOKENS` (including `page-shadow`, `desk-noise`, `desk-gradient`), `DESK_BACKGROUND` and the `.fl-desk` and `.fl-paper` classes, `CONTROLS_CSS`, `token()`. New components build on these and style with `token()`. |
+| `controls.js` | Shared UI kit: `button`, `pill`, `pillSep`, `foldingPill`, `tabs` (`fixed` keeps the pill at any width), `actionPill`, `searchField`, `iconSwitch`, `Menu`, `openModal`, `icon`, `CONTROL_TOKENS` (including `page-shadow`, `desk-noise`, `desk-gradient`), `DESK_BACKGROUND` and the `.fl-desk` and `.fl-paper` classes, `CONTROLS_CSS`, `token()`. New components build on these and style with `token()`. |
 | `themes.js` | `PALETTES` (sage, sand, sea, romance, forest, lavender, graphite x light/dark), `registerTheme`, `THEME_CSS` (`:host`), `PAGE_THEME_CSS` (`:root[data-theme]`) |
 | `styles.js` | The shadow-root stylesheet `STYLES`, page geometry in em |
 | `fonts.js` / `pdf-fonts.js` | Courier Prime and Roboto inlined; WOFF2 on screen, WOFF for PDF |
