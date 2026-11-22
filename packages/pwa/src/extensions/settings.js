@@ -18,6 +18,19 @@ function control(manifest, setting, value) {
     select.addEventListener('change', () => save(select.value));
     return select;
   }
+  // Several lines of text get a box that grows with them, under the setting's name.
+  if (setting.type === 'text' && setting.multiline) {
+    const box = document.createElement('textarea');
+    box.value = String(value);
+    box.spellcheck = true;
+    const fit = () => { box.rows = Math.max(3, box.value.split('\n').length + 1); };
+    fit();
+    box.addEventListener('input', () => {
+      fit();
+      save(box.value);
+    });
+    return box;
+  }
   const input = document.createElement('input');
   input.type = setting.type === 'number' ? 'number' : 'text';
   input.value = String(value);
@@ -89,6 +102,7 @@ export function extensionSection(manifest, { hidden = false } = {}) {
       topics.push(topic);
     }
     topic.properties.push({
+      wide: setting.type === 'text' && setting.multiline,
       label: setting.label,
       description: setting.description,
       keywords: `${manifest.name} extension`,

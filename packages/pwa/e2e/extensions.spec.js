@@ -16,6 +16,41 @@ const docMenu = (page) => page.locator('flow-script .fl-docmenu');
 const widget = (page) => page.locator('flow-script .fl-widget:not(.fl-command-widget)');
 const vimMode = (page) => page.locator('flow-script .vim-mode');
 
+// The system's folder picker can't run headless, so this one hands back a folder from the
+// browser's private file system, named by window.nextFolder. Everything after it is the real API.
+const folderPicker = () => {
+  window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle(window.nextFolder);
+};
+test.beforeEach(({ page }) => page.addInitScript(folderPicker));
+
+// Writes an extension's files into a folder there, for the folder picker to hand back.
+async function writeFolder(page, name, files) {
+  await page.evaluate(async ({ name: folderName, files: contents }) => {
+    const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName, { create: true });
+    for (const [file, text] of Object.entries(contents)) {
+      const writable = await (await folder.getFileHandle(file, { create: true })).createWritable();
+      await writable.write(text);
+      await writable.close();
+    }
+    window.nextFolder = folderName;
+  }, { name, files });
+}
+
+// Add extension points to an extension's folder, holding manifest.json and its .js files.
+async function addExtensionFolder(page, name, files) {
+  await openExtensions(page);
+  await writeFolder(page, name, files);
+  await settings(page).locator('#add-extension').click();
+}
+
+// Add theme picks a theme's .json file.
+async function addThemeFile(page, json, name = 'theme.json') {
+  await openExtensions(page);
+  const chooser = page.waitForEvent('filechooser');
+  await settings(page).locator('#add-theme').click();
+  await (await chooser).setFiles({ name, mimeType: 'application/json', buffer: Buffer.from(json) });
+}
+
 // Opens App settings at its Extensions page, from home.
 async function openExtensions(page) {
   await page.goto(HOME);
@@ -79,7 +114,7 @@ test.describe('the Extensions page of App settings', () => {
     await openExtensions(page);
     const box = await settings(page).boundingBox();
     expect(box.x + box.width).toBeLessThanOrEqual(360);
-    const add = settings(page).locator('#add-extension');
+    const add = settings(page).locator('#add-theme');
     await add.scrollIntoViewIfNeeded();
     await expect(add).toBeInViewport();
   });
@@ -158,28 +193,19 @@ test.describe('theme extensions', () => {
   });
 });
 
-test.describe('extensions added from JSON', () => {
+test.describe('adding extensions and themes', () => {
   const THEME = JSON.stringify({
     id: 'mint', kind: 'theme', name: 'Mint', author: 'Test',
     palettes: { mint: { label: 'Mint', light: { paper: '#f2fbf6', accent: '#1d7a55' }, dark: { paper: '#1f2622', accent: '#6fd3a8' } } },
   });
-  const APP = JSON.stringify({
+  const SNIPPETS = JSON.stringify({
     id: 'snippets', kind: 'app', name: 'Snippets',
     commands: [{ id: 'interior', label: 'Insert INT.', shortcut: 'Mod+Shift+1', insert: 'INT. ' }],
   });
-  const fileInput = (page) => settings(page).locator('input[type="file"]');
   const error = (page) => settings(page).locator('.ext-add-error');
 
-  // Add extension opens the system's file picker; choosing a file adds it.
-  async function add(page, json, name = 'extension.json') {
-    await openExtensions(page);
-    const chooser = page.waitForEvent('filechooser');
-    await settings(page).locator('#add-extension').click();
-    await (await chooser).setFiles({ name, mimeType: 'application/json', buffer: Buffer.from(json) });
-  }
-
-  test('a theme is checked, added on, and can be removed', async ({ page }) => {
-    await add(page, THEME, 'mint.json');
+  test('Add theme takes a theme’s file, whatever it’s called, adds it on, and it can be removed', async ({ page }) => {
+    await addThemeFile(page, THEME, 'mint-theme.json');
     await expect(details(page, 'mint')).toBeVisible();
     await expect(toggleFor(page, 'mint')).toBeChecked();
     await expect(details(page, 'mint')).toContainText('Added from a file');
@@ -194,36 +220,48 @@ test.describe('extensions added from JSON', () => {
     await expect(details(page, 'mint')).toHaveCount(0);
   });
 
-  test('anything that isn’t right is turned away with a reason, under the button', async ({ page }) => {
-    const choose = async (json, name = 'bad.json') => fileInput(page).setInputFiles({ name, mimeType: 'application/json', buffer: Buffer.from(json) });
-    await add(page, '{ not json', 'broken.json');
+  test('anything that isn’t right is turned away with a reason, under the buttons', async ({ page }) => {
+    const theme = async (json, name = 'bad.json') => settings(page).locator('input[aria-label="Theme file"]').setInputFiles({ name, mimeType: 'application/json', buffer: Buffer.from(json) });
+    await addThemeFile(page, '{ not json', 'broken.json');
     await expect(error(page)).toHaveText('broken.json: That isn’t JSON Flow can read.');
-    await choose(JSON.stringify({ id: 'x1', kind: 'widget', name: 'X' }));
+    await theme(JSON.stringify({ id: 'x1', kind: 'widget', name: 'X' }));
     await expect(error(page)).toContainText('kind');
     // Colors go into a stylesheet, so only colors get in.
-    await choose(JSON.stringify({ id: 'bad', kind: 'theme', name: 'Bad', palettes: { bad: { light: { paper: 'red; } body { display: none' } } } }));
+    await theme(JSON.stringify({ id: 'bad', kind: 'theme', name: 'Bad', palettes: { bad: { light: { paper: 'red; } body { display: none' } } } }));
     await expect(error(page)).toContainText('isn’t a color');
     // Built-in ids are taken, so Vim lite's own manifest can't be added again.
-    await choose(JSON.stringify({ id: 'vim-lite', kind: 'theme', name: 'Fake', palettes: { fake: { light: { paper: '#fff' } } } }));
+    await theme(JSON.stringify({ id: 'vim-lite', kind: 'theme', name: 'Fake', palettes: { fake: { light: { paper: '#fff' } } } }));
     await expect(error(page)).toContainText('already has');
-    // A file brings no code, so an app with nothing to run is turned away.
-    await choose(JSON.stringify({ id: 'empty-app', kind: 'app', name: 'Empty', settings: [{ key: 'on', label: 'On' }] }));
+    // Each button takes its own kind.
+    await theme(SNIPPETS, 'snippets.json');
+    await expect(error(page)).toContainText('That’s an extension, not a theme. Use Add extension');
+    await writeFolder(page, 'mint', { 'manifest.json': THEME });
+    await settings(page).locator('#add-extension').click();
+    await expect(error(page)).toContainText('That’s a theme. Use Add theme');
+    // A folder needs its manifest.json.
+    await writeFolder(page, 'empty', { 'notes.txt': 'nothing here' });
+    await settings(page).locator('#add-extension').click();
+    await expect(error(page)).toHaveText('empty: This folder has no manifest.json at its top level.');
+    // An app with nothing to run is turned away.
+    await writeFolder(page, 'idle', { 'manifest.json': JSON.stringify({ id: 'idle-app', kind: 'app', name: 'Idle', settings: [{ key: 'on', label: 'On' }] }) });
+    await settings(page).locator('#add-extension').click();
     await expect(error(page)).toContainText('nothing Flow can run');
-    await expect(details(page, 'empty-app')).toHaveCount(0);
+    await expect(details(page, 'idle-app')).toHaveCount(0);
   });
 
-  test('the guides to writing one are linked beside Add extension', async ({ page }) => {
+  test('the guides to writing one are linked beside the buttons', async ({ page }) => {
     await openExtensions(page);
-    for (const guide of ['themes.md', 'apps.md']) {
+    for (const guide of ['themes.md', 'apps.md', 'sources.md']) {
       const link = settings(page).locator(`a[data-guide="${guide}"]`);
       await expect(link).toHaveAttribute('href', `https://github.com/bbau3r/flow/blob/main/docs/extensions/${guide}`);
       await expect(link).toHaveAttribute('target', '_blank');
     }
   });
 
-  test('an app’s commands join the Document menu and run on their shortcut', async ({ page }) => {
-    await add(page, APP, 'snippets.json');
-    await toggleFor(page, 'snippets').check();
+  test('an extension of JSON alone adds commands to the Document menu, which run on their shortcut', async ({ page }) => {
+    await addExtensionFolder(page, 'snippets', { 'manifest.json': SNIPPETS });
+    await expect(toggleFor(page, 'snippets')).toBeChecked();
+    await expect(details(page, 'snippets')).toContainText('From the snippets folder');
     await page.keyboard.press('Escape');
     await scriptWith(page, 'one\n\ntwo', 2);
     await docPill(page).click();
@@ -503,35 +541,27 @@ test.describe('Vim lite', () => {
   });
 });
 
-test.describe('apps with code from files', () => {
+test.describe('extensions with code', () => {
   const MANIFEST = JSON.stringify({
     id: 'stamp', kind: 'app', name: 'Stamp', author: 'Test', main: 'stamp.js',
     icon: { paths: ['M4 4h16v16H4z'] },
   });
   // It counts its stamps in its own storage, and offers itself as a button in the top right.
-  const CODE = `export function activate(flow) {
+  const CODE = (word) => `export function activate(flow) {
     flow.addCommand({
       id: 'stamp', label: 'Stamp', icon: 'plus', widget: 'top-end',
       run: async ({ script }) => {
         const count = ((await flow.storage.get('count')) ?? 0) + 1;
         await flow.storage.set('count', count);
-        script.insertText('STAMP ' + count + ' ');
+        script.insertText('${word} ' + count + ' ');
       },
     });
   }`;
   const trust = (page) => page.locator('dialog.fl-dialog');
-
-  async function choose(page, files) {
-    await openExtensions(page);
-    const chooser = page.waitForEvent('filechooser');
-    await settings(page).locator('#add-extension').click();
-    await (await chooser).setFiles(files.map(([name, text]) => ({
-      name, mimeType: name.endsWith('.json') ? 'application/json' : 'text/javascript', buffer: Buffer.from(text),
-    })));
-  }
+  const stampFolder = (word = 'STAMP') => ({ 'manifest.json': MANIFEST, 'stamp.js': CODE(word) });
 
   test('ask whether the code is trusted, every time, before adding it', async ({ page }) => {
-    await choose(page, [['manifest.json', MANIFEST], ['stamp.js', CODE]]);
+    await addExtensionFolder(page, 'stamp', stampFolder());
     await expect(trust(page).getByRole('heading', { name: 'Do you trust this extension?' })).toBeVisible();
     await expect(trust(page)).toContainText('stamp.js');
     await expect(trust(page)).toContainText('Stamp 1.0.0 by Test');
@@ -541,7 +571,7 @@ test.describe('apps with code from files', () => {
     await expect(trust(page)).toHaveCount(0);
     await expect(details(page, 'stamp')).toHaveCount(0);
 
-    await choose(page, [['manifest.json', MANIFEST], ['stamp.js', CODE]]);
+    await settings(page).locator('#add-extension').click();
     await trust(page).locator('#trust-add').click();
     await expect(details(page, 'stamp')).toContainText('Runs its own code');
     // Its own icon, drawn from its path data.
@@ -550,19 +580,19 @@ test.describe('apps with code from files', () => {
     await expect(toggleFor(page, 'stamp')).toBeChecked();
 
     // An update asks again.
-    await choose(page, [['manifest.json', MANIFEST], ['stamp.js', CODE]]);
+    await settings(page).locator('#add-extension').click();
     await expect(trust(page)).toBeVisible();
     await page.keyboard.press('Escape');
   });
 
-  test('need their code file chosen with the manifest', async ({ page }) => {
-    await choose(page, [['manifest.json', MANIFEST]]);
-    await expect(settings(page).locator('.ext-add-error')).toContainText('This app’s code starts in stamp.js. Choose it together with the manifest.');
+  test('need the code file their manifest names, in the folder', async ({ page }) => {
+    await addExtensionFolder(page, 'stamp', { 'manifest.json': MANIFEST });
+    await expect(settings(page).locator('.ext-add-error')).toContainText('This app’s code starts in stamp.js, which isn’t in the folder.');
     await expect(trust(page)).toHaveCount(0);
   });
 
   test('run once added, from a widget in the top right, and keep their code and data', async ({ page }) => {
-    await choose(page, [['manifest.json', MANIFEST], ['stamp.js', CODE]]);
+    await addExtensionFolder(page, 'stamp', stampFolder());
     await trust(page).locator('#trust-add').click();
     await expect(toggleFor(page, 'stamp')).toBeChecked();
     await page.keyboard.press('Escape');
@@ -579,25 +609,18 @@ test.describe('apps with code from files', () => {
     await docPill(page).click();
     await expect(docMenu(page).locator('[data-command="stamp.stamp"]')).toBeVisible();
   });
-});
 
-test.describe('apps with code in several files', () => {
   test('load each file the main one imports', async ({ page }) => {
-    await openExtensions(page);
-    const chooser = page.waitForEvent('filechooser');
-    await settings(page).locator('#add-extension').click();
-    const file = (name, text) => ({ name, mimeType: name.endsWith('.json') ? 'application/json' : 'text/javascript', buffer: Buffer.from(text) });
-    await (await chooser).setFiles([
-      file('manifest.json', JSON.stringify({ id: 'greeter', kind: 'app', name: 'Greeter', main: 'index.js' })),
-      file('index.js', `import { greeting } from './words.js';
+    await addExtensionFolder(page, 'greeter', {
+      'manifest.json': JSON.stringify({ id: 'greeter', kind: 'app', name: 'Greeter', main: 'index.js' }),
+      'index.js': `import { greeting } from './words.js';
         export default function (flow) {
           flow.addCommand({ id: 'greet', label: 'Greet', run: ({ script }) => script.insertText(greeting()) });
-        }`),
-      file('words.js', `export const greeting = () => 'Hello there. ';`),
-    ]);
-    const dialog = page.locator('dialog.fl-dialog');
-    await expect(dialog).toContainText('index.js, words.js');
-    await dialog.locator('#trust-add').click();
+        }`,
+      'words.js': `export const greeting = () => 'Hello there. ';`,
+    });
+    await expect(trust(page)).toContainText('index.js, words.js');
+    await trust(page).locator('#trust-add').click();
     await expect(toggleFor(page, 'greeter')).toBeChecked();
     await page.keyboard.press('Escape');
     await scriptWith(page, 'end');
@@ -605,16 +628,27 @@ test.describe('apps with code in several files', () => {
     await docMenu(page).locator('[data-command="greeter.greet"]').click();
     await expect.poll(() => value(page)).toBe('Hello there. end');
   });
+
+  test('update from their folder after their files change, asking about the code again', async ({ page }) => {
+    await addExtensionFolder(page, 'stamp', stampFolder());
+    await trust(page).locator('#trust-add').click();
+    await expect(details(page, 'stamp')).toContainText('From the stamp folder');
+    await writeFolder(page, 'stamp', stampFolder('MARK'));
+    await details(page, 'stamp').locator('[data-action="update"]').click();
+    await expect(trust(page)).toBeVisible();
+    await trust(page).locator('#trust-add').click();
+    await expect(page.locator('#toast')).toContainText('Updated Stamp from stamp');
+    await page.keyboard.press('Escape');
+    await scriptWith(page, 'end');
+    await page.locator('flow-script .fl-topbar-end').getByRole('button', { name: 'Stamp' }).click();
+    await expect.poll(() => value(page)).toBe('MARK 1 end');
+  });
 });
 
 test.describe('widgets', () => {
   test('a command from JSON can be a button in the top right corner', async ({ page }) => {
-    await openExtensions(page);
-    const chooser = page.waitForEvent('filechooser');
-    await settings(page).locator('#add-extension').click();
-    await (await chooser).setFiles({
-      name: 'scene.json', mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify({ id: 'scene-start', kind: 'app', name: 'Scene start', commands: [{ id: 'int', label: 'Insert INT.', icon: 'scene', widget: 'top-end', insert: 'INT. ' }] })),
+    await addExtensionFolder(page, 'scene-start', {
+      'manifest.json': JSON.stringify({ id: 'scene-start', kind: 'app', name: 'Scene start', commands: [{ id: 'int', label: 'Insert INT.', icon: 'scene', widget: 'top-end', insert: 'INT. ' }] }),
     });
     await expect(toggleFor(page, 'scene-start')).toBeChecked();
     await page.keyboard.press('Escape');
@@ -625,6 +659,27 @@ test.describe('widgets', () => {
     // It's at the right of the top row.
     const box = await corner.locator('.fl-widget').boundingBox();
     expect(box.x + box.width).toBeGreaterThan((page.viewportSize().width) - 40);
+  });
+});
+
+test.describe('multi-line settings', () => {
+  test('a text setting with multiline gets a box that grows, kept line for line', async ({ page }) => {
+    await addExtensionFolder(page, 'lines', {
+      'manifest.json': JSON.stringify({
+        id: 'lines', kind: 'app', name: 'Lines',
+        settings: [{ key: 'list', type: 'text', multiline: true, label: 'List', default: '' }],
+        commands: [{ id: 'noop', label: 'Nothing', insert: ' ' }],
+      }),
+    });
+    await details(page, 'lines').locator('[data-action="settings"]').click();
+    const box = settings(page).getByRole('textbox', { name: 'List' });
+    await expect(box).toHaveJSProperty('tagName', 'TEXTAREA');
+    await box.fill('one\ntwo\nthree\nfour');
+    await expect(box).toHaveJSProperty('rows', 5);
+    await page.reload();
+    await openExtensions(page);
+    await details(page, 'lines').locator('[data-action="settings"]').click();
+    await expect(settings(page).getByRole('textbox', { name: 'List' })).toHaveValue('one\ntwo\nthree\nfour');
   });
 });
 

@@ -4,7 +4,7 @@ An app extension adds to what Flow does: settings, commands in the Document menu
 
 | How it arrives | What it can be | Where it comes from |
 | --- | --- | --- |
-| Files, added in App settings | A manifest, and its `.js` files if it has code | **App settings**, **Extensions**, **Add extension** |
+| A folder, added in App settings | A `manifest.json`, and the `.js` files beside it if it has code | **App settings**, **Extensions**, **Add extension** |
 | Registered by code on the page | A manifest and an `activate` function | `window.flowExtensions.register(manifest, activate)` |
 | Built in | The same, shipped with Flow | A folder in `packages/pwa/src/extensions/` |
 
@@ -12,11 +12,13 @@ An extension someone adds starts turned on. The ones built into Flow start off. 
 
 ## Adding one
 
-Choose **Add extension** on the **Extensions** page of App settings, then pick the manifest, a `.json` file, together with any `.js` files it uses. Flow checks the manifest first, and says what's wrong under the button if anything is.
+An app extension is a folder: its `manifest.json`, and the `.js` files beside it if it has code. Choose **Add extension** on the **Extensions** page of App settings, then choose the folder. Flow reads `manifest.json` and the `.js` files at the folder's top level, checks the manifest first, and says what's wrong under the buttons if anything is. (**Add theme**, beside it, takes a theme's single file; see [the themes guide](themes.md).)
 
 **Code asks first, every time.** When the files include code, Flow shows **Do you trust this extension?** before adding anything. It names the extension, its author and its files. Code from a file runs inside Flow with everything Flow can do: it can read and change your scripts, and reach the files and accounts Flow is connected to on this device. Flow can't check what the code does, so only add code from someone you trust. Cancel is the default, and an update asks again.
 
-To update an extension, add its files again: the same `id` replaces the one before. **Remove** takes it out of Flow, with its settings and anything it kept on this device.
+**Updating from the folder.** In Chrome and Edge on a computer, Flow keeps the folder it was given, and the extension's card says which, with **Update from its folder**. After you change its files, that button reads them again, asking about the code again, so you can try a change in a moment. In other browsers, choose the folder with Add extension again: the same `id` replaces the one before, and stays on or off as it was.
+
+**Remove** takes it out of Flow, with its settings and anything it kept on this device.
 
 ## The manifest
 
@@ -96,6 +98,7 @@ An app with settings gets a page of its own in App settings, after a rule below 
 | --- | --- |
 | `key` | How code reads it, unique within the extension |
 | `type` | `boolean` (a switch), `choice` (a dropdown of `options`, each `{ value, label }`), `text`, or `number` (with optional `min` and `max`) |
+| `multiline` | For `text`: `true` gives a box across the page that grows with its lines, for a list, one item to a line. It holds up to 5000 characters; one line holds 500. |
 | `label` | Its name on the page |
 | `description` | A line under it |
 | `topic` | The heading it's grouped under, `General` when left out. Topics appear in the order their first setting does. |
@@ -129,7 +132,7 @@ export function activate(flow) {
 export const countWords = (text) => text.split(/\s+/).filter(Boolean).length;
 ```
 
-**Files import each other as `./name.js`,** from the same folder, and every one has to be chosen in Add extension. Each is loaded as a module of its own, after the files it imports, so files can't import each other in a circle. Code from a file can't import Flow's own modules, or packages by name such as `lodash`; bundle those into your files, or use `flow.ui` for Flow's controls.
+**Files import each other as `./name.js`,** from the same folder, at its top level, where Add extension reads them. Each is loaded as a module of its own, after the files it imports, so files can't import each other in a circle. Code from a file can't import Flow's own modules, or packages by name such as `lodash`; bundle those into your files, or use `flow.ui` for Flow's controls.
 
 ### activate(flow)
 

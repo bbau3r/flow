@@ -98,6 +98,8 @@ function readSetting(setting) {
       label: text(option?.label ?? String(option?.value ?? ''), `option label for "${key}"`, { max: 40, required: true }),
     }));
   }
+  // Text can take several lines, such as a list, one item to a line.
+  if (type === 'text') out.multiline = setting.multiline === true;
   if (type === 'number') {
     out.min = Number.isFinite(setting.min) ? setting.min : null;
     out.max = Number.isFinite(setting.max) ? setting.max : null;
@@ -114,7 +116,7 @@ export function settingValue(setting, value) {
   };
   if (setting.type === 'boolean') return typeof value === 'boolean' ? value : fallback();
   if (setting.type === 'choice') return setting.options.some((option) => option.value === value) ? value : fallback();
-  if (setting.type === 'text') return typeof value === 'string' ? value.slice(0, 500) : fallback();
+  if (setting.type === 'text') return typeof value === 'string' ? value.slice(0, setting.multiline ? 5000 : 500) : fallback();
   const number = Number(value);
   if (value === '' || value == null || !Number.isFinite(number)) return fallback();
   return Math.min(setting.max ?? Infinity, Math.max(setting.min ?? -Infinity, number));

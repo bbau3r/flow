@@ -36,6 +36,12 @@ export const getCode = (id) => run(CODE, 'readonly', (s) => s.get(id));
 export const putCode = (id, code) => run(CODE, 'readwrite', (s) => s.put(code, id));
 export const deleteCode = (id) => run(CODE, 'readwrite', (s) => s.delete(id));
 
+// The folder an extension was added from, for updating it from there again. Ids have no colons,
+// so these keys never meet an extension's code.
+export const getFolder = (id) => run(CODE, 'readonly', (s) => s.get(`folder:${id}`));
+export const putFolder = (id, handle) => run(CODE, 'readwrite', (s) => s.put(handle, `folder:${id}`));
+export const deleteFolder = (id) => run(CODE, 'readwrite', (s) => s.delete(`folder:${id}`));
+
 // Each extension's data is kept under its id, so one can't read another's. Its keys all sort
 // between the id and the id followed by the last character there is.
 const LAST = String.fromCharCode(0xffff);

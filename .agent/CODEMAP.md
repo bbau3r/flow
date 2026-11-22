@@ -135,8 +135,8 @@ element changes tab itself; the PWA moves its tabs and address along, through `t
 | `styles.css` | App page styles |
 | `extensions/host.js` | The extension host: built-in, added (from files, with or without code) and code-registered extensions, on/off and settings in local storage, async activation (code loads first), the `flow` API given to `activate` (documented at the top), `attachEditor`, `window.flowExtensions.register` |
 | `extensions/manifest.js` | `readManifest`: checks and cleans a manifest (colors must be colors, icons only path data, `main` a .js name), `settingValue`, `PALETTE_COLORS`, `WIDGET_PLACES` |
-| `extensions/code-store.js` | IndexedDB for added apps' code (`{ main, files }`) and each extension's `flow.storage`; `loadModule` turns the files into modules, resolving `./name.js` imports |
-| `extensions/manager.js` | The Extensions page of App settings: a switch, Settings and Remove per extension, Add extension (file picker, then the trust warning for code), links to the guides |
+| `extensions/code-store.js` | IndexedDB for added apps' code (`{ main, files }`), the folders they came from, and each extension's `flow.storage`; `loadModule` turns the files into modules, resolving `./name.js` imports |
+| `extensions/manager.js` | The Extensions page of App settings: a switch, Settings, Update from its folder and Remove per extension; Add extension (an app's folder, then the trust warning for code) and Add theme (a .json file); links to the guides |
 | `extensions/settings.js` | `extensionSection`: an app's settings, from its manifest, as a settings section, with a Connection topic for each cloud source it adds that signs in |
 | `extensions/shortcuts.js` | `matchesShortcut`, `shortcutLabel` for `Mod+Shift+K` style shortcuts |
 | `extensions/built-in.js` | The extensions that ship with Flow, all off by default (what someone adds starts on) |

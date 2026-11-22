@@ -4,9 +4,9 @@ A theme extension adds one or more palettes to Flow's theme chooser. It's a sing
 
 ## Adding it to Flow
 
-1. Save the JSON below as a file ending in `.json`.
-2. In Flow, open **App settings**, then **Extensions**, and choose **Add extension**.
-3. Pick the file. Flow checks it, and if anything's wrong it says what, under the button.
+1. Save the JSON below as a file ending in `.json`, called anything, such as `mint.json`.
+2. In Flow, open **App settings**, then **Extensions**, and choose **Add theme**.
+3. Pick the file. Flow checks it, and if anything's wrong it says what, under the buttons.
 4. It's added turned on, and its palettes show under **Appearance**. Its switch turns it off.
 
 Added extensions stay on this device. To change one, edit the file and add it again: a file with the same `id` replaces the one before, and stays on or off as it was. **Remove** takes it out of Flow.

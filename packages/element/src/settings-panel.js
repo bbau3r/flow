@@ -305,6 +305,7 @@ export const SETTINGS_PANEL_CSS = `
 .fl-prop-desc { grid-column: 1 / -1; margin: 0; color: var(--flow-muted); font-size: 12.5px; line-height: 1.4; }
 .fl-prop-wide { grid-template-columns: minmax(0, 1fr); }
 .fl-prop-wide > .fl-prop-control { display: block; }
+.fl-prop-wide > .fl-prop-control > textarea { display: block; box-sizing: border-box; width: 100%; }
 .fl-prop select, .fl-prop textarea, .fl-prop input:not([type="checkbox"]):not([type="radio"]) {
   min-height: 30px; padding: 2px 6px;
   font: inherit; color: ${token('field-ink')}; background: ${token('field-bg')};
