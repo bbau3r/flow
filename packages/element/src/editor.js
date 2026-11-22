@@ -385,14 +385,71 @@ const FountainDecorations = Extension.create({
   },
 });
 
+const caretKey = new PluginKey('flowCaret');
+
+// Keys an app asked to see first, such as a key binding extension, and the block cursor it
+// may ask for. They run ahead of every other key handling in the editor.
+const AppKeys = Extension.create({
+  name: 'flowAppKeys',
+  priority: 10000,
+  addOptions: () => ({ handlers: () => [], text: null }),
+  addProseMirrorPlugins() {
+    const { handlers, text } = this.options;
+    const ask = (fn) => {
+      for (const handler of handlers()) {
+        try {
+          if (fn(handler)) return true;
+        } catch (err) {
+          console.error(err);
+        }
+      }
+      return false;
+    };
+    return [
+      new Plugin({
+        props: {
+          handleKeyDown: (_view, event) => ask((handler) => handler.keydown?.(event, text()) === true),
+          handleTextInput: (_view, _from, _to, typed) => ask((handler) => handler.input?.(typed, text()) === true),
+        },
+      }),
+      new Plugin({
+        key: caretKey,
+        state: {
+          init: () => null,
+          apply: (tr, style) => (tr.getMeta(caretKey) !== undefined ? tr.getMeta(caretKey) : style),
+        },
+        props: {
+          attributes: (state) => (caretKey.getState(state) === 'block' ? { class: 'fl-caret-on' } : {}),
+          decorations: (state) => {
+            if (caretKey.getState(state) !== 'block' || !activeKey.getState(state)?.focused) return null;
+            const { selection, doc } = state;
+            if (!selection.empty) return null;
+            const { $head } = selection;
+            const at = $head.pos;
+            const deco = $head.parentOffset < $head.parent.content.size
+              ? Decoration.inline(at, at + 1, { class: 'fl-caret-char' })
+              : Decoration.widget(at, () => {
+                const node = document.createElement('span');
+                node.className = 'fl-caret-end';
+                return node;
+              }, { side: 1, key: 'caret-end' });
+            return DecorationSet.create(doc, [deco]);
+          },
+        },
+      }),
+    ];
+  },
+});
+
 export class FlowEditor {
-  constructor(mount, { value, getLayoutOptions, showSource, onChange, onState }) {
+  constructor(mount, { value, getLayoutOptions, showSource, keyHandlers = () => [], onChange, onState }) {
     this.onChange = onChange;
     this.onState = onState;
     this.getLayoutOptions = getLayoutOptions;
     this.showSource = showSource;
     this.silent = false;
     const self = this;
+    this.text = this.textApi();
     const Commands = Extension.create({
       name: 'flowKeys',
       priority: 1000, // ahead of the default Enter
@@ -417,6 +474,7 @@ export class FlowEditor {
         Line,
         Text,
         UndoRedo,
+        AppKeys.configure({ handlers: keyHandlers, text: () => self.text }),
         Commands,
         FountainDecorations.configure({ getLayoutOptions, showSource }),
       ],
@@ -692,6 +750,77 @@ export class FlowEditor {
     // Open on both ends so the first and last pasted lines merge into the current ones.
     const slice = new Slice(Fragment.from(nodes), 1, 1);
     view.dispatch(state.tr.replaceSelection(slice).scrollIntoView());
+  }
+
+  /**
+   * The script as lines, for an app's key handlers. Places are { line, ch }: a source line and
+   * a character in it, from 0.
+   *
+   *   lineCount, line(i), lines()      the source lines
+   *   cursor()                         where the cursor is: the selection's head
+   *   selection()                      { anchor, head }
+   *   setCursor(place)                 moves the cursor there, emptying the selection
+   *   select(anchor, head)             selects from anchor to head
+   *   replace(from, to, text, cursor)  replaces the text between two places as one undo step,
+   *                                    `text` may hold line breaks, then puts the cursor at
+   *                                    `cursor` in the new text, if given
+   *   undo(), redo()
+   *   setCaret(style)                  'block' draws the cursor over the character it's on;
+   *                                    null for the usual line
+   *   hidden(i)                        whether line i is out of sight, such as the settings
+   */
+  textApi() {
+    const state = () => this.editor.state;
+    const place = (pos) => {
+      const $pos = state().doc.resolve(pos);
+      if ($pos.depth === 0) {
+        const line = Math.min($pos.index(0), state().doc.childCount - 1);
+        return { line, ch: pos >= state().doc.content.size ? state().doc.child(line).content.size : 0 };
+      }
+      return { line: $pos.index(0), ch: $pos.parentOffset };
+    };
+    const posIn = (doc, { line, ch }) => {
+      const i = Math.max(0, Math.min(Math.trunc(line) || 0, doc.childCount - 1));
+      let pos = 0;
+      for (let n = 0; n < i; n++) pos += doc.child(n).nodeSize;
+      return pos + 1 + Math.max(0, Math.min(Math.trunc(ch) || 0, doc.child(i).content.size));
+    };
+    const dispatch = (tr) => this.view.dispatch(tr.scrollIntoView());
+    return {
+      get lineCount() { return state().doc.childCount; },
+      line: (i) => state().doc.child(i)?.textContent ?? '',
+      lines: () => docLines(state().doc),
+      cursor: () => place(state().selection.head),
+      selection: () => ({ anchor: place(state().selection.anchor), head: place(state().selection.head) }),
+      setCursor: (at) => {
+        const { doc, tr } = state();
+        dispatch(tr.setSelection(TextSelection.create(doc, posIn(doc, at))));
+      },
+      select: (anchor, head) => {
+        const { doc, tr } = state();
+        dispatch(tr.setSelection(TextSelection.create(doc, posIn(doc, anchor), posIn(doc, head))));
+      },
+      replace: (from, to, text, cursor) => {
+        const { doc, tr, schema } = state();
+        let a = posIn(doc, from);
+        let b = posIn(doc, to);
+        if (a > b) [a, b] = [b, a];
+        const typed = String(text ?? '').replace(/\r\n?/g, '\n');
+        if (typed) {
+          const nodes = typed.split('\n').map((t) => schema.nodeFromJSON(lineToJson(t)));
+          tr.replace(a, b, new Slice(Fragment.from(nodes), 1, 1));
+        } else if (a !== b) tr.delete(a, b);
+        if (cursor) tr.setSelection(TextSelection.create(tr.doc, posIn(tr.doc, cursor)));
+        dispatch(closeHistory(tr));
+      },
+      undo: () => this.undo(),
+      redo: () => this.redo(),
+      setCaret: (style) => {
+        if (this.view.isDestroyed) return;
+        this.view.dispatch(state().tr.setMeta(caretKey, style === 'block' ? 'block' : null));
+      },
+      hidden: (i) => scriptKey.getState(state()).hidden.has(i),
+    };
   }
 
   undo({ focus = true } = {}) {

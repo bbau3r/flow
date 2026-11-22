@@ -55,6 +55,11 @@ const ICONS = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
   settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
   highlighter: '<path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>',
+  extensions: '<path d="M19.4 14.9a2.5 2.5 0 1 0 0-4.9H18V7a1 1 0 0 0-1-1h-3V4.6a2.5 2.5 0 1 0-5 0V6H6a1 1 0 0 0-1 1v3h1.4a2.5 2.5 0 1 1 0 5H5v3a1 1 0 0 0 1 1h3v-1.4a2.5 2.5 0 1 1 5 0V19h3a1 1 0 0 0 1-1v-3.1z"/>',
+  keyboard: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01"/><path d="M10 9h.01"/><path d="M14 9h.01"/><path d="M18 9h.01"/><path d="M6 13h.01"/><path d="M18 13h.01"/><path d="M10 13h4"/><path d="M7 16h10"/>',
+  layout: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>',
+  trash: '<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/>',
+  upload: '<path d="M12 15V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/>',
   'page-break': '<path d="M6 8V4a1 1 0 0 1 1-1h7l4 4v1"/><path d="M6 16v4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-4"/><path d="M3 12h2"/><path d="M8 12h2"/><path d="M14 12h2"/><path d="M19 12h2"/>',
 };
 
@@ -76,7 +81,8 @@ export function icon(name) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.classList.add('fl-svg');
   setAttrs(svg, { viewBox: '0 0 24 24', 'aria-hidden': 'true' });
-  svg.innerHTML = ICONS[name];
+  // A name it doesn't know, such as an extension's, draws nothing rather than failing.
+  svg.innerHTML = ICONS[name] ?? '';
   return svg;
 }
 
@@ -172,6 +178,23 @@ export function iconSwitch({ label, cls, states, onChange }) {
   };
   node.set(false);
   return node;
+}
+
+/**
+ * An on/off switch: a checkbox drawn as a sliding switch, for turning something on rather than
+ * picking it. `onChange(on)` gets the new state. The node is the input itself.
+ */
+export function toggleSwitch({ label, title = label, checked = false, cls, attrs, onChange }) {
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.className = `fl-switch${cls ? ` ${cls}` : ''}`;
+  input.checked = !!checked;
+  input.title = title;
+  input.setAttribute('role', 'switch');
+  input.setAttribute('aria-label', label);
+  setAttrs(input, attrs);
+  input.addEventListener('change', () => onChange?.(input.checked));
+  return input;
 }
 
 /** A floating pill holding related controls. */
@@ -663,6 +686,19 @@ export const CONTROLS_CSS = `
 .fl-btn:hover:not(:disabled) { background: ${token('button-hover-bg')}; }
 .fl-btn:focus-visible, .fl-tab:focus-visible, .fl-menu-item:focus-visible { outline: 2px solid ${token('focus')}; outline-offset: 1px; }
 input[type="checkbox"], input[type="radio"], input[type="range"], progress { accent-color: ${token('check')}; }
+.fl-switch {
+  appearance: none; position: relative; flex: none; width: 36px; height: 20px; margin: 0;
+  background: color-mix(in srgb, currentColor 25%, transparent); border-radius: 999px;
+  cursor: pointer; transition: background 120ms ease;
+}
+.fl-switch::before {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--flow-paper); box-shadow: 0 1px 2px var(--flow-shadow); transition: transform 120ms ease;
+}
+.fl-switch:checked { background: ${token('check')}; }
+.fl-switch:checked::before { transform: translateX(16px); }
+.fl-switch:disabled { opacity: 0.5; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .fl-switch, .fl-switch::before { transition: none; } }
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid ${token('focus')}; outline-offset: 1px; }
 .fl-btn[aria-pressed="true"], .fl-btn[aria-pressed="true"]:hover:not(:disabled), .fl-btn-primary, .fl-btn-primary:hover:not(:disabled) {
   background: ${token('button-active-bg')}; color: ${token('button-active-ink')};

@@ -40,10 +40,14 @@ function buildProperty(property) {
  * Opens the settings in `parent`. `sections` are { id, label, icon, topics }, topics are
  * { label, open = true, properties }, and properties are { label, description, control, below,
  * wide, keywords }, where `control` is a node or a list of them, and `below` are nodes that run
- * the full width under it, such as a preview. `actions` are buttons for the foot of
- * the panel; without them it has only its close button. `onClose` runs however it closes.
+ * the full width under it, such as a preview. A section with `hidden` set starts out of the
+ * rail and out of searches, and the string 'divider' between sections draws a rule across the
+ * rail. `start` names the section to open on. `actions` are buttons for the foot of the panel;
+ * without them it has only its close button. `onClose` runs however it closes. Returns
+ * { dialog, search, close(), setHidden(id, hidden) }.
  */
-export function openSettingsPanel(parent, { title, icon: iconName, sections, actions = [], onClose }) {
+export function openSettingsPanel(parent, { title, icon: iconName, sections: listed, start, actions = [], onClose }) {
+  const sections = listed.filter((section) => section && section !== 'divider');
   const { root: island, input: search } = searchField({ label: 'Search settings', cls: 'fl-settings-search' });
 
   const heading = el('h2', 'fl-settings-title', iconName ? icon(iconName) : null, title);
@@ -102,8 +106,7 @@ export function openSettingsPanel(parent, { title, icon: iconName, sections, act
     const jump = button({ label: section.label, icon: section.icon ?? 'settings', iconOnly: true, toggle: true, cls: 'fl-settings-jump', attrs: { 'data-tip': section.label } });
     // The bubble names it, so the browser's own tooltip would only repeat it.
     jump.removeAttribute('title');
-    rail.append(jump);
-    const entry = { node, topics, jump, section };
+    const entry = { node, topics, jump, section, hidden: !!section.hidden };
     // Turning to a section ends a search, which would otherwise keep every section in view.
     jump.addEventListener('click', () => {
       search.value = '';
@@ -113,8 +116,28 @@ export function openSettingsPanel(parent, { title, icon: iconName, sections, act
   });
   content.append(...built.map(({ node }) => node), empty);
 
+  // The rail lists the sections in order, with rules where the list asks for them.
+  const railItems = listed.filter(Boolean).map((item) => {
+    if (item !== 'divider') return built.find((entry) => entry.section === item).jump;
+    const rule = el('div', 'fl-settings-rule');
+    rule.setAttribute('aria-hidden', 'true');
+    return rule;
+  });
+  rail.append(...railItems);
+  // A rule shows only between buttons that show.
+  function syncRail() {
+    for (const entry of built) entry.jump.hidden = entry.hidden;
+    railItems.forEach((item, i) => {
+      if (!item.classList.contains('fl-settings-rule')) return;
+      const shown = (list) => list.some((other) => !other.hidden && !other.classList.contains('fl-settings-rule'));
+      item.hidden = !shown(railItems.slice(0, i)) || !shown(railItems.slice(i + 1));
+    });
+  }
+  syncRail();
+
   // One section shows at a time, unless a search is showing what matches in all of them.
-  let current = built[0];
+  const firstShown = () => built.find((entry) => !entry.hidden) ?? built[0];
+  let current = built.find((entry) => entry.section.id === start && !entry.hidden) ?? firstShown();
   function turnTo(entry) {
     current = entry;
     for (const other of built) other.jump.setAttribute('aria-pressed', String(other === entry));
@@ -126,6 +149,10 @@ export function openSettingsPanel(parent, { title, icon: iconName, sections, act
     const query = search.value.trim().toLowerCase();
     let shown = 0;
     for (const entry of built) {
+      if (entry.hidden) {
+        entry.node.hidden = true;
+        continue;
+      }
       let sectionShown = 0;
       for (const topic of entry.topics) {
         let topicShown = 0;
@@ -172,6 +199,15 @@ export function openSettingsPanel(parent, { title, icon: iconName, sections, act
     dialog,
     search,
     close: () => dialog.close(),
+    /** Takes a section out of the rail and searches, or brings it back. */
+    setHidden(id, hidden) {
+      const entry = built.find(({ section }) => section.id === id);
+      if (!entry) return;
+      entry.hidden = !!hidden;
+      syncRail();
+      if (entry.hidden && current === entry) turnTo(firstShown());
+      else filter();
+    },
   };
 }
 
@@ -202,6 +238,8 @@ export const SETTINGS_PANEL_CSS = `
 /* The rail is a tinted pill of icon buttons, the current page pressed. */
 .fl-settings-rail { flex: none; align-self: flex-start; flex-direction: column; gap: 4px; margin-top: 8px; padding: 5px; }
 .fl-settings-jump { position: relative; --fl-control-size: 36px; padding: 0; }
+.fl-settings-rule { flex: none; width: 60%; height: 1px; margin: 3px auto; background: currentColor; opacity: 0.3; }
+.fl-settings-rule[hidden] { display: none; }
 .fl-settings-searching .fl-settings-jump[aria-pressed="true"] { background: transparent; color: inherit; }
 .fl-settings-jump::after {
   content: attr(data-tip); position: absolute; left: calc(100% + 10px); top: 50%; z-index: 2;
@@ -261,7 +299,8 @@ export const SETTINGS_PANEL_CSS = `
 .fl-prop textarea, .fl-prop-control > input:not([type="checkbox"]):not([type="radio"]) { flex: 0 1 240px; min-width: 0; }
 .fl-prop textarea { align-self: center; line-height: 1.35; resize: vertical; }
 .fl-prop-control > .fl-btn, .fl-prop-control > input[type="checkbox"] { align-self: flex-start; }
-.fl-prop-control > input[type="checkbox"] { width: 18px; height: 18px; margin: 6px 2px; }
+.fl-prop-control > input[type="checkbox"]:not(.fl-switch) { width: 18px; height: 18px; margin: 6px 2px; }
+.fl-prop-control > .fl-switch { margin: 5px 2px; }
 .fl-prop textarea:disabled { opacity: 0.5; }
 .fl-prop:not(.fl-prop-wide) { grid-template-columns: minmax(6em, 1fr) minmax(0, auto); }
 .fl-settings-empty { margin: 24px 0; color: var(--flow-muted); text-align: center; }
