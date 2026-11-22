@@ -48,7 +48,7 @@ The build produces two forms:
 | `readonly` | present or absent. Renders without Tiptap. | absent |
 | `view` | How the Write tab shows the script: `flow` (Seamless, continuous), `page` (standard script pages) or `source` (the Fountain text itself, with nothing hidden or formatted, and still editable). Read-only mode shows pages unless it's set. | `flow` |
 | `read-view` | How the Read tab shows the script: `page` (the pages as they print) or `flow` (Seamless, continuous). Also the `readView` property. | `page` |
-| `workspace` | `write` (the script), `outline` (its acts, sequences, scenes and transitions as cards and blocks, which edit the same text) or `read` (the pages as they print, with editing off) | `write` |
+| `workspace` | `write` (the script), `outline` (its acts, sequences, scenes and transitions as cards and blocks, which edit the same text), `read` (the pages as they print, with editing off), or the id of a tab added with `addWorkspace()` | `write` |
 | `scale` | How large the script is shown, as a percentage from 50 to 200 | `100` |
 | `text-width` | `wide` runs Seamless and Fountain views across most of the window on a large screen; absent keeps their usual column. A switch beside the view menu, in Write and Read alike, showing `><` or `<>` for the width it's at, changes it and fires `flow-text-width`. Also the `textWidth` property. | absent |
 | `theme` | `sage`, `sand`, `sea`, `romance`, `forest`, `lavender` or `graphite` followed by `-light`, `-dark` or `-auto`; plain `auto`, which means `sage-auto`; or a registered name | `sage-light` |
@@ -68,6 +68,10 @@ The build produces two forms:
 | `highlights` | The Read tab's highlights, as `[{ terms, color, enabled }]`. `terms` are comma-separated words matched whole and without regard to case, and `color` is a hex color. The element keeps no storage, so an app saves them from `flow-highlights`. |
 | `menuItems` | What the Document menu holds, as groups kept apart by rules. Items are `{ label, icon, shortcut, title, attrs, onClick }`, or have `panel: { title, build(menu) }` in place of `onClick` to swap the menu for a card of their own, from the nodes `build` returns. The strings `'pdf'` and `'project-settings'` place the element's own Export to PDF and Project settings. Defaults to `[['pdf'], ['project-settings']]`. |
 | `closeMenu()` | Closes the Document menu if it's open |
+| `insertText(text)` | Types text at the cursor in Write, replacing any selection, as pasting would. Returns `false` in other tabs, which have no cursor. |
+| `addBubble({ node, side, label, tabs, css })` | Adds a pill to the bottom row holding `node`: after the element's own pills with `side: 'start'`, or just before undo and redo with `'end'`. `tabs` limits it to some workspaces, and `css` styles it inside the shadow root. Returns a function that takes it away. |
+| `addWorkspace({ id, render })` | Adds a tab of the app's own, shown when `workspace` is `id`. `render(root, { script, lines, edit, show })` fills it each time it shows and may return a cleanup. The app adds the tab to its own tabs. Returns a function that takes it away. |
+| `addEditorKeys(handler)` | Lets an app see keys before the editor: `{ keydown(event, text), input(typed, text), attach(text), detach() }`. `text` edits the script as `{ line, ch }` places; [the apps guide](docs/extensions/apps.md#keys) lists it. Returns a function that takes it away. |
 
 ### Events
 
@@ -96,14 +100,16 @@ The editor has a top row, the action center that joins it when there is room, an
 The pills, buttons, menus, tabs, search field, modals, the settings panel, the paper size picker, the page size setting and the theme chooser are exported so that an app's own controls match the editor's. Call `installControlStyles()` once to use them outside the element, which also adds the theme colors for `<html data-theme="...">`.
 
 ```js
-import { actionPill, button, dimensionsField, installControlStyles, Menu, openModal, openSettingsPanel, pill, pillSep, searchField, tabs, themeChooser } from '@flow/element/source';
+import { actionPill, addPalette, button, dimensionsField, installControlStyles, Menu, openModal, openSettingsPanel, pill, pillSep, removePalette, searchField, tabs, themeChooser, toggleSwitch } from '@flow/element/source';
 ```
 
-`openSettingsPanel(parent, { title, icon, sections, actions, onClose })` lays settings out the same way everywhere: a search box floating above the panel, a rail of section icons down its left when there's more than one section, each section with a button that folds or unfolds all its topics, and topics that fold on their own. Sections are `{ id, label, icon, topics }`, topics `{ label, open, properties }`, and properties `{ label, description, control, below, wide, keywords }`. A property's control sits beside its name, or under it when `wide`, and `below` runs the full width beneath, such as a preview. The search sits at the top of the panel, and each section is a page of its own that the rail turns to. Searching looks through every section, matching names, descriptions and keywords, and shows matching topics open.
+`openSettingsPanel(parent, { title, icon, sections, actions, onClose })` lays settings out the same way everywhere: a search box floating above the panel, a rail of section icons down its left when there's more than one section, each section with a button that folds or unfolds all its topics, and topics that fold on their own. Sections are `{ id, label, icon, topics }`, topics `{ label, open, properties }`, and properties `{ label, description, control, below, wide, keywords }`. A property's control sits beside its name, or under it when `wide`, and `below` runs the full width beneath, such as a preview. The search sits at the top of the panel, and each section is a page of its own that the rail turns to. Searching looks through every section, matching names, descriptions and keywords, and shows matching topics open. The string `'divider'` between sections draws a rule across the rail, `hidden: true` keeps a section out of the rail and searches, and `start` names the section to open on. The panel it returns has `show(id)`, which turns to any section, hidden or not, and `setHidden(id, hidden)`.
 
 `pageSizeSetting({ label, value, description, onChange })` is a page size as a settings property: the picker, with a drawing of the sheet under it that follows each choice. It returns `{ property, value }`.
 
 `themeChooser({ value, onChange })` is the Auto, Light and Dark switch and the palette grid, for `{ palette, mode }`. It returns `{ root, modes, grid }`, so the parts can also go into a settings panel separately. The modes are `tabs({ fixed: true })`, the same tabs as Write, Outline and Read, kept as a pill at any width.
+
+`toggleSwitch({ label, checked, onChange })` is an on/off switch, a checkbox drawn as a sliding switch. `addPalette(name, { label, light, dark })` adds a palette while the app runs, to the theme chooser and as `name-light`, `name-dark` and `name-auto`, with colors left out taken from Sage; `removePalette(name)` takes it away.
 
 `searchField({ label, cls, onInput })` is a search box in a pill with its icon at the right, returning `{ root, input }`. `iconSwitch({ label, states, onChange })` is a switch drawn as an icon button whose icon and tooltip show its current state, as the width switch does.
 
@@ -186,16 +192,31 @@ Two decisions shape the code:
 
 ## The PWA
 
-The home page is a shelf of sheets: New, Open, then each recent script drawn as its own title page, wrapping onto as many rows as they need, two to a row on a phone. The search box above filters the recent scripts by name and title page, and the gear opens App settings: Appearance (the theme), Defaults and App (installing Flow). New scripts begin with a title page containing every field Flow prints, to keep or delete. Defaults changes that for this device: the page size new scripts start at, and the text of each standard title page field after Title, each with a switch to leave it off. `{date}` and `{year}` fill in when a script is made, and empty fields are left off too. Core's `newScript(today, { cover, dimensions })` builds the text. With one place to open from, Open goes straight to its picker; with several, it asks which.
+The home page is a shelf of sheets: New, Open, then each recent script drawn as its own title page, wrapping onto as many rows as they need, two to a row on a phone. The search box above filters the recent scripts by name and title page, and the gear opens App settings: Appearance (the theme, and which extensions' settings get a tab), Defaults, Extensions and App (installing Flow). New scripts begin with a title page containing every field Flow prints, to keep or delete. Defaults changes that for this device: the page size new scripts start at, and the text of each standard title page field after Title, each with a switch to leave it off. `{date}` and `{year}` fill in when a script is made, and empty fields are left off too. Core's `newScript(today, { cover, dimensions })` builds the text. With one place to open from, Open goes straight to its picker; with several, it asks which.
 
 Scripts autosave to IndexedDB on the device, so work survives closing the tab or losing the connection. The recent scripts are that local copy. **Save** writes to the file, and won't overwrite a file that changed elsewhere without asking. After the first visit, the whole app works offline, including PDF export.
 
-Storage options live in `packages/pwa/src/providers/`. To add one, write an object with the interface described in `providers/index.js` and add it to the list.
+Storage options live in `packages/pwa/src/providers/`. To add one, write an object with the interface described in `providers/index.js` and add it to the list, or have an extension add it with `flow.addSource`.
 
 | Provider | Opening | Saving |
 | --- | --- | --- |
 | This device, Chromium browsers | File picker | OS save dialog, opened in the file's folder with its name filled in |
 | This device, other browsers, including iOS | File picker | Downloads a copy, because these browsers can't choose a folder |
+
+### Extensions
+
+Extensions add to Flow on this device, and every one starts turned off. Each is a JSON manifest. **Themes** add palettes to the theme chooser. **Apps** can add settings, commands in the Document menu with keyboard shortcuts, tabs beside Write, Outline and Read, places to open scripts from on the home page, and bubbles along the bottom of the editor.
+
+App settings has an **Extensions** page listing apps and then themes, each with a switch, a **Settings** button for an app with settings, and **Remove** for one added from a file. **Add extension** opens the file picker for a `.json` file, which Flow checks before adding: theme colors have to be colors, ids can't clash, and anything wrong is explained under the button. Each app with settings that's on also gets a page after a rule at the bottom of the rail, which **Appearance**, under **Settings tabs**, can take out of the rail.
+
+A file is only ever read as JSON. Flow never loads code from one, so an app added as a file is limited to settings and commands that type text. Apps with code are built in, or registered by code on the page with `window.flowExtensions.register(manifest, activate)`.
+
+Two extensions are built in:
+
+- **Vim lite** gives the editor a small set of Vim's keys. Normal, Insert, Visual and Visual line modes; the motions `h j k l w b e W B E 0 ^ $ gg G f F t T`, with counts; the operators `d c y` over any of them, and doubled for whole lines; and `i a I A o O x X s S D C Y p P u J r ~`, Ctrl+R to redo, and Escape or Ctrl+[ to leave a mode. A count before `i a I A o O` types what's typed that many times on leaving Insert, so `3ihey` then Escape gives `heyheyhey`. A bubble just before undo and redo shows the mode, the keys of the command being typed, and what the last one did. Tapping its mode switches between Normal and Insert, for screens with no Escape key. Its settings choose the mode a script opens in, a two-key chord such as `jk` that works like Escape, the block cursor and the bubble. It's written only against the extension API, in `packages/pwa/src/extensions/vim-lite/`.
+- **Typewriter** is a theme: black ink and a red ribbon on warm paper, with a charcoal dark version.
+
+**Writing one:** [the themes guide](docs/extensions/themes.md) covers palettes and their colors, and [the apps guide](docs/extensions/apps.md) covers the manifest, settings, commands, and the code API for tabs, sources, bubbles and keys.
 
 ### Deploying to GitHub Pages
 
