@@ -1,6 +1,7 @@
 // The home page: the wordmark, a search of the recent scripts and the app settings along the
-// top, then a shelf of sheets. New and Open come first, then every recent script, each shown
-// by its own title page, wrapping onto as many rows as it takes.
+// top, then a shelf of sheets. New and Open come first, then every recent script, each
+// shown by its own title page, wrapping onto as many rows as it takes. Open offers every source,
+// including those extensions add.
 
 import { parse } from '@flow/core';
 import { button, icon, openModal, searchField } from '@flow/element/source';

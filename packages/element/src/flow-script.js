@@ -5,7 +5,8 @@
 
 import { parse, layout, scriptTitle, DEFAULT_OPTIONS, formatDimensions, pageProfile, parseDimensions, resolvePaper, writeSetting } from '@flow/core';
 import { STYLES } from './styles.js';
-import { getTheme } from './themes.js';
+import { addedPaletteSheet, getTheme } from './themes.js';
+import { pill } from './controls.js';
 import { renderReadonly } from './readonly.js';
 import { createRibbon } from './ribbon.js';
 import { createStatusbar, SCALE_MAX, SCALE_MIN, SCALE_STEP } from './statusbar.js';
@@ -54,10 +55,17 @@ export class FlowScript extends HTMLElement {
   #pageTimer = 0;
   // Where the outline asked to go, kept until the tab it named shows.
   #jump = null;
+  // What an app has added: bubbles along the bottom, tabs of its own, and key handlers.
+  #bubbles = new Set();
+  #workspaces = new Map();
+  #keyHandlers = new Set();
 
   constructor() {
     super();
     const shadow = this.attachShadow({ mode: 'open' });
+    // Palettes added at run time, such as by a theme extension.
+    const added = addedPaletteSheet();
+    if (added) shadow.adoptedStyleSheets = [added];
     const style = document.createElement('style');
     style.textContent = STYLES;
     this.#scroll = document.createElement('div');
@@ -137,7 +145,7 @@ export class FlowScript extends HTMLElement {
       // A live editor only needs restyling, which keeps its undo history and cursor. Moving
       // between tabs or views keeps your place in the script.
       if (this.#editor) {
-        const place = name === 'paper' ? null : this.#placeIn(name === 'workspace' ? workspaceOf(oldValue) : this.workspace);
+        const place = name === 'paper' ? null : this.#placeIn(name === 'workspace' ? this.#workspaceOf(oldValue) : this.workspace);
         this.#restyleEditor();
         this.#keepPlace(place);
       } else if (this.#loading) this.#syncBars();
@@ -203,11 +211,11 @@ export class FlowScript extends HTMLElement {
   /**
    * 'write' (the script itself, the default), 'outline' (its acts, sequences, scenes and
    * transitions as cards and blocks, which edit the same text) or 'read' (the pages as they
-   * print, with editing off). Outline and Read take the place of the view while they're showing.
+   * print, with editing off), or the id of a tab added with addWorkspace(). Outline, Read and
+   * added tabs take the place of the view while they're showing.
    */
   get workspace() {
-    const workspace = this.getAttribute('workspace');
-    return workspace === 'outline' || workspace === 'read' ? workspace : 'write';
+    return this.#workspaceOf(this.getAttribute('workspace'));
   }
 
   set workspace(w) {
@@ -324,6 +332,93 @@ export class FlowScript extends HTMLElement {
   /** Selects part of a source line and focuses the editor, without scrolling to it. */
   selectText(line, from, to) {
     this.#editor?.selectText(line, from, to);
+  }
+
+  /**
+   * Types `text` at the cursor in Write, replacing any selection, as pasting would. Returns
+   * whether it could: other tabs and read-only have no cursor.
+   */
+  insertText(text) {
+    if (!this.#editor || this.workspace !== 'write') return false;
+    this.#editor.insertText(String(text));
+    this.#editor.focus();
+    return true;
+  }
+
+  // --- Extending ---
+
+  /**
+   * Adds a bubble to the bottom row: a pill holding `node`. `side` 'start' puts it after the
+   * element's own pills on the left, and 'end' on the right, just before undo and redo.
+   * `tabs` lists the workspaces it shows in, or every one when left out. The bubble is inside
+   * the element's shadow root, where the page's styles don't reach, so `css` can bring its own;
+   * the theme's --flow-* colors reach it. Returns a function that takes it away again.
+   */
+  addBubble({ node, side = 'start', label, tabs: shownIn = null, cls, css }) {
+    const style = css ? document.createElement('style') : null;
+    if (style) style.textContent = css;
+    const bubble = {
+      side: side === 'end' ? 'end' : 'start',
+      tabs: shownIn,
+      root: pill({ label, cls: `fl-ext-bubble${cls ? ` ${cls}` : ''}` }, ...[style, node].filter(Boolean)),
+    };
+    this.#bubbles.add(bubble);
+    this.#statusbar?.addBubble(bubble);
+    this.#syncBars();
+    return () => {
+      this.#bubbles.delete(bubble);
+      bubble.root.remove();
+    };
+  }
+
+  /**
+   * Adds a tab of the app's own, shown when `workspace` is set to `id`, like Write, Outline and
+   * Read. Each time it's shown, `render(root, context)` fills `root`, and may return a function
+   * to run as it's hidden again. `context` is { script, lines(), edit(lines), show(line, tab) }:
+   * the element, the script's source lines, a way to replace them as one undo step, and a way
+   * to open a line in Write or Read. The app adds the tab itself to its own tabs. Returns a
+   * function that takes it away.
+   */
+  addWorkspace({ id, render }) {
+    if (!/^[a-z][a-z0-9-]*$/.test(id) || BUILT_IN_WORKSPACES.includes(id) || this.#workspaces.has(id)) {
+      throw new Error(`A tab can’t be called "${id}"`);
+    }
+    const root = document.createElement('div');
+    root.className = 'fl-workspace';
+    root.dataset.workspace = id;
+    root.hidden = true;
+    const entry = { id, render, root, cleanup: null };
+    this.#workspaces.set(id, entry);
+    this.#statusbar?.root.before(root);
+    if (this.getAttribute('workspace') === id && this.#editor) this.#restyleEditor();
+    else this.#syncBars();
+    return () => {
+      if (this.#workspaces.get(id) !== entry) return;
+      this.#hideWorkspace(entry);
+      this.#workspaces.delete(id);
+      root.remove();
+      if (this.getAttribute('workspace') === id) {
+        this.workspace = 'write';
+        this.dispatchEvent(new CustomEvent('flow-workspace', { detail: { workspace: 'write' } }));
+      }
+    };
+  }
+
+  /**
+   * Lets an app see keys before the editor does, as a key binding extension needs. `handler` is
+   * { keydown(event, text), input(typed, text), attach(text), detach() }, all optional.
+   * `keydown` returning true takes the key, and `input` returning true keeps typed text out.
+   * `text` is the editor's text API, described at FlowEditor.textApi. `attach` runs whenever
+   * an editor is ready for it. Returns a function that takes it away.
+   */
+  addEditorKeys(handler) {
+    this.#keyHandlers.add(handler);
+    if (this.#editor) handler.attach?.(this.#editor.text);
+    return () => {
+      if (!this.#keyHandlers.delete(handler)) return;
+      this.#editor?.text.setCaret(null);
+      handler.detach?.();
+    };
   }
 
   /**
@@ -498,7 +593,50 @@ export class FlowScript extends HTMLElement {
     this.#editor.relayout();
     this.#showRead();
     this.#showOutline();
+    this.#showWorkspaces();
     if (wasHidden && !this.#surface.hidden) this.#editor.focus({ scroll: false });
+  }
+
+  #workspaceOf(value) {
+    return this.#workspaces.has(value) ? value : workspaceOf(value);
+  }
+
+  // An app's own tab is drawn afresh each time it shows, and cleared away as it hides.
+  #showWorkspaces() {
+    for (const entry of this.#workspaces.values()) {
+      const showing = !!this.#editor && this.workspace === entry.id;
+      if (showing && entry.root.hidden) {
+        entry.root.hidden = false;
+        this.#scroll.scrollTop = 0;
+        try {
+          const cleanup = entry.render(entry.root, this.#workspaceContext());
+          entry.cleanup = typeof cleanup === 'function' ? cleanup : null;
+        } catch (err) {
+          entry.root.textContent = `This tab couldn't be shown: ${err.message}`;
+        }
+      } else if (!showing) this.#hideWorkspace(entry);
+    }
+  }
+
+  #hideWorkspace(entry) {
+    if (entry.root.hidden) return;
+    entry.root.hidden = true;
+    const { cleanup } = entry;
+    entry.cleanup = null;
+    try {
+      cleanup?.();
+    } finally {
+      entry.root.replaceChildren();
+    }
+  }
+
+  #workspaceContext() {
+    return {
+      script: this,
+      lines: () => this.value.split('\n'),
+      edit: (lines) => this.#editor?.commitFromOutline(lines),
+      show: (line, workspace = 'write') => this.#jumpTo(line, workspace),
+    };
   }
 
   // The top of the room below the bars, where the line being read sits.
@@ -512,6 +650,7 @@ export class FlowScript extends HTMLElement {
       return [...(this.#read?.querySelectorAll('[data-line]') ?? [])].map((node) => ({ line: Number(node.dataset.line), node }));
     }
     if (workspace === 'outline') return this.#outline?.placeEntries() ?? [];
+    if (workspace !== 'write') return [];
     return this.#editor?.lineNodes().map((node, line) => ({ line, node })) ?? [];
   }
 
@@ -646,6 +785,7 @@ export class FlowScript extends HTMLElement {
     }
     this.#outline?.destroy();
     this.#outline = null;
+    for (const entry of this.#workspaces.values()) this.#hideWorkspace(entry);
     this.#destroyBars();
     this.#read = null;
     // Read-only is for reading, so like the Read tab it shows pages unless asked otherwise.
@@ -681,12 +821,14 @@ export class FlowScript extends HTMLElement {
     });
     this.#ribbon.setActions('outline', { label: 'Outline', pills: this.#outline.tools });
     this.#syncBars();
-    this.#scroll.replaceChildren(this.#ribbon.root, this.#surface, this.#outline.root, this.#statusbar.root);
+    for (const entry of this.#workspaces.values()) this.#hideWorkspace(entry);
+    this.#scroll.replaceChildren(this.#ribbon.root, this.#surface, this.#outline.root, ...[...this.#workspaces.values()].map(({ root }) => root), this.#statusbar.root);
     this.#read = null;
     this.#editor = new FlowEditor(this.#surface, {
       value: this.#value,
       getLayoutOptions: () => this.#layoutOptions(),
       showSource: () => this.view === 'source',
+      keyHandlers: () => this.#keyHandlers,
       onChange: (value, outline) => {
         this.#value = value;
         // Page settings are part of the text, so an edit or an undo can change the page size.
@@ -707,6 +849,8 @@ export class FlowScript extends HTMLElement {
     this.#applyInsets();
     this.#showRead();
     this.#showOutline();
+    this.#showWorkspaces();
+    for (const handler of this.#keyHandlers) handler.attach?.(this.#editor.text);
     this.dispatchEvent(new CustomEvent('flow-ready'));
   }
 
@@ -732,6 +876,7 @@ export class FlowScript extends HTMLElement {
     });
     this.#highlightTools.update(this.#highlights);
     this.#ribbon.setActions('read', { label: 'Reading', pills: [this.#highlightTools.root] });
+    for (const bubble of this.#bubbles) this.#statusbar.addBubble(bubble);
     this.#syncBars();
     this.#statusbar.setScale(this.scale);
     this.#statusbar.setTextWidth(this.textWidth);
@@ -844,6 +989,8 @@ export class FlowScript extends HTMLElement {
 }
 
 const DEFAULT_MENU = [['pdf'], ['project-settings']];
+
+const BUILT_IN_WORKSPACES = ['write', 'outline', 'read'];
 
 const workspaceOf = (value) => (value === 'outline' || value === 'read' ? value : 'write');
 

@@ -327,19 +327,25 @@ const toCss = (theme) =>
     .join('');
 
 // Every preset, with `base` as the unthemed default and `select(name)` picking a theme.
-function themeRules(base, select) {
+const rulesFor = (select) => {
   const rule = (name, colors) => `${select(name)} { ${toCss(colors)} }`;
   const auto = (name, { light, dark }) => [
     rule(name, light),
     `@media (prefers-color-scheme: dark) { ${rule(name, dark)} }`,
   ];
+  const palettes = (list) => list.flatMap(([name, palette]) => [
+    rule(`${name}-light`, palette.light),
+    rule(`${name}-dark`, palette.dark),
+    ...auto(`${name}-auto`, palette),
+  ]);
+  return { auto, palettes };
+};
+
+function themeRules(base, select) {
+  const { auto, palettes } = rulesFor(select);
   return [
     `${base} { ${toCss(PALETTES.sage.light)} }`,
-    ...Object.entries(PALETTES).flatMap(([name, palette]) => [
-      rule(`${name}-light`, palette.light),
-      rule(`${name}-dark`, palette.dark),
-      ...auto(`${name}-auto`, palette),
-    ]),
+    ...palettes(Object.entries(PALETTES)),
     ...auto('auto', PALETTES.sage),
   ].join('\n');
 }
@@ -359,3 +365,50 @@ export function registerTheme(name, colors) {
 }
 
 export const getTheme = (name) => registry.get(name);
+
+// Palettes added while the app runs, such as by a theme extension. The stylesheets above are
+// built once, so these live in sheets of their own, adopted by the page and every <flow-script>.
+const added = new Map();
+const canAdopt = typeof CSSStyleSheet === 'function' && 'replaceSync' in CSSStyleSheet.prototype;
+const pageSheet = canAdopt ? new CSSStyleSheet() : null;
+const hostSheet = canAdopt ? new CSSStyleSheet() : null;
+let pageAdopted = false;
+
+/** The added palettes' sheet for a shadow root to adopt, or null where sheets can't be built. */
+export const addedPaletteSheet = () => hostSheet;
+
+function redrawAdded() {
+  if (!canAdopt) return;
+  const list = [...added];
+  pageSheet.replaceSync(rulesFor((name) => `:root[data-theme="${name}"]`).palettes(list).join('\n'));
+  hostSheet.replaceSync(rulesFor((name) => `:host([theme="${name}"])`).palettes(list).join('\n'));
+  if (!pageAdopted) {
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, pageSheet];
+    pageAdopted = true;
+  }
+}
+
+/**
+ * Adds a palette as `name`, for the themes `name-light`, `name-dark` and `name-auto`, and to the
+ * theme chooser. `palette` is { label, light, dark }, and any color left out of either comes
+ * from Sage. A preset's name can't be taken. Returns whether it was added.
+ */
+export function addPalette(name, palette) {
+  if (!/^[a-z][a-z0-9]*$/.test(name) || (PALETTES[name] && !added.has(name))) return false;
+  const filled = {
+    label: palette.label || name,
+    light: { ...PALETTES.sage.light, ...palette.light, scheme: 'light' },
+    dark: { ...PALETTES.sage.dark, ...palette.dark, scheme: 'dark' },
+  };
+  PALETTES[name] = filled;
+  added.set(name, filled);
+  redrawAdded();
+  return true;
+}
+
+/** Takes away a palette that addPalette added. Presets stay. */
+export function removePalette(name) {
+  if (!added.delete(name)) return;
+  delete PALETTES[name];
+  redrawAdded();
+}

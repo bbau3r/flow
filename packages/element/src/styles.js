@@ -145,6 +145,22 @@ ${PAGE_PREVIEW_CSS}
 .fl-page-total { padding: 0 6px 0 4px; color: var(--flow-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fl-status { padding: 0 8px; color: var(--flow-muted); }
 .fl-spacer { flex: 1; }
+/* An app's bubbles sit in the row like the element's own pills. */
+.fl-ext-bubbles { display: contents; }
+.fl-ext-bubble[hidden] { display: none; }
+/* An app's own tab, sized by the page scale like the outline. */
+.fl-workspace {
+  position: relative; width: 100%; max-width: 52em; margin: 0 auto; padding: 1em 1em 2em;
+  font-size: calc(16px * var(--fl-scale, 1)); line-height: 1.4;
+}
+.fl-workspace[hidden] { display: none; }
+/* A block cursor, for key bindings that ask for one, over the character it's on. */
+.ProseMirror.fl-caret-on { caret-color: transparent; }
+.fl-caret-char { background: var(--flow-accent); color: var(--flow-accent-ink); border-radius: 1px; }
+.fl-caret-end::after {
+  content: ""; display: inline-block; width: 0.6em; height: 1.15em; vertical-align: text-bottom;
+  background: var(--flow-accent); border-radius: 1px;
+}
 .fl-info { display: flex; align-items: flex-start; gap: 6px; margin-top: 10px; }
 .fl-info > .fl-svg { flex: none; width: 1.15em; height: 1.15em; margin-top: 0.05em; }
 /* The Highlight Manager: each row reads as one field holding its terms, color and remove button.
@@ -507,7 +523,7 @@ ${PAGE_PREVIEW_CSS}
 
 @media print {
   :host { background: none; }
-  .fl-chrome, .fl-footer, .fl-outline { display: none; }
+  .fl-chrome, .fl-footer, .fl-outline, .fl-workspace { display: none; }
   .fl-scroll { display: block; overflow: visible; container-type: normal; }
   .fl-script { font-size: 12pt !important; }
   .fl-pages { display: block; padding: 0; }

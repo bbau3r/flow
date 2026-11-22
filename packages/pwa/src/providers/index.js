@@ -10,11 +10,26 @@
 //   saveHint()          what choosing this provider in the save dialog will do
 //   location(doc)       where a doc saved here lives, in words
 //
-// Adding a storage option means writing one of these and listing it here.
+// Adding a storage option means writing one of these and listing it here, or an extension
+// adding one with addSource.
 
 import { localProvider } from './local.js';
 
 export const providers = [localProvider];
+
+const PROVIDER_KEYS = ['id', 'label', 'description', 'status', 'open', 'save', 'saveAs', 'saveHint', 'location'];
+
+/** Adds a provider while the app runs, such as from an extension. Returns a function that takes it away. */
+export function addProvider(provider) {
+  const missing = PROVIDER_KEYS.filter((key) => provider?.[key] == null);
+  if (missing.length) throw new Error(`A source needs ${missing.join(', ')}.`);
+  if (providers.some((p) => p.id === provider.id)) throw new Error(`There’s a source called "${provider.id}" already.`);
+  providers.push(provider);
+  return () => {
+    const at = providers.indexOf(provider);
+    if (at >= 0) providers.splice(at, 1);
+  };
+}
 
 export const getProvider = (id) => providers.find((p) => p.id === id);
 

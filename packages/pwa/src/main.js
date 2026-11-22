@@ -6,6 +6,7 @@ import { renderHome } from './home.js';
 import { renderEditor } from './editor-view.js';
 import { currentTheme, toast } from './ui.js';
 import { openLaunchedFile } from './launch.js';
+import { startExtensions } from './extensions/host.js';
 
 const app = document.getElementById('app');
 let leaveView = null;
@@ -22,6 +23,8 @@ async function route() {
 const onHome = () => !/^#\/edit\//.test(location.hash);
 
 installControlStyles();
+// Extensions start first, so a theme extension's palette is there for the theme.
+startExtensions();
 document.body.classList.add('fl-desk');
 document.documentElement.dataset.theme = currentTheme();
 loadFonts();

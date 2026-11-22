@@ -63,9 +63,20 @@ export function saveTheme(theme) {
   } catch {
     // Private browsing can refuse storage; the theme still applies for this visit.
   }
+  showTheme(chosen);
+}
+
+function showTheme(chosen) {
+  if (document.documentElement.dataset.theme === chosen) return;
   document.documentElement.dataset.theme = chosen;
   window.dispatchEvent(new CustomEvent('flow-theme', { detail: { theme: chosen } }));
 }
+
+/**
+ * Shows the kept theme again, for when its palette comes or goes with a theme extension. The
+ * choice itself is kept, so a palette that comes back is chosen again.
+ */
+export const refreshTheme = () => showTheme(currentTheme());
 
 /** The palette grid and mode switch, keeping whatever is chosen. */
 export const themeControls = () => themeChooser({ value: readTheme(), onChange: saveTheme });

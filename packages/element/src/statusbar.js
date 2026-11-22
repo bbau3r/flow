@@ -206,6 +206,20 @@ export function createStatusbar(actions) {
   const spacer = document.createElement('span');
   spacer.className = 'fl-spacer';
 
+  // Bubbles an app adds: after the pills on the left, or just before undo and redo.
+  const bubbles = new Set();
+  const startBubbles = document.createElement('span');
+  startBubbles.className = 'fl-ext-bubbles';
+  const endBubbles = document.createElement('span');
+  endBubbles.className = 'fl-ext-bubbles';
+  let workspaceShown = 'write';
+  const showBubbles = () => {
+    for (const bubble of bubbles) {
+      if (!bubble.root.parentNode) bubbles.delete(bubble);
+      else bubble.root.hidden = !!bubble.tabs && !bubble.tabs.includes(workspaceShown);
+    }
+  };
+
   const end = document.createElement('slot');
   end.name = 'status-end';
 
@@ -218,7 +232,9 @@ export function createStatusbar(actions) {
     scalePill.root,
     pagePill.root,
     statusPill,
+    startBubbles,
     spacer,
+    endBubbles,
     history,
     end,
   );
@@ -239,9 +255,17 @@ export function createStatusbar(actions) {
       undo.disabled = !state.canUndo;
       redo.disabled = !state.canRedo;
     },
-    // Write and Read each have their own views, and Outline has none. Read changes nothing
-    // that could be undone.
+    /** Places a bubble, { side, tabs, root }, which shows only in its tabs when it lists some. */
+    addBubble(bubble) {
+      bubbles.add(bubble);
+      (bubble.side === 'end' ? endBubbles : startBubbles).append(bubble.root);
+      showBubbles();
+    },
+    // Write and Read each have their own views, and Outline has none. Only Write and Outline
+    // change anything that could be undone.
     setView(next, workspace = 'write', nextRead = readView) {
+      workspaceShown = workspace;
+      showBubbles();
       view = next;
       readView = nextRead;
       for (const each of viewPills) each.refresh();
@@ -249,7 +273,7 @@ export function createStatusbar(actions) {
       if (workspace !== 'read') readPill.menu.close();
       writePill.root.hidden = workspace !== 'write';
       readPill.root.hidden = workspace !== 'read';
-      history.hidden = workspace === 'read';
+      history.hidden = workspace !== 'write' && workspace !== 'outline';
       const paging = workspace === 'read' ? readView === 'page' : workspace === 'write' && view === 'page';
       if (!paging) pagePill.close();
       pagePill.root.hidden = !paging;
