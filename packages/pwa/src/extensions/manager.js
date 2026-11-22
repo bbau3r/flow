@@ -1,11 +1,12 @@
 // The Extensions page of App settings: every extension Flow knows, apps and then themes, each
 // with a switch to turn it on, a button that turns to its settings if it has any, and Remove for
-// one added from a file. Add extension opens the file picker for a manifest and any .js files with
-// it, asks whether code is trusted before adding it, and turns it on. The guides to writing extensions
+// one added from files. Add extension reads an app's folder and Add theme a theme's .json file; either
+// asks whether code is trusted before adding it, and turns it on. An app added from a folder Flow
+// can keep can be updated from it again. The guides to writing extensions
 // are linked beside it.
 
 import { button, icon, openModal, toggleSwitch } from '@flow/element/source';
-import { addExtension, checkExtension, hasSettingsPage, listExtensions, removeExtension, setEnabled } from './host.js';
+import { addExtension, checkExtension, extensionFolder, folderName, hasSettingsPage, listExtensions, removeExtension, setEnabled } from './host.js';
 import { sectionId } from './settings.js';
 import { h, toast } from '../ui.js';
 
@@ -54,6 +55,17 @@ function property({ manifest, source, enabled, error }, panel) {
     settings.disabled = !enabled;
     actions.push(settings);
   }
+  const folder = source === 'added' ? folderName(id) : '';
+  if (folder) {
+    actions.push(button({
+      label: `Update ${name} from its folder`,
+      title: `Read ${name} again from ${folder}, after changing its files`,
+      icon: 'upload',
+      cls: 'fl-btn-outline',
+      attrs: { 'data-action': 'update', 'data-extension': id },
+      onClick: () => updateFromFolder(id, name),
+    }));
+  }
   if (source === 'added') {
     actions.push(button({
       label: `Remove ${name}`,
@@ -68,7 +80,7 @@ function property({ manifest, source, enabled, error }, panel) {
   }
   // Code from a file or the page says so, since it runs with everything Flow can do.
   const runsCode = source === 'code' || (source === 'added' && !!manifest.main);
-  const meta = [`Version ${version}`, author && `by ${author}`, SOURCE_LABELS[source], runsCode && 'Runs its own code'].filter(Boolean).join(' · ');
+  const meta = [`Version ${version}`, author && `by ${author}`, folder ? `From the ${folder} folder` : SOURCE_LABELS[source], runsCode && 'Runs its own code'].filter(Boolean).join(' · ');
   return {
     label: name,
     keywords: `extension ${kind} ${description}`,
@@ -114,39 +126,121 @@ function confirmTrust(manifest, codeFiles) {
   });
 }
 
-// Adding goes straight to the system's file picker, for a manifest, and its code file when it
-// has one. What's wrong shows under the button; once it's added, App settings reopens with it.
+// An app's files: its manifest.json and the .js files beside it, at its folder's top level.
+const APP_FILE = /^manifest\.json$|\.m?js$/i;
+
+// Reads an app's files from a folder Flow was given, as a handle.
+async function filesInFolder(folder) {
+  const files = [];
+  for await (const [name, handle] of folder.entries()) {
+    if (handle.kind === 'file' && APP_FILE.test(name)) files.push(await handle.getFile());
+  }
+  return files;
+}
+
+// A theme is one .json file, called anything.
+async function addTheme(file) {
+  const json = await file.text();
+  const manifest = checkExtension(json);
+  if (manifest.kind !== 'theme') throw new Error('That’s an extension, not a theme. Use Add extension, and choose its folder.');
+  await addExtension(json);
+  return manifest;
+}
+
+/**
+ * Adds an app from its folder's files: manifest.json and the .js files beside it. `folder` is
+ * kept, when Flow has a handle to it, so the app can be updated from there. Asks about code
+ * before adding anything. Resolves to the manifest, or null when the person didn't trust it.
+ */
+async function addApp(chosen, { folder = null } = {}) {
+  const manifestFile = chosen.find((each) => each.name.toLowerCase() === 'manifest.json');
+  if (!manifestFile) throw new Error('This folder has no manifest.json at its top level.');
+  const json = await manifestFile.text();
+  const manifest = checkExtension(json);
+  if (manifest.kind !== 'app') throw new Error('That’s a theme. Use Add theme, and choose its .json file.');
+  // The main file first, then the rest by name, as the trust warning lists them.
+  const scripts = chosen.filter((each) => /\.m?js$/i.test(each.name))
+    .sort((a, b) => (b.name === manifest.main) - (a.name === manifest.main) || a.name.localeCompare(b.name));
+  const files = {};
+  if (manifest.main) {
+    if (!scripts.some((each) => each.name === manifest.main)) throw new Error(`This app’s code starts in ${manifest.main}, which isn’t in the folder.`);
+    if (!(await confirmTrust(manifest, scripts))) return null;
+    for (const each of scripts) files[each.name] = await each.text();
+  }
+  await addExtension(json, { files, folder });
+  return manifest;
+}
+
+// Add theme picks a theme's .json file; Add extension points to an app extension's folder. Browsers that can be
+// given a folder, Chrome and Edge on a computer, keep it, so the app can be updated from it;
+// others read the folder once, through a file input. What's wrong shows under the buttons; once
+// something is added, App settings reopens with it.
 function addControls() {
   const message = h('p', { class: 'ext-add-error', role: 'alert' });
-  const file = h('input', { type: 'file', accept: '.json,.js,.mjs,application/json,text/javascript', multiple: true, hidden: true, 'aria-label': 'Extension files' });
-  file.addEventListener('change', async () => {
-    const chosen = [...(file.files ?? [])];
-    file.value = '';
-    if (!chosen.length) return;
+  const report = async (what, work) => {
     message.textContent = '';
-    const manifests = chosen.filter((each) => /\.json$/i.test(each.name));
-    const named = manifests[0]?.name ?? chosen[0].name;
     try {
-      if (manifests.length !== 1) throw new Error('Choose one manifest, a .json file, and its code file with it if it has one.');
-      const json = await manifests[0].text();
-      const manifest = checkExtension(json);
-      const scripts = chosen.filter((each) => each !== manifests[0]);
-      const files = {};
-      if (manifest.main) {
-        if (!scripts.some((each) => each.name === manifest.main)) throw new Error(`This app’s code starts in ${manifest.main}. Choose it together with the manifest.`);
-        if (!(await confirmTrust(manifest, scripts))) return;
-        for (const each of scripts) files[each.name] = await each.text();
-      } else if (scripts.length) {
-        throw new Error('This manifest names no code file. Give it a "main", such as "index.js", to add code with it.');
-      }
-      await addExtension(json, { files });
-      toast(`Added ${manifest.name}, turned on.`);
+      const manifest = await work();
+      if (manifest) toast(`Added ${manifest.name}, turned on.`);
     } catch (err) {
-      message.textContent = `${named}: ${err.message}`;
+      if (err?.name === 'AbortError') return;
+      message.textContent = `${what}: ${err.message}`;
     }
+  };
+
+  const themeInput = h('input', { type: 'file', accept: '.json,application/json', hidden: true, 'aria-label': 'Theme file' });
+  themeInput.addEventListener('change', () => {
+    const [file] = themeInput.files ?? [];
+    themeInput.value = '';
+    if (file) report(file.name, () => addTheme(file));
   });
-  const add = button({ label: 'Add extension', icon: 'upload', cls: 'fl-btn-primary', attrs: { id: 'add-extension' }, onClick: () => file.click() });
-  return { control: [add, file], message };
+
+  // Without a way to keep a folder, a file input reads one: its files come with their path.
+  const folderInput = h('input', { type: 'file', multiple: true, hidden: true, 'aria-label': 'App folder' });
+  folderInput.webkitdirectory = true;
+  folderInput.addEventListener('change', () => {
+    const all = [...(folderInput.files ?? [])];
+    folderInput.value = '';
+    if (!all.length) return;
+    const top = all.filter((each) => (each.webkitRelativePath || each.name).split('/').length <= 2 && APP_FILE.test(each.name));
+    const name = (all[0].webkitRelativePath || '').split('/')[0] || 'Folder';
+    report(name, () => addApp(top));
+  });
+
+  const pickFolder = async () => {
+    if (!('showDirectoryPicker' in window)) {
+      folderInput.click();
+      return;
+    }
+    let folder = null;
+    try {
+      folder = await window.showDirectoryPicker({ id: 'flow-extension', mode: 'read' });
+    } catch (err) {
+      if (err?.name !== 'AbortError') message.textContent = err.message;
+      return;
+    }
+    report(folder.name, async () => addApp(await filesInFolder(folder), { folder }));
+  };
+
+  const addAppButton = button({ label: 'Add extension', icon: 'folder', cls: 'fl-btn-outline', attrs: { id: 'add-extension' }, onClick: pickFolder });
+  const addThemeButton = button({ label: 'Add theme', icon: 'palette', cls: 'fl-btn-outline', attrs: { id: 'add-theme' }, onClick: () => themeInput.click() });
+  return { control: h('div', { class: 'ext-add-buttons' }, addAppButton, addThemeButton, themeInput, folderInput), message };
+}
+
+// Reads an extension again from the folder it came from, as after editing its files. Code asks
+// to be trusted again.
+async function updateFromFolder(id, name) {
+  try {
+    const folder = await extensionFolder(id);
+    if (!folder) throw new Error('Flow no longer has this folder. Add it again with Add folder.');
+    if ((await folder.queryPermission?.({ mode: 'read' })) !== 'granted' && (await folder.requestPermission?.({ mode: 'read' })) !== 'granted') {
+      throw new Error(`Flow wasn’t allowed to read ${folder.name}.`);
+    }
+    const manifest = await addApp(await filesInFolder(folder), { folder });
+    if (manifest) toast(`Updated ${manifest.name} from ${folder.name}.`);
+  } catch (err) {
+    toast(`${name}: ${err.message}`);
+  }
 }
 
 const guide = (label, page) => button({
@@ -178,10 +272,11 @@ export function extensionsSection(panel) {
         properties: [
           {
             label: 'Add extension',
-            keywords: 'install add import json file extension theme',
-            description: 'Choose an extension’s manifest .json + any supporting .js files to add extension.',
+            keywords: 'install add import json file folder extension theme app',
+            description: 'Add extension points to an extension’s folder, holding its manifest.json and .js files. Add theme takes a theme’s .json file.',
             control: adding.control,
             below: adding.message,
+            wide: true,
           },
           {
             label: 'Writing extensions',

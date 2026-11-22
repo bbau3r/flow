@@ -34,7 +34,7 @@ import {
   actionPill, addPalette, button, icon, iconSwitch, Menu, openModal, pill, pillSep, removePalette, searchField, tabs, toggleSwitch,
 } from '@flow/element/source';
 import { readManifest, settingValue } from './manifest.js';
-import { clearExtensionData, deleteCode, extensionStorage, getCode, loadModule, putCode } from './code-store.js';
+import { clearExtensionData, deleteCode, deleteFolder, extensionStorage, getCode, getFolder, loadModule, putCode, putFolder } from './code-store.js';
 import { addProvider } from '../providers/index.js';
 import { refreshTheme, toast } from '../ui.js';
 import { BUILT_IN } from './built-in.js';
@@ -56,6 +56,8 @@ function readStore() {
     enabled: object(saved?.enabled),
     settings: object(saved?.settings),
     hiddenInSettings: object(saved?.hiddenInSettings),
+    // The name of the folder each was added from, when it was a folder Flow can go back to.
+    folders: object(saved?.folders),
     added: Array.isArray(saved?.added) ? saved.added : [],
   };
 }
@@ -108,6 +110,12 @@ export const getExtension = (id) => listExtensions().find((entry) => entry.manif
 // Everything starts off, built in or not, until it's turned on.
 export const isEnabled = (id) => store.enabled[id] === true;
 
+/** The name of the folder an extension was added from, when Flow can read it again, or ''. */
+export const folderName = (id) => store.folders[id] ?? '';
+
+/** That folder's handle, for updating the extension from it. */
+export const extensionFolder = (id) => getFolder(id);
+
 /** Calls `listener({ type, id })` after anything changes; returns a function to stop. */
 export function onExtensionsChange(listener) {
   listeners.add(listener);
@@ -141,16 +149,24 @@ export function checkExtension(json) {
 
 /**
  * Adds an extension from the text of its manifest, with `files`, its .js files by name, for an
- * app with code. Whoever calls this has already asked whether the code is trusted. A new one
- * starts turned on; an update stays as it was. Throws an error that says what's wrong.
+ * app with code, and `folder`, the folder's handle when it came from one Flow can read again.
+ * Whoever calls this has already asked whether the code is trusted. A new one starts turned on;
+ * an update stays as it was. Throws an error that says what's wrong.
  */
-export async function addExtension(json, { files = {} } = {}) {
+export async function addExtension(json, { files = {}, folder = null } = {}) {
   const manifest = checkExtension(json);
   if (manifest.main && typeof files[manifest.main] !== 'string') throw new Error(`This app’s code starts in ${manifest.main}. Choose it together with the manifest.`);
   const existing = entries.get(manifest.id);
   if (existing) deactivate(existing);
   if (manifest.main) await putCode(manifest.id, { main: manifest.main, files });
   else if (existing?.manifest.main) await deleteCode(manifest.id);
+  if (folder) {
+    await putFolder(manifest.id, folder);
+    store.folders[manifest.id] = folder.name;
+  } else if (store.folders[manifest.id]) {
+    await deleteFolder(manifest.id);
+    delete store.folders[manifest.id];
+  }
   add(manifest, 'added');
   store.added = [...store.added.filter((saved) => saved?.id !== manifest.id), manifest];
   if (!existing) store.enabled[manifest.id] = true;
@@ -170,8 +186,9 @@ export async function removeExtension(id) {
   delete store.enabled[id];
   delete store.settings[id];
   delete store.hiddenInSettings[id];
+  delete store.folders[id];
   writeStore();
-  await Promise.all([deleteCode(id), clearExtensionData(id)]).catch(() => {});
+  await Promise.all([deleteCode(id), deleteFolder(id), clearExtensionData(id)]).catch(() => {});
   emit({ type: 'removed', id });
 }
 
