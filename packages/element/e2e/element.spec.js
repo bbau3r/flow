@@ -15,6 +15,12 @@ const topicButton = (page) => page.locator('flow-script .fl-topics .fl-menu-trig
 const statusbar = (page) => page.locator('flow-script .fl-statusbar');
 const viewButton = (page) => statusbar(page).locator('.fl-menu-trigger:visible');
 const historyButton = (page, name) => statusbar(page).getByRole('button', { name, exact: true });
+const menuButton = (page) => page.locator('flow-script .fl-docmenu-trigger');
+
+async function chooseFromMenu(page, name) {
+  await menuButton(page).click();
+  await page.locator('flow-script .fl-docmenu').getByRole('menuitem', { name, exact: true }).click();
+}
 
 async function chooseTopic(page, name) {
   await topicButton(page).click();
@@ -37,7 +43,7 @@ async function show(page, name) {
 }
 
 async function openExport(page) {
-  await page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true }).click();
+  await chooseFromMenu(page, 'Export to PDF');
   const dialog = page.locator('flow-script dialog');
   await expect(dialog).toBeVisible();
   return dialog;
@@ -532,8 +538,8 @@ test('pinching scales the script, not the page, and the app hears the new scale'
 test('collapsing keeps the rest of the row in place, and keeps up with quick clicks', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
   await open(page);
-  const pdf = page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true });
-  const before = await pdf.boundingBox();
+  const menu = menuButton(page);
+  const before = await menu.boundingBox();
   const toggle = collapseToggle(page);
   await toggle.click();
   // Turned back mid-animation, it ends up open.
@@ -542,7 +548,7 @@ test('collapsing keeps the rest of the row in place, and keeps up with quick cli
   await expect(rib(page, 'Bold')).toBeVisible();
   await toggle.click();
   await expect(formatPills(page)).toBeHidden();
-  const after = await pdf.boundingBox();
+  const after = await menu.boundingBox();
   expect(after.x).toBeCloseTo(before.x, 0);
   expect(after.y).toBeCloseTo(before.y, 0);
 
@@ -562,7 +568,7 @@ test('folded on its own row, the action center keeps its place and gives the pag
   const inset = () => host(page).evaluate((el) => parseFloat(el.style.getPropertyValue('--fl-inset-top')));
   // Well below the top row's middle is the second row.
   const secondRow = async () => {
-    const box = await page.locator('flow-script .fl-export').boundingBox();
+    const box = await menuButton(page).boundingBox();
     return box.y + box.height / 2 + 20;
   };
   const open_ = await inset();
@@ -669,16 +675,16 @@ test('formatting shares the top row when it fits, and otherwise leans left on it
   await setValue(page, 'BOB\nHello.');
   await lineWith(page, 'Hello').click();
   await expect(rib(page, 'Dual')).toBeVisible();
-  const pdf = () => page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true }).boundingBox();
+  const menu = () => menuButton(page).boundingBox();
   const middle = (box) => box.y + box.height / 2;
 
   // On one row, with the longest set of pills, nothing overlaps or leaves the window.
   const bold = await rib(page, 'Bold').boundingBox();
   const dual = await rib(page, 'Dual').boundingBox();
-  const export1 = await pdf();
-  expect(Math.abs(middle(bold) - middle(export1))).toBeLessThan(2);
-  expect(dual.x + dual.width).toBeLessThanOrEqual((await page.locator('flow-script .fl-export').boundingBox()).x);
-  expect(export1.x + export1.width).toBeLessThanOrEqual(1000);
+  const menu1 = await menu();
+  expect(Math.abs(middle(bold) - middle(menu1))).toBeLessThan(2);
+  expect(dual.x + dual.width).toBeLessThanOrEqual(1000);
+  expect(menu1.x + menu1.width).toBeLessThanOrEqual(1000);
   // Dual appears at the end of the row, so nothing else moves for it.
   await lineWith(page, 'BOB').click();
   await setValue(page, 'Action.');
@@ -690,8 +696,8 @@ test('formatting shares the top row when it fits, and otherwise leans left on it
   await page.setViewportSize({ width: 999, height: 800 });
   const row = await page.locator('flow-script .fl-ribbon').boundingBox();
   const narrowBold = await rib(page, 'Bold').boundingBox();
-  const narrowPdf = await pdf();
-  expect(narrowBold.y).toBeGreaterThan(narrowPdf.y + narrowPdf.height - 1);
+  const narrowMenu = await menu();
+  expect(narrowBold.y).toBeGreaterThan(narrowMenu.y + narrowMenu.height - 1);
   expect(narrowBold.x - row.x).toBeLessThan(6);
 });
 
@@ -820,28 +826,26 @@ test('the top row floats over the page too, and its menus reach over the formatt
   await page.setViewportSize({ width: 1200, height: 700 });
   await open(page);
   await setValue(page, Array.from({ length: 200 }, (_, i) => `Beat ${i}.`).join('\n\n'));
-  const pdf = page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true });
+  const menu = menuButton(page);
   const sheet = page.locator('flow-script .fl-sheet');
-  const before = await pdf.boundingBox();
+  const before = await menu.boundingBox();
   await page.locator('flow-script .fl-scroll').evaluate((el) => { el.scrollTop = 600; });
-  const after = await pdf.boundingBox();
+  const after = await menu.boundingBox();
   expect(after.y).toBeCloseTo(before.y, 0);
   expect((await sheet.boundingBox()).y).toBeLessThan(after.y);
 
   // The gap between pills in the top row lets clicks through to the script.
   const atGap = await host(page).evaluate((el, at) => el.shadowRoot.elementFromPoint(at.x, at.y)?.closest('.fl-pill, .fl-sheet')?.className ?? '', { x: 600, y: after.y + 5 });
   expect(atGap).toContain('fl-sheet');
-  const atPdf = await host(page).evaluate((el, at) => el.shadowRoot.elementFromPoint(at.x, at.y)?.closest('.fl-pill, .fl-sheet')?.className ?? '', { x: after.x + 5, y: after.y + 5 });
-  expect(atPdf).toContain('fl-pill');
-  await pdf.click();
+  const atMenu = await host(page).evaluate((el, at) => el.shadowRoot.elementFromPoint(at.x, at.y)?.closest('.fl-pill, .fl-sheet')?.className ?? '', { x: after.x + 5, y: after.y + 5 });
+  expect(atMenu).toContain('fl-pill');
+  await menu.click();
   await expect(page.locator('flow-script dialog')).toBeVisible();
   await page.keyboard.press('Escape');
 
-  // A menu from the top row sits over the formatting row and can be clicked.
+  // The menu from the top row sits over the formatting row and can be clicked.
   await page.setViewportSize({ width: 500, height: 700 });
-  const holder = page.locator('flow-script .fl-export-holder');
-  await holder.getByRole('button', { name: 'Export', exact: true }).click();
-  await holder.getByRole('menuitem', { name: 'PDF', exact: true }).click();
+  await chooseFromMenu(page, 'Export to PDF');
   await expect(page.locator('flow-script dialog')).toBeVisible();
 });
 
@@ -912,14 +916,14 @@ for (const view of ['Paged', 'Seamless', 'Fountain', 'Read']) {
     await setValue(page, Array.from({ length: 200 }, (_, i) => `Beat ${i}.`).join('\n\n'));
     await show(page, view);
     const scroll = page.locator('flow-script .fl-scroll');
-    const pdf = page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true });
+    const menu = menuButton(page);
     const scale = page.locator('flow-script .fl-scale');
-    const atTop = { pdf: await pdf.boundingBox(), scale: await scale.boundingBox() };
+    const atTop = { menu: await menu.boundingBox(), scale: await scale.boundingBox() };
     const { scrollHeight, clientHeight } = await scroll.evaluate((el) => ({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }));
     expect(scrollHeight).toBeGreaterThan(clientHeight * 3);
     for (const fraction of [0.33, 0.66, 1]) {
       await scroll.evaluate((el, f) => { el.scrollTop = (el.scrollHeight - el.clientHeight) * f; }, fraction);
-      expect((await pdf.boundingBox()).y).toBeCloseTo(atTop.pdf.y, 0);
+      expect((await menu.boundingBox()).y).toBeCloseTo(atTop.menu.y, 0);
       expect((await scale.boundingBox()).y).toBeCloseTo(atTop.scale.y, 0);
       expect((await scale.boundingBox()).y).toBeGreaterThan(500);
     }
@@ -1165,7 +1169,7 @@ test('menus close on outside clicks and Escape, and work from the keyboard', asy
   expect(await value(page)).toBe('.words here');
 });
 
-test('the PDF button opens a modal of options that stays usable when small', async ({ page }) => {
+test('Export to PDF opens a modal of options that stays usable when small', async ({ page }) => {
   await open(page);
   const dialog = await openExport(page);
   await expect(dialog.getByText('Title page')).toBeVisible();
@@ -1173,9 +1177,7 @@ test('the PDF button opens a modal of options that stays usable when small', asy
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await page.setViewportSize({ width: 300, height: 800 });
-  const holder = page.locator('flow-script .fl-export-holder');
-  await holder.getByRole('button', { name: 'Export', exact: true }).click();
-  await holder.getByRole('menuitem', { name: 'PDF', exact: true }).click();
+  await chooseFromMenu(page, 'Export to PDF');
   await expect(page.locator('flow-script dialog').getByRole('button', { name: 'Export PDF' })).toBeInViewport({ ratio: 1 });
 });
 
@@ -1364,9 +1366,9 @@ test('apps can fill the top row and status bar through slots', async ({ page }) 
   });
   const doc = await host(page).getByText('Doc', { exact: true }).boundingBox();
   const tabs = await host(page).getByText('Tabs', { exact: true }).boundingBox();
-  const pdf = await page.locator('flow-script .fl-export').getByRole('button', { name: 'PDF', exact: true }).boundingBox();
   expect(doc.x).toBeLessThan(tabs.x);
-  expect(tabs.x).toBeLessThan(pdf.x);
+  // The document slot sits in the menu's pill.
+  await expect(menuButton(page)).toContainText('Doc');
   const end = await host(page).getByText('End', { exact: true }).boundingBox();
   const bar = await statusbar(page).boundingBox();
   expect(end.y).toBeGreaterThanOrEqual(bar.y);
@@ -1374,32 +1376,132 @@ test('apps can fill the top row and status bar through slots', async ({ page }) 
   expect(await value(page)).not.toContain('Doc');
 });
 
-test('export actions show as buttons, then collapse into a vertical menu with PDF', async ({ page }) => {
+test("the Document menu holds an app's items around the element's own, and a card can swap in for it", async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
   await open(page);
-  const exportPill = page.locator('flow-script .fl-export');
-  const more = page.locator('flow-script .fl-export-holder').getByRole('button', { name: 'Export', exact: true });
-  await expect(exportPill.locator('.fl-pill-sep')).toHaveCount(0);
+  const menu = page.locator('flow-script .fl-docmenu');
+  await menuButton(page).click();
+  await expect(menu.getByRole('menuitem')).toHaveCount(2);
+  await expect(menu.getByRole('menuitem').first()).toHaveAccessibleName('Export to PDF');
+  await expect(menu.getByRole('menuitem').last()).toHaveAccessibleName('Project settings');
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+
   await host(page).evaluate((el) => {
     window.ran = [];
-    el.exportActions = [{ label: 'Keep', icon: 'save', onClick: () => window.ran.push('keep') }];
+    const build = () => {
+      const inside = document.createElement('button');
+      inside.textContent = 'Inside';
+      return inside;
+    };
+    el.menuItems = [
+      [{ label: 'Keep', icon: 'save', shortcut: 'Ctrl+K', onClick: () => window.ran.push('keep') }, 'pdf'],
+      [{ label: 'More', icon: 'palette', panel: { title: 'More things', build } }],
+    ];
   });
-  await expect(exportPill.locator('.fl-pill-sep')).toHaveCount(1);
-  await exportPill.getByRole('button', { name: 'Keep', exact: true }).click();
+  await menuButton(page).click();
+  await expect(menu.getByRole('menuitem')).toHaveCount(3);
+  await expect(menu.getByRole('menuitem', { name: 'Keep' })).toContainText('Ctrl+K');
+  await menu.getByRole('menuitem', { name: 'More' }).click();
+  await expect(menu.getByRole('heading', { name: 'More things' })).toBeVisible();
+  await expect(menu.getByRole('button', { name: 'Inside' })).toBeVisible();
+  // Escape steps back a card before it closes the menu.
+  await page.keyboard.press('Escape');
+  await expect(menu.getByRole('heading', { name: 'More things' })).toHaveCount(0);
+  await menu.getByRole('menuitem', { name: 'Keep' }).click();
+  await expect(menu).toHaveCount(0);
   expect(await page.evaluate(() => window.ran)).toEqual(['keep']);
-  await expect(more).toBeHidden();
+});
 
+test('Seamless and Fountain can run wide on a large screen, and the choice is announced', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 800 });
+  await open(page);
+  await chooseView(page, 'Seamless');
+  const toggle = statusbar(page).getByRole('switch', { name: 'Wide page' });
+  const surface = page.locator('flow-script .fl-flow');
+  const narrow = (await surface.boundingBox()).width;
+  await host(page).evaluate((el) => {
+    window.widths = [];
+    el.addEventListener('flow-text-width', (event) => window.widths.push(event.detail.textWidth));
+  });
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await expect(toggle).toHaveAttribute('title', 'Expand page width');
+  const background = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(toggle).toHaveAttribute('title', 'Shrink page width');
+  // A switch, not a pressed button: it doesn't light up.
+  await page.mouse.move(0, 0);
+  expect(await toggle.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(background);
+  await expect(host(page)).toHaveAttribute('text-width', 'wide');
+  await expect.poll(async () => (await surface.boundingBox()).width).toBeGreaterThan(narrow + 300);
+  expect(await page.evaluate(() => window.widths)).toEqual(['wide']);
+
+  await chooseView(page, 'Fountain');
+  await expect(toggle).toBeVisible();
+  expect((await page.locator('flow-script .fl-source').boundingBox()).width).toBeGreaterThan(narrow + 300);
+  // Paged view keeps its pages, so there's nothing to choose.
+  await chooseView(page, 'Paged');
+  await expect(toggle).toBeHidden();
+  await chooseView(page, 'Seamless');
+  await toggle.click();
+  await expect(host(page)).not.toHaveAttribute('text-width', 'wide');
+  expect(await page.evaluate(() => window.widths)).toEqual(['wide', null]);
+
+  // A small screen has no room to choose.
   await page.setViewportSize({ width: 500, height: 800 });
-  await expect(exportPill).toBeHidden();
-  await expect(more).toBeVisible();
-  await more.click();
-  const holder = page.locator('flow-script .fl-export-holder');
-  await expect(holder.getByRole('menuitem')).toHaveCount(3); // Keep, PDF and Settings
-  await holder.getByRole('menuitem', { name: 'Keep', exact: true }).click();
-  expect(await page.evaluate(() => window.ran)).toEqual(['keep', 'keep']);
-  await more.click();
-  await holder.getByRole('menuitem', { name: 'PDF', exact: true }).click();
-  await expect(page.locator('flow-script dialog')).toBeVisible();
+  await expect(toggle).toBeHidden();
+});
+
+test('pages cast a hard shadow on a textured desk', async ({ page }) => {
+  await open(page);
+  await chooseView(page, 'Paged');
+  const shadow = await page.locator('flow-script .fl-sheet').evaluate((el) => getComputedStyle(el).boxShadow);
+  // Offset and barely blurred, with no border around the page.
+  expect(shadow).toMatch(/3px 4px 0\.5px/);
+  expect(shadow).not.toMatch(/0px 0px 0px 1px/);
+  const desk = await host(page).evaluate((el) => getComputedStyle(el).backgroundImage);
+  expect(desk).toContain('data:image/svg+xml');
+  expect(desk).toContain('linear-gradient');
+  // The wash can be turned off on its own.
+  await page.addStyleTag({ content: 'flow-script { --flow-desk-gradient: none; }' });
+  await expect.poll(() => host(page).evaluate((el) => getComputedStyle(el).backgroundImage)).not.toContain('linear-gradient');
+});
+
+test('the action center toggle turns solid when pointed at', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await open(page);
+  const toggle = collapseToggle(page);
+  const before = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
+  await toggle.hover();
+  await expect.poll(() => toggle.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(before);
+  const alpha = await toggle.evaluate((el) => {
+    // rgba(r, g, b, a) or color(srgb r g b / a); without an alpha it's opaque.
+    const color = getComputedStyle(el).backgroundColor;
+    const alpha = /\/\s*([\d.]+)\s*\)$/.exec(color) ?? /^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)$/.exec(color);
+    return alpha ? Number(alpha[1]) : 1;
+  });
+  expect(alpha).toBe(1);
+});
+
+test('the Document menu hangs below its pill, and on a phone covers most of the screen', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await open(page);
+  const card = page.locator('flow-script .fl-docmenu-main');
+  await menuButton(page).click();
+  const pillBox = await menuButton(page).boundingBox();
+  await expect.poll(async () => (await card.boundingBox()).y).toBeGreaterThanOrEqual(pillBox.y + pillBox.height - 4);
+  const box = await card.boundingBox();
+  expect(Math.abs(box.x - pillBox.x)).toBeLessThan(12);
+  expect(box.width).toBeLessThan(400);
+  await page.keyboard.press('Escape');
+
+  await page.setViewportSize({ width: 390, height: 780 });
+  await menuButton(page).click();
+  await expect.poll(async () => (await card.boundingBox()).x).toBe(0);
+  const sheet = await card.boundingBox();
+  expect(sheet.width).toBeGreaterThan(300);
+  expect(sheet.height).toBeGreaterThan(700);
 });
 
 test('editor comments are bubbles that expand to the note text when opened', async ({ page }) => {
@@ -1746,7 +1848,7 @@ test('auto themes follow the system setting', async ({ page }) => {
 test('component tokens can be overridden from CSS or a registered theme', async ({ page }) => {
   await open(page);
   const pillEl = page.locator('flow-script .fl-ribbon .fl-pill').first();
-  const tabsOrExport = page.locator('flow-script .fl-export');
+  const tabsOrExport = menuButton(page);
   await expect(pillEl).toHaveCSS('background-color', 'rgb(238, 241, 234)');
   await expect(pillEl).toHaveCSS('border-top-left-radius', '999px');
 
@@ -2825,7 +2927,7 @@ test.describe('title page values on their own lines', () => {
 test.describe('project settings', () => {
   const pageWidth = (page) => host(page).evaluate((el) => el.style.getPropertyValue('--fl-page-w'));
   const openSettings = async (page) => {
-    await page.locator('flow-script .fl-settings').getByRole('button', { name: 'Project settings' }).click();
+    await chooseFromMenu(page, 'Project settings');
     const dialog = page.locator('flow-script dialog');
     await expect(dialog.getByRole('heading', { name: 'Project Settings' })).toBeVisible();
     return dialog;
@@ -2836,7 +2938,7 @@ test.describe('project settings', () => {
     await setValue(page, 'Title: BIG\n\nAction.');
     expect(await pageWidth(page)).toBe('51em');
     let dialog = await openSettings(page);
-    await expect(dialog.getByText('Settings are saved in the script title section')).toBeVisible();
+    await expect(dialog.getByText('Saved in the script, in a Settings boneyard')).toBeVisible();
     await dialog.getByLabel('Dimensions').selectOption('a4');
     await expect.poll(() => pageWidth(page)).toBe(`${8.27 * 6}em`);
     await dialog.getByRole('button', { name: 'Cancel' }).click();
@@ -2901,20 +3003,43 @@ test.describe('project settings', () => {
     expect(await pageWidth(page)).toBe(`${8.27 * 6}em`);
   });
 
-  test('on a phone, settings join the ... menu', async ({ page }) => {
+  test('on a phone, the Document menu opens them too', async ({ page }) => {
     await open(page);
     await page.setViewportSize({ width: 400, height: 800 });
-    await expect(page.locator('flow-script .fl-settings')).toBeHidden();
-    const holder = page.locator('flow-script .fl-export-holder');
-    await holder.getByRole('button', { name: 'Export', exact: true }).click();
-    await holder.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+    await chooseFromMenu(page, 'Project settings');
     await expect(page.locator('flow-script dialog').getByRole('heading', { name: 'Project Settings' })).toBeVisible();
+  });
+
+  test('one section shows no rail, and the search finds its properties', async ({ page }) => {
+    await open(page);
+    const dialog = await openSettings(page);
+    await expect(dialog.locator('.fl-settings-rail')).toHaveCount(0);
+    const search = dialog.getByRole('searchbox', { name: 'Search settings' });
+    await search.fill('a4');
+    await expect(dialog.getByText('Dimensions', { exact: true })).toBeVisible();
+    await search.fill('nothing like this');
+    await expect(dialog.getByText('No settings match your search.')).toBeVisible();
+    await expect(dialog.getByText('Dimensions', { exact: true })).toBeHidden();
+  });
+
+  test('topics fold, and the section button folds or unfolds them all', async ({ page }) => {
+    await open(page);
+    const dialog = await openSettings(page);
+    const topic = dialog.getByRole('button', { name: 'Paper' });
+    await expect(topic).toHaveAttribute('aria-expanded', 'true');
+    await dialog.getByRole('button', { name: 'Collapse all in Page' }).click();
+    await expect(topic).toHaveAttribute('aria-expanded', 'false');
+    await expect(dialog.getByText('Dimensions', { exact: true })).toBeHidden();
+    await dialog.getByRole('button', { name: 'Expand all in Page' }).click();
+    await expect(dialog.getByText('Dimensions', { exact: true })).toBeVisible();
+    await topic.click();
+    await expect(dialog.getByText('Dimensions', { exact: true })).toBeHidden();
   });
 });
 
 test('the project settings draw the page at its proportions, measured', async ({ page }) => {
   await open(page);
-  await page.locator('flow-script .fl-settings').getByRole('button', { name: 'Project settings' }).click();
+  await chooseFromMenu(page, 'Project settings');
   const dialog = page.locator('flow-script dialog');
   const preview = dialog.getByRole('img', { name: /^Page / });
   await expect(preview).toHaveAttribute('aria-label', 'Page 8.5 by 11 in');

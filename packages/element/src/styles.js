@@ -1,5 +1,8 @@
-import { CONTROLS_CSS, token } from './controls.js';
+import { CONTROLS_CSS, DESK_BACKGROUND, token } from './controls.js';
 import { THEME_CSS } from './themes.js';
+import { DOC_MENU_CSS } from './doc-menu.js';
+import { SETTINGS_PANEL_CSS } from './settings-panel.js';
+import { THEME_CHOOSER_CSS } from './theme-chooser.js';
 
 // Layout maths: at 12pt Courier, 1em = 1 row = 1/6in and a column = 0.6em = 0.1in,
 // so inches convert by 6em. --fl-page-w/h come from the paper profile. The sheet
@@ -7,12 +10,15 @@ import { THEME_CSS } from './themes.js';
 export const STYLES = `
 ${THEME_CSS}
 ${CONTROLS_CSS}
+${DOC_MENU_CSS}
+${SETTINGS_PANEL_CSS}
+${THEME_CHOOSER_CSS}
 :host {
   display: flex;
   flex-direction: column;
   position: relative;
   min-height: 0;
-  background: var(--flow-desk);
+  ${DESK_BACKGROUND}
   color: var(--flow-ink);
   font-family: var(--flow-ui-font, Roboto, system-ui, sans-serif);
   --fl-script-font: var(--flow-font, "Courier Prime", "Courier New", Courier, monospace);
@@ -71,7 +77,6 @@ ${CONTROLS_CSS}
 .fl-topbar-tabs { flex: none; display: flex; }
 .fl-topbar-tabs[hidden], .fl-ribbon[hidden] { display: none; }
 .fl-topbar-end { grid-area: end; display: flex; justify-content: flex-end; gap: 8px; }
-.fl-export-holder { display: flex; }
 .fl-ribbon { grid-area: format; display: flex; align-items: center; gap: 8px; }
 .fl-action-pills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
 .fl-action-pills[hidden] { display: none; }
@@ -79,6 +84,8 @@ ${CONTROLS_CSS}
 .fl-action-animating > * { flex: none; }
 /* Lighter than the pills around it: a faint wash of their background, so it reads over the page. */
 .fl-action-toggle { pointer-events: auto; color: var(--flow-ink); background: color-mix(in srgb, ${token('pill-bg')} 65%, transparent); }
+/* Pointed at, it turns solid, so it reads as a button over the page. */
+.fl-action-toggle:hover:not(:disabled) { background: color-mix(in srgb, var(--flow-accent) 15%, ${token('pill-bg')}); box-shadow: ${token('pill-shadow')}; }
 .fl-action-toggle .fl-svg { transition: transform 220ms ease; }
 .fl-action-toggle[aria-expanded="false"] .fl-svg { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .fl-action-toggle .fl-svg { transition: none; } }
@@ -245,8 +252,9 @@ ${CONTROLS_CSS}
   width: var(--fl-page-w);
   background: var(--flow-paper);
   color: var(--flow-ink);
-  box-shadow: 0 1px 6px var(--flow-shadow);
+  box-shadow: ${token('page-shadow')};
 }
+.fl-flow, .fl-source { box-shadow: ${token('page-shadow')}; }
 .fl-page { position: relative; height: var(--fl-page-h); flex: none; overflow: hidden; }
 .fl-row { position: absolute; left: 0; right: 0; height: 1em; }
 .fl-cell { position: absolute; top: 0; white-space: pre; }
@@ -343,6 +351,13 @@ ${CONTROLS_CSS}
 .fl-flow { max-width: 44em; margin: 0 auto; padding: 1.5em; background: var(--flow-paper); color: var(--flow-ink); min-height: 100%; width: 100%; line-height: 1.35; font-size: calc(16px * var(--fl-scale, 1)); }
 /* The Fountain text itself: an ordinary column, with nothing placed or hidden */
 .fl-source { max-width: 52em; margin: 0 auto; padding: 1.5em; background: var(--flow-paper); color: var(--flow-ink); min-height: 100%; width: 100%; line-height: 1.35; font-size: calc(16px * var(--fl-scale, 1)); white-space: pre-wrap; overflow-wrap: break-word; }
+/* Wide text runs across most of the window, on a screen big enough to choose it. */
+@container (min-width: 600.02px) {
+  :host([text-width="wide"]) .fl-flow, :host([text-width="wide"]) .fl-source { width: auto; max-width: none; margin-inline: 32px; }
+}
+@container (max-width: 600px) {
+  .fl-text-width, .fl-text-width + .fl-pill-sep, .fl-pill-sep:has(+ .fl-text-width) { display: none; }
+}
 .fl-flow .fl-line.fl-character { margin-left: 32%; }
 .fl-flow .fl-line.fl-parenthetical { margin-left: 24%; margin-right: 20%; }
 .fl-flow .fl-line.fl-dialogue, .fl-flow .fl-line.fl-in-dialogue { margin-left: 15%; margin-right: 15%; }
@@ -378,7 +393,7 @@ ${CONTROLS_CSS}
 .fl-page-gap {
   display: flex; align-items: center; justify-content: flex-end;
   height: 3em; margin: 2em calc(-1 * var(--fl-pad-right, 0em)) 2em -9em; padding: 0 1em;
-  background: var(--flow-desk); color: var(--flow-muted);
+  ${DESK_BACKGROUND} color: var(--flow-muted);
   font-family: var(--flow-ui-font, Roboto, system-ui, sans-serif);
   box-shadow: inset 0 3px 4px -3px var(--flow-shadow), inset 0 -3px 4px -3px var(--flow-shadow);
   user-select: none;

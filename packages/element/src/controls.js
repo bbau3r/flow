@@ -21,6 +21,21 @@ const ICONS = {
   source: '<path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/>',
   palette: '<path d="M12 22a10 10 0 1 1 10-10c0 2.5-2 4-4.5 4H15a2 2 0 0 0-1.5 3.3c.6.8 0 2.7-1.5 2.7z"/><circle cx="7.5" cy="10.5" r=".5"/><circle cx="12" cy="7.5" r=".5"/><circle cx="16.5" cy="10.5" r=".5"/>',
   plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+  menu: '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
+  home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9v10a2 2 0 0 0 2 2h3v-6h4v6h3a2 2 0 0 0 2-2V9"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  'text-wide': '<path d="m9 7-5 5 5 5"/><path d="m15 7 5 5-5 5"/>',
+  'text-narrow': '<path d="m4 7 5 5-5 5"/><path d="m20 7-5 5 5 5"/>',
+  bulb: '<path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1.1 2V16h5v-.2c.1-.8.5-1.5 1.1-2A6 6 0 0 0 12 3z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m4.9 19.1 1.4-1.4"/><path d="m17.7 6.3 1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+  caret: '<path d="m8 10 4 4 4-4z" fill="currentColor"/>',
+  'expand-all': '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
+  'collapse-all': '<path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/>',
+  app: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M7 6.5h.01"/><path d="M10 6.5h.01"/>',
+  download: '<path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/>',
+  'page-size': '<rect x="7" y="3" width="12" height="16" rx="1.5"/><path d="M3 7v14h12"/>',
   minus: '<path d="M5 12h14"/>',
   close: '<path d="M6 6l12 12"/><path d="M18 6 6 18"/>',
   grip: '<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>',
@@ -220,6 +235,27 @@ export function foldingPill({ label, icon: iconName, title = label, cls, align =
   return { root: node, close };
 }
 
+/**
+ * A search box: a pill holding the field, with the search icon at its right. `onInput` gets the
+ * text as it's typed. Returns { root, input }.
+ */
+export function searchField({ label, placeholder = label, cls, onInput }) {
+  const input = document.createElement('input');
+  input.type = 'search';
+  input.className = 'fl-search-input';
+  input.placeholder = placeholder;
+  input.setAttribute('aria-label', label);
+  const root = document.createElement('label');
+  root.className = `fl-pill fl-search${cls ? ` ${cls}` : ''}`;
+  root.title = label;
+  root.append(input, icon('search'));
+  input.addEventListener('input', () => {
+    root.classList.toggle('fl-search-filled', !!input.value);
+    onInput?.(input.value);
+  });
+  return { root, input };
+}
+
 export function pillSep() {
   const sep = div('fl-pill-sep');
   sep.setAttribute('aria-hidden', 'true');
@@ -237,16 +273,17 @@ function responsive(attrs, wide, compact) {
  * Tabs, as a pill of tabs or, when space runs short, a dropdown naming the current one.
  * Items are { label, icon, selected, disabled, title }, and `onSelect` gets the label of a tab
  * the writer switches to. The returned node's `selectTab(label)` shows another tab as current
- * without calling `onSelect`, for when something else changed it.
+ * without calling `onSelect`, for when something else changed it. `fixed` keeps the pill of
+ * tabs at any width, for a few short choices such as a mode.
  */
-export function tabs({ label, attrs, onSelect }, items) {
+export function tabs({ label, attrs, onSelect, fixed = false }, items) {
   let current = items.find((item) => item.selected);
   let menu = null;
   const show = (item) => {
     if (!item || item === current) return false;
     current = item;
     for (const [other, tab] of nodes) tab.setAttribute('aria-selected', String(other === item));
-    menu.refresh();
+    menu?.refresh();
     return true;
   };
   const select = (item) => {
@@ -267,6 +304,12 @@ export function tabs({ label, attrs, onSelect }, items) {
   }));
   const wide = pill({ cls: 'fl-tabs', label }, ...nodes.values());
   wide.setAttribute('role', 'tablist');
+  const selectTab = (name) => show(items.find((item) => item.label.toLowerCase() === String(name).toLowerCase()));
+  if (fixed) {
+    setAttrs(wide, attrs);
+    wide.selectTab = selectTab;
+    return wide;
+  }
 
   menu = new Menu({
     sections: [{ items: items.map((item) => ({ ...item, value: item.label })) }],
@@ -279,7 +322,7 @@ export function tabs({ label, attrs, onSelect }, items) {
     onSelect: (value) => select(items.find((item) => item.label === value)),
   });
   const node = responsive(attrs, wide, pill({ cls: 'fl-tabs', label }, menu.root));
-  node.selectTab = (name) => show(items.find((item) => item.label.toLowerCase() === String(name).toLowerCase()));
+  node.selectTab = selectTab;
   return node;
 }
 
@@ -531,12 +574,25 @@ const CONTROL_TOKENS = {
   'preview-line': 'var(--flow-secondary)',
   // Pointing at something that deletes.
   'danger-hover': 'var(--flow-danger)',
+  // The pages: a hard shadow, offset and barely blurred, so it reads as paper on a desk.
+  'page-shadow': '3px 4px 0.5px color-mix(in srgb, var(--flow-shadow) 65%, transparent)',
+  // The desk under them: a faint grain, and a soft wash of the theme's colors. Either can be
+  // set to none.
+  'desk-noise': `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.07'/%3E%3C/svg%3E")`,
+  'desk-gradient': 'linear-gradient(155deg, color-mix(in srgb, var(--flow-accent) 7%, transparent), transparent 55%, color-mix(in srgb, var(--flow-secondary) 6%, transparent))',
 };
 
 /** The token's value, falling back to its default when nobody has set it. */
 export const token = (name) => `var(--flow-${name}, ${CONTROL_TOKENS[name]})`;
 
+/**
+ * The desk's background: grain and wash over the desk color, fixed to the window so that every
+ * part of it that shows, around the pages or between them, lines up as one surface.
+ */
+export const DESK_BACKGROUND = `background: ${token('desk-noise')}, ${token('desk-gradient')}, var(--flow-desk); background-attachment: fixed;`;
+
 export const CONTROLS_CSS = `
+.fl-desk { ${DESK_BACKGROUND} }
 .fl-svg {
   flex: none; width: 1.25em; height: 1.25em;
   fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
@@ -563,6 +619,13 @@ export const CONTROLS_CSS = `
 .fl-pill { pointer-events: auto; }
 /* Lighter than the primary color, for information rather than actions. */
 .fl-pill-tinted { background: ${token('pill-tint-bg')}; border-color: ${token('pill-tint-border')}; }
+.fl-search { display: flex; gap: 8px; padding: 2px 14px; cursor: text; }
+.fl-search:focus-within { outline: 2px solid ${token('focus')}; outline-offset: 1px; }
+.fl-search > .fl-svg { opacity: 0.7; }
+.fl-search-input {
+  flex: 1; min-width: 0; height: 32px; padding: 0;
+  background: transparent; color: inherit; border: 0; outline: none; font: inherit;
+}
 .fl-pill-sep { flex: none; width: 1px; height: 1.4em; margin: 0 2px; background: currentColor; opacity: 0.25; }
 .fl-pill-sep[hidden] { display: none; }
 
@@ -596,6 +659,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
   font: inherit; font-weight: 600; white-space: nowrap; cursor: pointer;
 }
 .fl-tab:focus-visible { outline-color: ${token('tabs-ink')}; }
+.fl-tab:hover:not([aria-selected="true"]):not(:disabled) { background: ${token('button-hover-bg')}; }
 .fl-tab[aria-selected="true"] { background: ${token('tab-selected-bg')}; color: ${token('tab-selected-ink')}; }
 .fl-tab:disabled { opacity: 0.8; cursor: default; }
 .fl-tab .fl-svg { width: 1.1em; height: 1.1em; }
