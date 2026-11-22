@@ -97,7 +97,7 @@ An app with settings gets a page of its own in App settings, after a rule below 
 | Field | What it is |
 | --- | --- |
 | `key` | How code reads it, unique within the extension |
-| `type` | `boolean` (a switch), `choice` (a dropdown of `options`, each `{ value, label }`), `text`, or `number` (with optional `min` and `max`) |
+| `type` | `boolean` (a switch), `choice` (a dropdown of `options`, each `{ value, label }`), `text`, `number` (with optional `min` and `max`), or `key` (a field that takes the next key pressed, as `KeyboardEvent.key` names it, such as `CapsLock`, with Clear to empty it) |
 | `multiline` | For `text`: `true` gives a box across the page that grows with its lines, for a list, one item to a line. It holds up to 5000 characters; one line holds 500. |
 | `label` | Its name on the page |
 | `description` | A line under it |
@@ -201,9 +201,10 @@ flow.onEditor((script) => script.addWidget({
 | `lineCount`, `line(i)`, `lines()` | The source lines |
 | `cursor()`, `selection()` | Where the cursor is, and `{ anchor, head }` |
 | `setCursor(place)`, `select(anchor, head)` | Moves the cursor, or selects |
-| `replace(from, to, text, cursor)` | Replaces the text between two places as one undo step, then puts the cursor at `cursor` |
+| `replace(from, to, text, cursor, options)` | Replaces the text between two places as one undo step, then puts the cursor at `cursor`. With `{ join: true }`, it joins the step before, as typing does. |
 | `undo()`, `redo()` | |
-| `setCaret(style)` | `'block'` draws the cursor over its character; `null` for the usual line |
+| `setCaret(style, options)` | `'block'` draws the cursor over its character, with no line beside it; `null` for the usual line. `{ blink, period }` blinks it every `period` milliseconds. |
+| `screenLine(from, direction, x)` | Where the cursor lands a row down (`1`) or up (`-1`) on screen, through wrapped lines, as `{ place, x }`, keeping to `x` across, or `null`. On a row that starts after `x` it lands at the row's start, and on one that ends before it, at its end, as between action and dialogue. |
 | `hidden(i)` | Whether a line is out of sight, such as the settings |
 
 Shortcuts with Ctrl or Cmd are best left alone, so the app's own keep working.

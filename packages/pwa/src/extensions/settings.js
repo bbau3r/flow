@@ -3,7 +3,7 @@
 // A cloud source the extension adds, when it connects, gets a topic of its own there too, with
 // Connect or Disconnect. App settings shows the section after its own, below a rule.
 
-import { button, toggleSwitch } from '@flow/element/source';
+import { button, keyCapture, toggleSwitch } from '@flow/element/source';
 import { extensionSources, setSetting, settingsOf } from './host.js';
 import { h, toast } from '../ui.js';
 
@@ -11,6 +11,9 @@ function control(manifest, setting, value) {
   const save = (next) => setSetting(manifest.id, setting.key, next);
   if (setting.type === 'boolean') {
     return toggleSwitch({ label: setting.label, checked: value, onChange: save });
+  }
+  if (setting.type === 'key') {
+    return keyCapture({ label: setting.label, value, onChange: save });
   }
   if (setting.type === 'choice') {
     const select = document.createElement('select');

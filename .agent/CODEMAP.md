@@ -92,7 +92,7 @@ return new lines, plus a cursor where relevant.
 | `settings-dialog.js` | Project settings (page dimensions) on `openSettingsPanel`, previews live, Save writes the boneyard |
 | `dimensions-field.js` | Paper size picker (`dimensionsField`, used by the PDF export) and `pageSizeSetting`, the picker plus the sheet drawing as one settings property, used by project settings and the PWA's Defaults. `DIMENSIONS_CSS` |
 | `page-preview.js` | Small drawing of the sheet with measurements. `PAGE_PREVIEW_CSS` |
-| `controls.js` | Shared UI kit: `button`, `pill`, `pillSep`, `foldingPill`, `tabs` (`fixed` keeps the pill at any width), `actionPill`, `searchField`, `iconSwitch`, `toggleSwitch`, `Menu`, `icon` (a name, or `{ paths }` from an extension), `tabs({ fit })` (measures, and folds to a dropdown), `openModal`, `icon`, `CONTROL_TOKENS` (including `page-shadow`, `desk-noise`, `desk-gradient`), `DESK_BACKGROUND` and the `.fl-desk` and `.fl-paper` classes, `CONTROLS_CSS`, `token()`. New components build on these and style with `token()`. |
+| `controls.js` | Shared UI kit: `button`, `pill`, `pillSep`, `foldingPill`, `tabs` (`fixed` keeps the pill at any width), `actionPill`, `searchField`, `iconSwitch`, `toggleSwitch`, `keyCapture` (takes a key, for `key` settings), `Menu`, `icon` (a name, or `{ paths }` from an extension), `tabs({ fit })` (measures, and folds to a dropdown), `openModal`, `icon`, `CONTROL_TOKENS` (including `page-shadow`, `desk-noise`, `desk-gradient`), `DESK_BACKGROUND` and the `.fl-desk` and `.fl-paper` classes, `CONTROLS_CSS`, `token()`. New components build on these and style with `token()`. |
 | `themes.js` | `PALETTES` (sage, sand, sea, romance, forest, lavender, graphite x light/dark), `registerTheme`, `THEME_CSS` (`:host`), `PAGE_THEME_CSS` (`:root[data-theme]`), and `addPalette`/`removePalette` for palettes added at run time, in adopted stylesheets |
 | `styles.js` | The shadow-root stylesheet `STYLES`, page geometry in em |
 | `fonts.js` / `pdf-fonts.js` | Courier Prime and Roboto inlined; WOFF2 on screen, WOFF for PDF |
@@ -140,7 +140,7 @@ element changes tab itself; the PWA moves its tabs and address along, through `t
 | `extensions/settings.js` | `extensionSection`: an app's settings, from its manifest, as a settings section, with a Connection topic for each cloud source it adds that signs in |
 | `extensions/shortcuts.js` | `matchesShortcut`, `shortcutLabel` for `Mod+Shift+K` style shortcuts |
 | `extensions/built-in.js` | The extensions that ship with Flow, all off by default (what someone adds starts on) |
-| `extensions/vim-lite/` | Vim lite: `manifest.json`, `index.js` (widget and keys per script, only through the API), `vim.js` (the engine, editing through the text API, with search) |
+| `extensions/vim-lite/` | Vim lite: `manifest.json`, `index.js` (widget and keys per script, only through the API), `vim.js` (the engine, editing through the text API: search, registers and the clipboard, macros, wrapped-line moves through `screenLine`) |
 | `extensions/typewriter/` | The Typewriter theme, a manifest only |
 
 `vite.config.js` holds the PWA manifest (file handlers, icons) and Workbox precaching.

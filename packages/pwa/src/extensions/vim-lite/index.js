@@ -15,7 +15,11 @@ const WIDGET_CSS = `
 }
 .fl-widget .fl-btn.vim-mode[data-mode="insert"] { background: var(--flow-secondary); color: var(--flow-secondary-ink); }
 .fl-widget .fl-btn.vim-mode[data-mode^="visual"] { background: var(--flow-warning); color: var(--flow-paper); }
-.fl-widget .fl-btn.vim-mode[data-mode="search"] { background: var(--flow-success); color: var(--flow-paper); }
+.fl-widget .fl-btn.vim-mode[data-mode="search"], .fl-widget .fl-btn.vim-mode[data-mode="match"] { background: var(--flow-success); color: var(--flow-paper); }
+/* Recording a macro: a red dot and the register, beside the mode. */
+.vim-rec { display: inline-flex; align-items: center; gap: 4px; padding: 0 2px 0 8px; color: var(--flow-danger); font-weight: 700; font-size: 11px; letter-spacing: 0.06em; }
+.vim-rec::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.vim-rec:empty { display: none; }
 .fl-widget .fl-btn.vim-mode:hover { filter: brightness(1.08); }
 .vim-keys {
   min-width: 2ch; padding: 0 2px 0 8px;
@@ -36,9 +40,11 @@ function createWidget(onToggle) {
   keys.className = 'vim-keys';
   const action = document.createElement('span');
   action.className = 'vim-action';
+  const rec = document.createElement('span');
+  rec.className = 'vim-rec';
   const root = document.createElement('span');
   root.className = 'vim-widget';
-  root.append(mode, keys, action);
+  root.append(mode, rec, keys, action);
   return {
     root,
     show(status) {
@@ -48,6 +54,8 @@ function createWidget(onToggle) {
       keys.textContent = status.keys;
       keys.toggleAttribute('data-pending', status.pending);
       action.textContent = status.action;
+      rec.textContent = status.recording ? `REC ${status.recording}` : '';
+      rec.title = status.recording ? `Recording a macro into ${status.recording}. Press q to stop.` : '';
     },
   };
 }
@@ -60,32 +68,25 @@ export function activate(flow) {
       startMode: flow.settings.get('startMode'),
       chord: flow.settings.get('chord'),
       blockCursor: flow.settings.get('blockCursor'),
+      blink: flow.settings.get('blink'),
+      blinkSpeed: flow.settings.get('blinkSpeed'),
+      wrap: flow.settings.get('wrap'),
+      escapeKey: flow.settings.get('escapeKey'),
     });
     const widget = createWidget(() => vim.toggleMode());
     const vim = createVim({ options, onStatus: (status) => widget.show(status) });
     widget.show({ mode: vim.mode, keys: '', pending: false, action: '' });
     const removeKeys = script.addEditorKeys(vim);
-    let removeWidget = null;
-    const placeWidget = () => {
-      removeWidget?.();
-      removeWidget = flow.settings.get('widget')
-        ? script.addWidget({ node: widget.root, place: 'bottom-end', label: 'Vim', tabs: ['write'], css: WIDGET_CSS })
-        : null;
-    };
-    placeWidget();
-    const entry = { vim, placeWidget };
-    open.add(entry);
+    const removeWidget = script.addWidget({ node: widget.root, place: 'bottom-end', label: 'Vim', tabs: ['write'], css: WIDGET_CSS });
+    open.add(vim);
     return () => {
-      open.delete(entry);
+      open.delete(vim);
       removeKeys();
-      removeWidget?.();
+      removeWidget();
     };
   });
 
-  flow.settings.onChange((key) => {
-    for (const entry of open) {
-      if (key === 'widget') entry.placeWidget();
-      else entry.vim.refresh();
-    }
+  flow.settings.onChange(() => {
+    for (const vim of open) vim.refresh();
   });
 }

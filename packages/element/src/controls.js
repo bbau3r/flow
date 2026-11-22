@@ -213,6 +213,65 @@ export function toggleSwitch({ label, title = label, checked = false, cls, attrs
   return input;
 }
 
+// Keys by the names people know them by.
+const KEY_NAMES = { ' ': 'Space', CapsLock: 'Caps Lock', Escape: 'Esc', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Control: 'Ctrl', Meta: 'Cmd or Win' };
+
+/** A key's name for showing, such as Caps Lock for CapsLock. */
+export const keyName = (key) => KEY_NAMES[key] ?? (key.length === 1 ? key.toUpperCase() : key.replace(/([a-z])([A-Z])/g, '$1 $2'));
+
+/**
+ * A field that takes a key: pressed, it asks for one and keeps the next key pressed, any key but
+ * Tab, which leaves it as it was. Clear empties it. `value` is a key as KeyboardEvent.key names
+ * it, or '' for none, and `onChange(key)` gets each new one. Returns the node.
+ */
+export function keyCapture({ label, value = '', onChange }) {
+  let current = value;
+  let listening = false;
+  const field = button({ label, cls: 'fl-btn-outline fl-key-capture' });
+  field.setAttribute('aria-pressed', 'false');
+  const clear = button({ label: `Clear ${label}`, title: 'Clear', icon: 'close', iconOnly: true, cls: 'fl-key-clear' });
+  const show = () => {
+    field.lastChild.textContent = listening ? 'Press a key…' : current ? keyName(current) : 'None';
+    field.setAttribute('aria-pressed', String(listening));
+    field.setAttribute('aria-label', `${label}: ${listening ? 'press a key' : current ? keyName(current) : 'none'}`);
+    clear.hidden = !current || listening;
+  };
+  const choose = (key) => {
+    current = key;
+    listening = false;
+    show();
+    onChange?.(key);
+  };
+  // Buttons keep the focus where it was, so this one takes it, to hear the key.
+  field.addEventListener('click', () => {
+    listening = !listening;
+    show();
+    if (listening) field.focus();
+  });
+  // While it listens it takes the key, so Escape doesn't close what it's in.
+  field.addEventListener('keydown', (event) => {
+    if (!listening) return;
+    if (event.key === 'Tab') {
+      listening = false;
+      show();
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    choose(event.key);
+  });
+  field.addEventListener('blur', () => {
+    listening = false;
+    show();
+  });
+  clear.addEventListener('click', () => {
+    choose('');
+    field.focus();
+  });
+  show();
+  return div('fl-key-field', field, clear);
+}
+
 /** A floating pill holding related controls. */
 export function pill({ cls, label, attrs } = {}, ...children) {
   const node = div(`fl-pill${cls ? ` ${cls}` : ''}`, ...children);
@@ -738,6 +797,9 @@ input[type="checkbox"], input[type="radio"], input[type="range"], progress { acc
   background: var(--flow-paper); box-shadow: 0 1px 2px var(--flow-shadow); transition: transform 120ms ease;
 }
 .fl-switch:checked { background: ${token('check')}; }
+.fl-key-field { display: inline-flex; align-items: center; gap: 4px; }
+.fl-key-capture { min-width: 7.5em; font-variant-numeric: tabular-nums; }
+.fl-key-capture[aria-pressed="true"] { outline: 2px solid ${token('focus')}; outline-offset: 1px; background: ${token('button-hover-bg')}; color: inherit; }
 .fl-switch:checked::before { transform: translateX(16px); }
 .fl-switch:disabled { opacity: 0.5; cursor: default; }
 @media (prefers-reduced-motion: reduce) { .fl-switch, .fl-switch::before { transition: none; } }
