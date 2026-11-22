@@ -145,9 +145,10 @@ ${PAGE_PREVIEW_CSS}
 .fl-page-total { padding: 0 6px 0 4px; color: var(--flow-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fl-status { padding: 0 8px; color: var(--flow-muted); }
 .fl-spacer { flex: 1; }
-/* An app's bubbles sit in the row like the element's own pills. */
-.fl-ext-bubbles { display: contents; }
-.fl-ext-bubble[hidden] { display: none; }
+/* An app's widgets sit in the bars like the element's own pills. */
+.fl-widgets { display: contents; }
+.fl-widget[hidden] { display: none; }
+.fl-topbar-end > .fl-widgets { display: flex; align-items: center; gap: 8px; }
 /* An app's own tab, sized by the page scale like the outline. */
 .fl-workspace {
   position: relative; width: 100%; max-width: 52em; margin: 0 auto; padding: 1em 1em 2em;

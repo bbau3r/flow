@@ -7,7 +7,7 @@
 import { button, openModal, tabs } from '@flow/element/source';
 import { parse, scriptTitle } from '@flow/core';
 import { putDoc } from './store.js';
-import { getProvider, providers } from './providers/index.js';
+import { ensureConnected, getProvider, providers, sourceOf, sourceRecord, SOURCE_KINDS } from './providers/index.js';
 import { currentTheme, h, themeControls, toast } from './ui.js';
 import { openAppSettings } from './app-settings.js';
 import { attachEditor, extensionCommands, extensionTabs, onExtensionsChange } from './extensions/host.js';
@@ -38,6 +38,7 @@ function chooseProvider() {
       body: [h('div', { class: 'cards' }, ...providers.map((provider) => {
         const status = provider.status();
         return h('button', { type: 'button', class: 'card', disabled: !status.ok, onclick: () => finish(provider) },
+          h('span', { class: 'card-kind' }, SOURCE_KINDS[provider.kind]),
           h('span', { class: 'card-title' }, provider.label),
           h('span', { class: 'card-text' }, provider.saveHint()),
           status.ok ? null : h('span', { class: 'badge' }, status.reason));
@@ -117,9 +118,12 @@ export function renderEditor(root, doc) {
   const refreshHeader = () => {
     name.textContent = doc.name;
     date.textContent = new Date(doc.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-    where.textContent = getProvider(doc.provider)?.location(doc) ?? '';
-    if (doc.value === doc.savedValue) state.textContent = 'Saved';
-    else if (doc.savedValue === null) state.textContent = 'On this device only';
+    // The source, Temp, Local or Cloud, and where in it when the provider can say.
+    const source = sourceOf(doc);
+    const location = doc.provider ? getProvider(doc.provider)?.location(doc) : '';
+    where.textContent = location ? `${source.label} · ${location}` : source.label;
+    if (!doc.provider) state.textContent = '';
+    else if (doc.value === doc.savedValue) state.textContent = 'Saved';
     else state.textContent = 'Unsaved changes';
   };
 
@@ -131,7 +135,7 @@ export function renderEditor(root, doc) {
   };
 
   const applySaved = async (provider, result) => {
-    Object.assign(doc, { name: result.name, ref: result.ref, provider: provider.id, savedValue: doc.value });
+    Object.assign(doc, { name: result.name, ref: result.ref, provider: provider.id, source: sourceRecord(provider), savedValue: doc.value });
     await persist();
     refreshHeader();
     toast(result.ref.downloaded
@@ -166,7 +170,7 @@ export function renderEditor(root, doc) {
 
   const saveAs = guarded(async () => {
     const provider = await chooseProvider();
-    if (!provider) return;
+    if (!provider || !(await ensureConnected(provider))) return;
     const result = await provider.saveAs(doc);
     if (result) await applySaved(provider, result);
   });
@@ -174,6 +178,7 @@ export function renderEditor(root, doc) {
     const provider = getProvider(doc.provider);
     if (!provider) return saveAs();
     return guarded(async () => {
+      if (!(await ensureConnected(provider))) return;
       const result = await saveExisting(provider);
       if (result) await applySaved(provider, result);
     })();
@@ -260,6 +265,21 @@ export function renderEditor(root, doc) {
       onClick: () => runCommand(command),
     }));
     script.menuItems = commands.length ? [...ownMenu, commands] : ownMenu;
+    drawCommandWidgets();
+  };
+
+  // A command can also be a button in the bars, at the place its `widget` names.
+  let commandWidgets = [];
+  const drawCommandWidgets = () => {
+    for (const remove of commandWidgets) remove();
+    commandWidgets = extensionCommands().filter((command) => command.widget).map((command) => script.addWidget({
+      place: command.widget,
+      label: command.label,
+      title: command.title || command.label,
+      icon: command.icon || command.extension.icon,
+      cls: 'fl-command-widget',
+      onClick: () => runCommand(command),
+    }));
   };
 
   // Extension tabs are added to the element as they come and taken away as they go. Redrawing

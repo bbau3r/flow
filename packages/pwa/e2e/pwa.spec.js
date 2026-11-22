@@ -44,7 +44,7 @@ const fakePickers = () => {
   };
   window.pickerCalls = [];
   window.showOpenFilePicker = async (options) => {
-    window.pickerCalls.push({ kind: 'open', id: options.id });
+    window.pickerCalls.push({ kind: 'open', id: options.id, startInName: options.startIn?.name });
     return [await write('existing.fountain', 'INT. ROOM - DAY\r\n\r\nFrom disk.')];
   };
   window.showSaveFilePicker = async (options) => {
@@ -58,6 +58,7 @@ const fakePickers = () => {
     if (window.pickerCancels) throw new DOMException('cancelled', 'AbortError');
     return (await root()).getFileHandle(window.pickerChoice ?? options.suggestedName, { create: true });
   };
+  window.showDirectoryPicker = async () => (await root()).getDirectoryHandle('Scripts', { create: true });
 };
 
 test.describe('home page', () => {
@@ -217,7 +218,8 @@ test.describe('new scripts', () => {
     await page.keyboard.press('End');
     await page.keyboard.type(' Two');
     await expect(page.locator('.doc-name')).toHaveText('Untitled Two');
-    await expect(page.locator('.doc-state')).toHaveText('On this device only');
+    // Not in a file yet, it lives only in this browser: its source is Temp.
+    await expect(page.locator('.doc-where')).toHaveText('Temp');
   });
 });
 
@@ -232,7 +234,7 @@ test.describe('autosave and recent', () => {
 
     await fromMenu(page, 'home');
     const row = page.locator('.recent-row', { hasText: 'Typed before reload.' });
-    await expect(row).toContainText('unsaved changes');
+    await expect(row.locator('.recent-source')).toHaveText('Temp');
     await row.locator('.recent-open').click();
     await expect(editor(page)).toBeVisible();
     expect(await value(page)).toContain('Typed before reload.');
@@ -297,7 +299,7 @@ test.describe('local files with direct saving', () => {
     await page.goto(HOME);
     await providerCard(page, 'local').click();
     await expect(editor(page)).toBeVisible();
-    await expect(page.locator('.doc-where')).toContainText('On this device');
+    await expect(page.locator('.doc-where')).toHaveText('Local');
     await lineWith(page, 'From disk').click();
     await page.keyboard.type('Z');
     await fromMenu(page, 'save');
@@ -373,7 +375,7 @@ test.describe('local files with direct saving', () => {
     await newScript(page);
     await fromMenu(page, 'home');
     await page.evaluate(() => new Promise((resolve) => {
-      const open = indexedDB.open('flow', 1);
+      const open = indexedDB.open('flow');
       open.onsuccess = () => {
         const store = open.result.transaction('docs', 'readwrite').objectStore('docs');
         store.getAll().onsuccess = (event) => {
@@ -420,6 +422,41 @@ test.describe('local files with direct saving', () => {
     await expect(page.locator('dialog')).toHaveCount(0);
     await expect(page.locator('.doc-state')).toHaveText('Saved');
     expect(await page.evaluate(() => window.readFile('Untitled Screenplay.fountain'))).toContain('More.');
+  });
+
+  test('a save folder chosen in Defaults is where opening and saving start', async ({ page }) => {
+    await page.goto(HOME);
+    await page.locator('#app-settings').click();
+    const dialog = page.locator('dialog.fl-settings-dialog');
+    await dialog.locator('.fl-settings-rail').getByRole('button', { name: 'Defaults' }).click();
+    const shown = dialog.locator('[data-save-folder]');
+    await expect(shown).toContainText('None chosen');
+    await dialog.locator('#choose-save-folder').click();
+    await expect(shown).toHaveText('Saving in Scripts');
+    await page.keyboard.press('Escape');
+
+    // A new script's first save starts in it.
+    await page.locator('#new-script').click();
+    await expect(editor(page)).toBeVisible();
+    await page.keyboard.press('ControlOrMeta+s');
+    await expect(page.locator('.doc-state')).toHaveText('Saved');
+    const calls = await page.evaluate(() => window.pickerCalls);
+    expect(calls.at(-1)).toMatchObject({ kind: 'save', startInName: 'Scripts' });
+
+    // So does opening, and it lasts through a reload.
+    await page.goto(HOME);
+    await page.reload();
+    await page.locator('#open-script').click();
+    await expect(editor(page)).toBeVisible();
+    expect((await page.evaluate(() => window.pickerCalls)).at(-1)).toMatchObject({ kind: 'open', startInName: 'Scripts' });
+
+    // Cleared, the dialogs go back to where they were last left.
+    await page.goto(HOME);
+    await page.locator('#app-settings').click();
+    await dialog.locator('.fl-settings-rail').getByRole('button', { name: 'Defaults' }).click();
+    await expect(shown).toHaveText('Saving in Scripts');
+    await dialog.locator('#clear-save-folder').click();
+    await expect(shown).toContainText('None chosen');
   });
 
   test('cancelling the open picker stays home', async ({ page }) => {
@@ -929,7 +966,7 @@ test.describe('editor bars', () => {
   test('the document pill shows title, date and source, and its menu leads home', async ({ page }) => {
     await newScript(page);
     await expect(page.locator('.doc-date')).toHaveText(new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }));
-    await expect(page.locator('.doc-state')).toBeVisible();
+    await expect(page.locator('.doc-where')).toHaveText('Temp');
     // The app's name and details sit inside the menu's pill.
     const pill = await docPill(page).boundingBox();
     const name = await page.locator('.doc-name').boundingBox();
@@ -957,7 +994,7 @@ test.describe('editor bars', () => {
     await page.keyboard.type('Act One');
     await page.getByRole('tab', { name: 'Write' }).click();
     await expect(page.locator('flow-script .fl-line', { hasText: 'Act One' })).toBeVisible();
-    await expect(page.locator('.doc-state')).toHaveText('On this device only');
+    await expect(page.locator('.doc-where')).toHaveText('Temp');
   });
 
   test('showing a card in Read from the outline moves the tabs and the address along', async ({ page }) => {

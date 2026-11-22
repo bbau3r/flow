@@ -44,11 +44,11 @@ function arrowKeys(group) {
 /** `value` is { palette, mode }; `onChange` gets the new one. Returns { root, mode, palettes }. */
 export function themeChooser({ value, onChange }) {
   let theme = { ...value };
-  // The same tabs as Write, Outline and Read.
+  // The same tabs as Write, Outline and Read, as a dropdown when their labels don't fit.
   const modes = tabs({
     label: 'Mode',
-    fixed: true,
-    attrs: { class: 'fl-pill fl-tabs fl-theme-modes' },
+    fit: true,
+    attrs: { class: 'fl-responsive fl-theme-modes' },
     onSelect: (label) => choose({ mode: THEME_MODES.find(([, name]) => name === label)[0] }),
   }, THEME_MODES.map(([name, label]) => ({ label, icon: MODE_ICONS[name], selected: theme.mode === name })));
   const grid = el('div', 'fl-theme-grid');
@@ -103,9 +103,9 @@ export function themeChooser({ value, onChange }) {
 
 export const THEME_CHOOSER_CSS = `
 .fl-theme-chooser { display: flex; flex-direction: column; gap: 14px; }
-.fl-theme-modes { align-self: stretch; box-shadow: none; }
-.fl-theme-modes { display: flex; }
-.fl-theme-modes > .fl-tab { flex: 1; justify-content: center; padding-inline: 10px; }
+.fl-theme-modes .fl-wide-only > .fl-tabs { display: flex; box-shadow: none; }
+.fl-theme-modes .fl-wide-only .fl-tab { flex: 1; justify-content: center; padding-inline: 10px; }
+.fl-theme-modes .fl-compact-only > .fl-tabs { box-shadow: none; }
 .fl-theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
 .fl-theme-swatch {
   appearance: none; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px;

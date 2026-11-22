@@ -15,6 +15,28 @@ const ID = /^[a-z][a-z0-9-]{1,39}$/;
 const PALETTE_ID = /^[a-z][a-z0-9]{1,23}$/;
 const KEY = /^[a-zA-Z][a-zA-Z0-9_-]{0,39}$/;
 const SHORTCUT = /^((Mod|Ctrl|Alt|Shift|Meta)\+)*[A-Za-z0-9]$/;
+// An app's code file, named in its manifest as `main`.
+const MAIN = /^[\w.-]{1,96}\.m?js$/;
+
+// An icon's path data: SVG path commands and numbers, and nothing else.
+const PATH_DATA = /^[MmLlHhVvCcSsQqTtAaZz0-9.,\s+-]+$/;
+
+// An icon is one of Flow's own by name, or the extension's own as { paths }, SVG path data on a
+// 24 by 24 grid, drawn in Flow's line style. Without one, an extension shows the generic jigsaw.
+function readIcon(value, what) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'string') return text(value, what, { max: 30 });
+  if (typeof value !== 'object' || !Array.isArray(value.paths) || !value.paths.length || value.paths.length > 12) {
+    fail(`Its ${what} has to be a name, or { "paths": [...] } with one to twelve paths.`);
+  }
+  for (const d of value.paths) {
+    if (typeof d !== 'string' || d.length > 1000 || !PATH_DATA.test(d)) fail(`Its ${what} has a path that isn’t SVG path data.`);
+  }
+  return { paths: [...value.paths] };
+}
+
+/** Where a widget can go: after the pills along the bottom, before undo and redo, or top right. */
+export const WIDGET_PLACES = ['bottom-start', 'bottom-end', 'top-end'];
 
 class ManifestError extends Error {
   name = 'ManifestError';
@@ -105,12 +127,14 @@ function readCommand(command) {
   const shortcut = text(command.shortcut, `shortcut for command "${id}"`, { max: 30 });
   if (shortcut && !SHORTCUT.test(shortcut)) fail(`Command "${id}" has a shortcut Flow can’t read: ${shortcut}. Write it like Mod+Shift+K.`);
   if (typeof command.insert !== 'string' || !command.insert) fail(`Command "${id}" needs the text it inserts.`);
+  if (command.widget != null && !WIDGET_PLACES.includes(command.widget)) fail(`Command "${id}" can only be a widget at ${WIDGET_PLACES.join(', ')}.`);
   return {
     id,
     label: text(command.label, `label for command "${id}"`, { max: 60, required: true }),
     title: text(command.title, `title for command "${id}"`, { max: 200 }),
-    icon: text(command.icon, `icon for command "${id}"`, { max: 30 }),
+    icon: readIcon(command.icon, `icon for command "${id}"`),
     shortcut,
+    widget: command.widget ?? null,
     insert: command.insert.slice(0, 5000),
   };
 }
@@ -138,7 +162,7 @@ export function readManifest(json) {
     version: text(data.version, 'version', { max: 20 }) || '1.0.0',
     author: text(data.author, 'author', { max: 60 }),
     description: text(data.description, 'description', { max: 400 }),
-    icon: text(data.icon, 'icon', { max: 30 }) || (data.kind === 'theme' ? 'palette' : 'extensions'),
+    icon: readIcon(data.icon, 'icon') ?? 'extensions',
   };
   if (manifest.kind === 'theme') {
     if (!data.palettes || typeof data.palettes !== 'object' || !Object.keys(data.palettes).length) fail('A theme needs at least one palette.');
@@ -151,5 +175,10 @@ export function readManifest(json) {
   if (new Set(keys).size !== keys.length) fail('Two of its settings have the same key.');
   if (data.commands != null && !Array.isArray(data.commands)) fail('Its commands have to be a list.');
   manifest.commands = (data.commands ?? []).map(readCommand);
+  // Code an app brings with it, in a file of its own beside the manifest.
+  if (data.main != null) {
+    if (typeof data.main !== 'string' || !MAIN.test(data.main)) fail('Its main has to be the name of a .js file, such as index.js.');
+    manifest.main = data.main;
+  }
   return manifest;
 }

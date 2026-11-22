@@ -1,10 +1,11 @@
 // The Extensions page of App settings: every extension Flow knows, apps and then themes, each
 // with a switch to turn it on, a button that turns to its settings if it has any, and Remove for
-// one added from a file. Add extension opens the file picker for a JSON file, and the guides to
-// writing one are linked beside it.
+// one added from a file. Add extension opens the file picker for a manifest and any .js files with
+// it, asks whether code is trusted before adding it, and turns it on. The guides to writing extensions
+// are linked beside it.
 
-import { button, icon, toggleSwitch } from '@flow/element/source';
-import { addExtension, listExtensions, removeExtension, setEnabled } from './host.js';
+import { button, icon, openModal, toggleSwitch } from '@flow/element/source';
+import { addExtension, checkExtension, hasSettingsPage, listExtensions, removeExtension, setEnabled } from './host.js';
 import { sectionId } from './settings.js';
 import { h, toast } from '../ui.js';
 
@@ -28,7 +29,7 @@ function swatches(manifest) {
 
 function property({ manifest, source, enabled, error }, panel) {
   const { id, name, version, author, description, kind } = manifest;
-  const hasSettings = kind === 'app' && manifest.settings.length > 0;
+  const hasSettings = kind === 'app' && (manifest.settings.length > 0 || hasSettingsPage(id));
   let settings = null;
   const toggle = toggleSwitch({
     label: `Turn ${name} on`,
@@ -61,11 +62,13 @@ function property({ manifest, source, enabled, error }, panel) {
       cls: 'fl-btn-outline ext-remove',
       attrs: { 'data-action': 'remove', 'data-extension': id },
       onClick: () => {
-        if (confirm(`Remove ${name}? Its settings go with it.`)) removeExtension(id);
+        if (confirm(`Remove ${name}? Its settings, and anything it kept on this device, go with it.`)) removeExtension(id);
       },
     }));
   }
-  const meta = [`Version ${version}`, author && `by ${author}`, SOURCE_LABELS[source]].filter(Boolean).join(' · ');
+  // Code from a file or the page says so, since it runs with everything Flow can do.
+  const runsCode = source === 'code' || (source === 'added' && !!manifest.main);
+  const meta = [`Version ${version}`, author && `by ${author}`, SOURCE_LABELS[source], runsCode && 'Runs its own code'].filter(Boolean).join(' · ');
   return {
     label: name,
     keywords: `extension ${kind} ${description}`,
@@ -82,21 +85,64 @@ function property({ manifest, source, enabled, error }, panel) {
 // The guides to writing one, kept with the code.
 const GUIDES = 'https://github.com/bbau3r/flow/blob/main/docs/extensions';
 
-// Adding goes straight to the system's file picker. What's wrong with a file shows under the
-// button; once it's added, App settings reopens with it listed.
+// Code from a file runs with everything Flow can do, so it's only added once the person says
+// they trust it, every time, including updates. Resolves to whether they do.
+function confirmTrust(manifest, codeFiles) {
+  return new Promise((resolve) => {
+    let trusted = false;
+    const bytes = codeFiles.reduce((total, each) => total + each.size, 0);
+    const size = bytes < 1024 ? `${bytes} bytes` : `${Math.round(bytes / 1024)} KB`;
+    const names = codeFiles.map((each) => each.name).join(', ');
+    const cancel = button({ label: 'Cancel', cls: 'fl-btn-outline', attrs: { id: 'trust-cancel' }, onClick: () => modal.close() });
+    const modal = openModal(document.body, {
+      title: 'Do you trust this extension?',
+      icon: 'info',
+      onClose: () => resolve(trusted),
+      body: [
+        h('p', { class: 'trust-name' }, h('strong', {}, manifest.name), ` ${manifest.version}`, manifest.author ? ` by ${manifest.author}` : ''),
+        h('p', { class: 'trust-file' }, `Its code: ${names}, ${size}`),
+        h('p', { class: 'trust-warning', role: 'alert' },
+          'This extension runs its own code inside Flow, with everything Flow can do: it can read and change your scripts, and the files and accounts Flow is connected to on this device. Flow can’t check what the code does. Only add it if it comes from someone you trust.'),
+      ],
+      actions: [
+        cancel,
+        button({ label: 'Trust and add', cls: 'fl-btn-primary', attrs: { id: 'trust-add' }, onClick: () => { trusted = true; modal.close(); } }),
+      ],
+    });
+    // Not trusting is the safe choice, so it's the one a quick Enter makes.
+    cancel.focus();
+  });
+}
+
+// Adding goes straight to the system's file picker, for a manifest, and its code file when it
+// has one. What's wrong shows under the button; once it's added, App settings reopens with it.
 function addControls() {
   const message = h('p', { class: 'ext-add-error', role: 'alert' });
-  const file = h('input', { type: 'file', accept: '.json,application/json', hidden: true, 'aria-label': 'Extension file' });
+  const file = h('input', { type: 'file', accept: '.json,.js,.mjs,application/json,text/javascript', multiple: true, hidden: true, 'aria-label': 'Extension files' });
   file.addEventListener('change', async () => {
-    const chosen = file.files?.[0];
+    const chosen = [...(file.files ?? [])];
     file.value = '';
-    if (!chosen) return;
+    if (!chosen.length) return;
     message.textContent = '';
+    const manifests = chosen.filter((each) => /\.json$/i.test(each.name));
+    const named = manifests[0]?.name ?? chosen[0].name;
     try {
-      const manifest = addExtension(await chosen.text());
-      toast(`Added ${manifest.name}. Turn it on when you’re ready.`);
+      if (manifests.length !== 1) throw new Error('Choose one manifest, a .json file, and its code file with it if it has one.');
+      const json = await manifests[0].text();
+      const manifest = checkExtension(json);
+      const scripts = chosen.filter((each) => each !== manifests[0]);
+      const files = {};
+      if (manifest.main) {
+        if (!scripts.some((each) => each.name === manifest.main)) throw new Error(`This app’s code starts in ${manifest.main}. Choose it together with the manifest.`);
+        if (!(await confirmTrust(manifest, scripts))) return;
+        for (const each of scripts) files[each.name] = await each.text();
+      } else if (scripts.length) {
+        throw new Error('This manifest names no code file. Give it a "main", such as "index.js", to add code with it.');
+      }
+      await addExtension(json, { files });
+      toast(`Added ${manifest.name}, turned on.`);
     } catch (err) {
-      message.textContent = `${chosen.name}: ${err.message}`;
+      message.textContent = `${named}: ${err.message}`;
     }
   });
   const add = button({ label: 'Add extension', icon: 'upload', cls: 'fl-btn-primary', attrs: { id: 'add-extension' }, onClick: () => file.click() });
@@ -133,15 +179,16 @@ export function extensionsSection(panel) {
           {
             label: 'Add extension',
             keywords: 'install add import json file extension theme',
-            description: 'Choose an extension’s JSON file. Flow checks it before adding it, and it starts turned off.',
+            description: 'Choose an extension’s manifest .json + any supporting .js files to add extension.',
             control: adding.control,
             below: adding.message,
           },
           {
             label: 'Writing extensions',
             keywords: 'write make author documentation guide help json manifest theme app',
-            description: 'How to make a theme, with its colors, and how an app extension works.',
-            control: [guide('Themes guide', 'themes.md'), guide('Apps guide', 'apps.md')],
+            description: 'How to make a theme, with its colors; how an app extension works; and how to add a cloud provider.',
+            control: h('div', { class: 'ext-guides' }, guide('Themes guide', 'themes.md'), guide('Apps guide', 'apps.md'), guide('Sources guide', 'sources.md')),
+            wide: true,
           },
         ],
       },

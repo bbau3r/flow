@@ -1,12 +1,13 @@
 // The home page: the wordmark, a search of the recent scripts and the app settings along the
-// top, then a shelf of sheets. New and Open come first, then every recent script, each
-// shown by its own title page, wrapping onto as many rows as it takes. Open offers every source,
-// including those extensions add.
+// top, then a shelf of sheets. New and Open come first, then a sheet for each cloud provider
+// an extension adds, then every recent script, each shown by its own title page, wrapping onto
+// as many rows as it takes.
 
 import { parse } from '@flow/core';
-import { button, icon, openModal, searchField } from '@flow/element/source';
+import { button, icon, searchField } from '@flow/element/source';
 import { createDoc, deleteDoc, listDocs } from './store.js';
-import { providers } from './providers/index.js';
+import { ensureConnected, providers, sourceOf, sourceRecord, SOURCE_KINDS } from './providers/index.js';
+import { localProvider } from './providers/local.js';
 import { h, timeAgo, toast } from './ui.js';
 import { flowMark } from './mark.js';
 import { openAppSettings } from './app-settings.js';
@@ -25,41 +26,13 @@ async function startNew() {
 
 async function openFrom(provider) {
   try {
+    if (!(await ensureConnected(provider))) return;
     const file = await provider.open();
     if (!file) return;
-    edit(await createDoc({ name: file.name, value: file.text.replace(/\r\n?/g, '\n'), provider: provider.id, ref: file.ref, saved: true }));
+    edit(await createDoc({ name: file.name, value: file.text.replace(/\r\n?/g, '\n'), provider: provider.id, source: sourceRecord(provider), ref: file.ref, saved: true }));
   } catch (err) {
     toast(err.message);
   }
-}
-
-// With one place to open from there's nothing to ask, so its picker comes up straight away.
-function chooseAndOpen() {
-  const usable = providers.filter((provider) => provider.status().ok);
-  if (usable.length === 1) {
-    openFrom(usable[0]);
-    return;
-  }
-  const modal = openModal(document.body, {
-    title: 'Open from',
-    body: [h('div', { class: 'cards' }, ...providers.map((provider) => {
-      const status = provider.status();
-      return h('button', {
-        type: 'button',
-        class: 'card',
-        disabled: !status.ok,
-        'data-provider': provider.id,
-        onclick: () => {
-          modal.close();
-          openFrom(provider);
-        },
-      },
-      h('span', { class: 'card-title' }, provider.label),
-      h('span', { class: 'card-text' }, provider.description),
-      status.ok ? null : h('span', { class: 'badge' }, status.reason));
-    }))],
-    actions: [button({ label: 'Cancel', cls: 'fl-btn-outline', onClick: () => modal.close() })],
-  });
 }
 
 // The fields of a script's title page, as lists of lines.
@@ -93,13 +66,14 @@ function cover(doc) {
 
 function recentCard(doc, refresh) {
   const unsaved = doc.value !== doc.savedValue;
-  const where = providers.find((p) => p.id === doc.provider)?.label ?? 'Not saved to a file';
+  // Where it lives: Temp, Local, or Cloud and the service's name.
+  const where = sourceOf(doc).label;
   const card = h('li', { class: 'tile recent-row' },
     h('button', { type: 'button', class: 'recent-open', title: `Open ${doc.name}`, onclick: () => edit(doc) },
       cover(doc),
       h('span', { class: 'tile-label recent-name' }, doc.name),
       h('span', { class: 'recent-meta' }, timeAgo(doc.updatedAt)),
-      h('span', { class: 'recent-meta' }, unsaved ? `${where} · unsaved changes` : where)),
+      h('span', { class: 'recent-meta recent-source' }, unsaved && doc.provider ? `${where} · unsaved changes` : where)),
     h('button', {
       type: 'button',
       class: 'recent-remove',
@@ -116,23 +90,40 @@ function recentCard(doc, refresh) {
   return card;
 }
 
+// Open goes straight to this device's files.
 function openTile() {
-  const usable = providers.filter((provider) => provider.status().ok);
-  const only = providers.length === 1 ? providers[0] : null;
-  const status = only?.status();
+  const status = localProvider.status();
   return h('li', { class: 'tile' },
     h('button', {
       type: 'button',
       class: 'tile-button',
       id: 'open-script',
-      'data-provider': only?.id,
-      disabled: !usable.length,
-      onclick: chooseAndOpen,
+      'data-provider': localProvider.id,
+      disabled: !status.ok,
+      onclick: () => openFrom(localProvider),
     },
     h('span', { class: 'tile-face tile-open fl-paper' }, icon('folder')),
     h('span', { class: 'tile-label' }, 'Open'),
-    h('span', { class: 'recent-meta' }, only ? `From ${only.label.toLowerCase()}` : 'Choose where'),
-    status && !status.ok ? h('span', { class: 'badge' }, status.reason) : null));
+    h('span', { class: 'recent-meta' }, `From ${localProvider.label.toLowerCase()}`)));
+}
+
+// Each cloud provider an extension adds has a tile of its own beside Open, with its icon, that
+// connects if it needs to and then opens from it.
+function cloudTile(provider) {
+  const status = provider.status();
+  return h('li', { class: 'tile' },
+    h('button', {
+      type: 'button',
+      class: 'tile-button',
+      'data-provider': provider.id,
+      title: provider.description,
+      disabled: !status.ok,
+      onclick: () => openFrom(provider),
+    },
+    h('span', { class: 'tile-face tile-open fl-paper' }, icon(provider.icon ?? 'folder')),
+    h('span', { class: 'tile-label' }, provider.label),
+    h('span', { class: 'recent-meta' }, SOURCE_KINDS.cloud),
+    status.ok ? null : h('span', { class: 'badge' }, status.reason)));
 }
 
 export async function renderHome(root) {
@@ -171,6 +162,7 @@ export async function renderHome(root) {
             h('span', { class: 'tile-face tile-new' }, icon('plus')),
             h('span', { class: 'tile-label' }, 'New'))),
         openTile(),
+        ...providers.filter((provider) => provider.kind === 'cloud').map(cloudTile),
         rule,
         ...cards),
       empty)));

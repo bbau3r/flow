@@ -1,15 +1,18 @@
 // The app's own settings, which belong to this device rather than to any script: the theme, what
-// new scripts start with, which extension settings get a tab, the extensions themselves, and
-// installing Flow as an app. Each app extension that's on and has settings follows Flow's own
+// new scripts start with and where they're saved, which extension settings get a tab, the
+// extensions themselves, and installing Flow as an app. A cloud source connects on the settings
+// page of the extension that adds it. Each app extension that's on and has settings follows Flow's own
 // sections, after a rule. They open from the gear on the home page and from App settings in a
 // script's Document menu, and every change applies at once.
 
 import { button, openSettingsPanel, pageSizeSetting, PALETTES, toggleSwitch } from '@flow/element/source';
 import { DEFAULT_COVER } from '@flow/core';
 import { readDefaults, saveDefaults } from './defaults.js';
+import { saveFolderSetting } from './save-folder.js';
 import { themeControls } from './ui.js';
-import { getExtension, isEnabled, listExtensions, onExtensionsChange, setShowsInSettings, showsInSettings } from './extensions/host.js';
+import { getExtension, hasSettingsPage, isEnabled, listExtensions, onExtensionsChange, setShowsInSettings, showsInSettings } from './extensions/host.js';
 import { extensionsSection } from './extensions/manager.js';
+import { providers } from './providers/index.js';
 import { extensionSection, sectionId } from './extensions/settings.js';
 
 // The browser offers installing once, through this event, and only while it's not installed.
@@ -114,6 +117,10 @@ function defaultsSection() {
         properties: [size.property],
       },
       {
+        label: 'Saving',
+        properties: [saveFolderSetting()],
+      },
+      {
         label: 'Cover page',
         properties: defaults.cover.map(fieldProperty),
       },
@@ -162,13 +169,17 @@ export function openAppSettings({ onClose, start } = {}) {
   let panel = null;
   let reopening = false;
   // Every app with settings has a section, kept out of the rail while it's off or hidden.
-  const apps = listExtensions().filter(({ manifest }) => manifest.kind === 'app' && manifest.settings.length);
+  const apps = listExtensions().filter(({ manifest }) => manifest.kind === 'app' && (manifest.settings.length || hasSettingsPage(manifest.id)));
   const extensionSections = apps.map(({ manifest }) => extensionSection(manifest, { hidden: !tabShown(manifest.id) }));
 
+  const sourceCount = providers.length;
   const stopListening = onExtensionsChange((change) => {
     const kind = getExtension(change.id)?.manifest.kind;
-    // Extensions coming or going, or a theme's palette, change what the panel holds.
-    if (change.type === 'added' || change.type === 'removed' || (change.type === 'enabled' && kind === 'theme')) {
+    // Extensions coming or going, a theme's palette, a source, or an extension that couldn't
+    // start, change what the panel holds.
+    const reopen = ['added', 'removed', 'error'].includes(change.type)
+      || (change.type === 'enabled' && (kind === 'theme' || providers.length !== sourceCount || getExtension(change.id)?.error));
+    if (reopen) {
       reopening = true;
       stopListening();
       panel.close();

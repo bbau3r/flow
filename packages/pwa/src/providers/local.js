@@ -1,8 +1,10 @@
 // Files on this device. Browsers with the File System Access API save straight back
-// to the file. Others, including iOS Safari, open through a file input and save by
+// to the file, and their open and save dialogs start in the save folder when one is chosen in
+// App settings. Others, including iOS Safari, open through a file input and save by
 // downloading a copy.
 
 import { ConflictError, fileNameFor } from './index.js';
+import { readSaveFolder } from '../save-folder.js';
 
 const EXTENSIONS = ['.fountain', '.spmd', '.txt'];
 const TYPES = [{ description: 'Fountain screenplay', accept: { 'text/plain': EXTENSIONS } }];
@@ -40,13 +42,20 @@ async function writeTo(handle, text) {
   return (await handle.getFile()).lastModified;
 }
 
+// Where a picker opens: beside the script's own file, else in the save folder chosen in App
+// settings, else wherever the last one was left.
+async function startingPlace(handle) {
+  if (handle) return { startIn: handle };
+  const folder = await readSaveFolder();
+  return folder ? { startIn: folder } : { id: PICKER_ID };
+}
+
 async function pickSaveTarget(doc) {
   try {
     return await window.showSaveFilePicker({
       suggestedName: fileNameFor(doc.name),
       types: TYPES,
-      // startIn opens the folder holding that file. Otherwise, reuse the last folder.
-      ...(doc.ref?.handle ? { startIn: doc.ref.handle } : { id: PICKER_ID }),
+      ...(await startingPlace(doc.ref?.handle)),
     });
   } catch (err) {
     if (isCancel(err)) return null;
@@ -56,6 +65,7 @@ async function pickSaveTarget(doc) {
 
 export const localProvider = {
   id: 'local',
+  kind: 'local',
   label: 'This device',
   description: 'Open a Fountain file from your computer or phone.',
 
@@ -65,8 +75,9 @@ export const localProvider = {
     ? 'Choose the folder and file name.'
     : 'Downloads a copy. This browser can\u2019t choose a folder.'),
 
-  // Browsers can open a file's folder but never reveal its path.
-  location: (doc) => (doc.ref?.handle ? 'On this device' : 'Downloaded copy'),
+  // Browsers can open a file's folder but never reveal its path, so there's only more to say
+  // about a copy that was downloaded.
+  location: (doc) => (doc.ref?.handle ? '' : 'Downloaded copy'),
 
   async open() {
     if (!canWriteFiles()) {
@@ -74,7 +85,7 @@ export const localProvider = {
       return file && { name: file.name, text: await file.text(), ref: { downloaded: true } };
     }
     try {
-      const [handle] = await window.showOpenFilePicker({ id: PICKER_ID, types: TYPES });
+      const [handle] = await window.showOpenFilePicker({ ...(await startingPlace(null)), types: TYPES });
       return await this.openHandle(handle);
     } catch (err) {
       if (isCancel(err)) return null;

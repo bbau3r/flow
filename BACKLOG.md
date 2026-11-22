@@ -16,7 +16,9 @@ Local credentials live in `packages/pwa/.env.local`, which Git ignores. The bran
 
 ### Add Proton Drive
 
-Let people open and save scripts in Proton Drive, like Google Drive: sign in, then choose a file or folder.
+Let people open and save scripts in Proton Drive from the web: sign in to Proton in the browser, then choose a file or a folder in their Drive. Build it as a built-in cloud provider extension, following `docs/extensions/sources.md`: a sheet beside Open on the home page, and a Connection topic on its settings page.
+
+A version that went through the Proton Drive desktop app's synced folder was tried in November 2026 and taken out: a folder on the computer is a local feature, not the cloud. Choosing a folder now lives in Defaults as the save folder.
 
 **Check this first.** In November 2026, Proton's [Drive SDK](https://github.com/ProtonDriveApps/sdk) wasn't ready for this:
 
@@ -25,9 +27,9 @@ Let people open and save scripts in Proton Drive, like Google Drive: sign in, th
 - A change to its encryption model was targeted for late 2026 or early 2027, after which older SDK releases stop working with new data until upgraded.
 - Apps must identify themselves honestly in `x-pm-appversion`, use only official domains, and avoid Proton's branding. Others can be rate-limited or blocked.
 
-If that still holds, raise it with the project owner before building. It's also unconfirmed whether Proton's servers accept requests from a web page, which could rule out a browser-only version. Proton Drive also has no known "Open with" or plugin system.
+If that still holds, raise it with the project owner before building. It's also unconfirmed whether Proton's servers accept requests from a web page, which could rule out a browser-only version. Proton Drive also has no known "Open with" or plugin system. Start when the SDK offers sign-in for third parties.
 
-**In the meantime:** Proton's desktop app syncs a local folder, so "This device" already reaches Proton Drive on desktop.
+**In the meantime:** Proton's desktop app syncs a local folder, so "This device" already reaches Proton Drive on desktop, and choosing that folder as the save folder in Defaults makes it where new scripts go.
 
 ### Add OneDrive
 
