@@ -36,6 +36,10 @@ const ICONS = {
   'collapse-all': '<path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/>',
   app: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M7 6.5h.01"/><path d="M10 6.5h.01"/>',
   download: '<path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/>',
+  // A sheet of paper, its corner folded.
+  page: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>',
+  // A title page: the title and credits centered, the contact at the bottom left.
+  cover: '<rect x="5" y="2.5" width="14" height="19" rx="1.5"/><path d="M9 8.5h6"/><path d="M10.5 12h3"/><path d="M9.5 14.5h5"/><path d="M8 18.5h3"/>',
   // A page, with its height measured down the left and its width along the bottom.
   'page-size': '<rect x="10" y="2.5" width="10.5" height="13.5" rx="1.5"/><path d="M4.5 2.5v13.5"/><path d="M3 2.5h3"/><path d="M3 16h3"/><path d="M10 20.5h10.5"/><path d="M10 19v3"/><path d="M20.5 19v3"/>',
   minus: '<path d="M5 12h14"/>',

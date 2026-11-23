@@ -2953,53 +2953,48 @@ test.describe('project settings', () => {
     await expect(dialog.getByRole('heading', { name: 'Project Settings' })).toBeVisible();
     return dialog;
   };
+  // Opens them on the Page section, which holds the size.
+  const openPage = async (page) => {
+    const dialog = await openSettings(page);
+    await dialog.locator('.fl-settings-rail').getByRole('button', { name: 'Page' }).click();
+    return dialog;
+  };
 
-  test('the page shows each size as it is chosen, and only Save writes it', async ({ page }) => {
+  test('a size goes into the script as it’s chosen, with no Save to press', async ({ page }) => {
     await open(page);
     await setValue(page, 'Title: BIG\n\nAction.');
     expect(await pageWidth(page)).toBe('51em');
-    let dialog = await openSettings(page);
+    const dialog = await openPage(page);
     await expect(dialog.getByText('Saved in the script, in a Settings boneyard')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Save' })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
     await dialog.getByLabel('Dimensions').selectOption('a4');
+    await expect.poll(() => value(page)).toBe('Title: BIG\n/*\nSettings:\n    Dimensions: A4\n*/\n\nAction.');
     await expect.poll(() => pageWidth(page)).toBe(`${8.27 * 6}em`);
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
-    await expect.poll(() => pageWidth(page)).toBe('51em');
-    expect(await value(page)).toBe('Title: BIG\n\nAction.');
-
-    dialog = await openSettings(page);
-    await dialog.getByLabel('Dimensions').selectOption('a4');
-    await dialog.getByRole('button', { name: 'Save' }).click();
+    // Closing keeps it.
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
     expect(await value(page)).toBe('Title: BIG\n/*\nSettings:\n    Dimensions: A4\n*/\n\nAction.');
-    expect(await pageWidth(page)).toBe(`${8.27 * 6}em`);
   });
 
-  test('the Cover comes first, with the title page’s own fields in their order, saved with Save', async ({ page }) => {
+  test('the Cover is a section of its own, first, with the title page’s fields in their order, written as they’re typed', async ({ page }) => {
     await open(page);
     await setValue(page, 'Title: BIG\nNotes: Shot on film\nContact:\n    Bob\n    bob@example.com\n\nAction.');
-    let dialog = await openSettings(page);
-    const topics = await dialog.locator('.fl-settings-topic-head').allTextContents();
-    expect(topics[0]).toBe('Cover');
-    const labels = await dialog.locator('.fl-settings-topic').first().locator('.fl-prop-label').allTextContents();
+    const dialog = await openSettings(page);
+    const rail = await dialog.locator('.fl-settings-rail .fl-settings-jump').evaluateAll((nodes) => nodes.map((n) => n.getAttribute('data-tip')));
+    expect(rail).toEqual(['Cover', 'Page']);
+    await expect(dialog.getByRole('heading', { name: 'Cover', exact: true })).toBeVisible();
+    const labels = await dialog.locator('.fl-settings-section:not([hidden]) .fl-prop-label').allTextContents();
     expect(labels).toEqual(['Title', 'Notes', 'Contact']);
     await expect(dialog.getByRole('textbox', { name: 'Contact' })).toHaveValue('Bob\nbob@example.com');
     await expect(dialog.getByRole('textbox', { name: 'Contact' })).toHaveJSProperty('rows', 2);
 
-    // Cancel changes nothing.
+    // Each field goes into the script as it's typed, kept in its own style.
     await dialog.getByRole('textbox', { name: 'Title' }).fill('BIGGER');
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
-    expect(await value(page)).toBe('Title: BIG\nNotes: Shot on film\nContact:\n    Bob\n    bob@example.com\n\nAction.');
-
-    // Save writes the fields, each kept in its own style, and the page size with them.
-    dialog = await openSettings(page);
-    await dialog.getByRole('textbox', { name: 'Title' }).fill('BIGGER');
+    await expect.poll(() => value(page)).toBe('Title: BIGGER\nNotes: Shot on film\nContact:\n    Bob\n    bob@example.com\n\nAction.');
     await dialog.getByRole('textbox', { name: 'Contact' }).fill('Bob\nbob@example.com\n555-0100');
-    await dialog.getByLabel('Dimensions').selectOption('a4');
-    await dialog.getByRole('button', { name: 'Save' }).click();
-    expect(await value(page)).toBe('Title: BIGGER\nNotes: Shot on film\nContact:\n    Bob\n    bob@example.com\n    555-0100\n/*\nSettings:\n    Dimensions: A4\n*/\n\nAction.');
-    // As one undo step.
-    await host(page).evaluate((el) => el.focus());
-    await page.keyboard.press('ControlOrMeta+z');
-    await expect.poll(() => value(page)).toBe('Title: BIG\nNotes: Shot on film\nContact:\n    Bob\n    bob@example.com\n\nAction.');
+    await expect.poll(() => value(page)).toBe('Title: BIGGER\nNotes: Shot on film\nContact:\n    Bob\n    bob@example.com\n    555-0100\n\nAction.');
+    await expect(dialog.getByRole('textbox', { name: 'Contact' })).toHaveJSProperty('rows', 3);
   });
 
   test('a script without a title page says how to start one', async ({ page }) => {
@@ -3012,14 +3007,13 @@ test.describe('project settings', () => {
   test('a custom size can be in centimetres', async ({ page }) => {
     await open(page);
     await setValue(page, 'Action.');
-    const dialog = await openSettings(page);
+    const dialog = await openPage(page);
     await dialog.getByLabel('Dimensions').selectOption('custom');
     await dialog.getByLabel('Unit').selectOption('cm');
     await expect(dialog.getByLabel('Width')).toHaveValue('21.59');
     await dialog.getByLabel('Width').fill('21');
     await dialog.getByLabel('Height').fill('29.7');
-    await dialog.getByRole('button', { name: 'Save' }).click();
-    expect(await value(page)).toBe('/*\nSettings:\n    Dimensions: 21cm x 29.7cm\n*/\n\nAction.');
+    await expect.poll(() => value(page)).toBe('/*\nSettings:\n    Dimensions: 21cm x 29.7cm\n*/\n\nAction.');
   });
 
   for (const view of ['Paged', 'Seamless']) {
@@ -3067,10 +3061,11 @@ test.describe('project settings', () => {
     await expect(page.locator('flow-script dialog').getByRole('heading', { name: 'Project Settings' })).toBeVisible();
   });
 
-  test('one section shows no rail, and the search finds its properties', async ({ page }) => {
+  test('the search finds properties in either section', async ({ page }) => {
     await open(page);
+    await setValue(page, 'Title: BIG\n\nAction.');
     const dialog = await openSettings(page);
-    await expect(dialog.locator('.fl-settings-rail')).toHaveCount(0);
+    await expect(dialog.locator('.fl-settings-rail')).toBeVisible();
     const search = dialog.getByRole('searchbox', { name: 'Search settings' });
     await search.fill('a4');
     await expect(dialog.getByText('Dimensions', { exact: true })).toBeVisible();
@@ -3081,7 +3076,7 @@ test.describe('project settings', () => {
 
   test('topics fold, and the section button folds or unfolds them all', async ({ page }) => {
     await open(page);
-    const dialog = await openSettings(page);
+    const dialog = await openPage(page);
     const topic = dialog.getByRole('button', { name: 'Paper' });
     await expect(topic).toHaveAttribute('aria-expanded', 'true');
     await dialog.getByRole('button', { name: 'Collapse all in Page' }).click();
@@ -3098,6 +3093,7 @@ test('the project settings draw the page at its proportions, measured', async ({
   await open(page);
   await chooseFromMenu(page, 'Project settings');
   const dialog = page.locator('flow-script dialog');
+  await dialog.locator('.fl-settings-rail').getByRole('button', { name: 'Page' }).click();
   const preview = dialog.getByRole('img', { name: /^Page / });
   await expect(preview).toHaveAttribute('aria-label', 'Page 8.5 by 11 in');
   const ratio = async () => {
