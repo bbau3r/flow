@@ -67,6 +67,19 @@ const ICONS = {
   layout: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>',
   trash: '<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/>',
   upload: '<path d="M12 15V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/>',
+  // Two people on the left, joined to one on the right: connecting with others.
+  connect: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="m8.3 7.2 7.4 3.6"/><path d="m8.3 16.8 7.4-3.6"/>',
+  key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3 20 3"/><path d="m15.5 7.5 3 3"/><path d="m18 5 2 2"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  'user-remove': '<circle cx="10" cy="8" r="4"/><path d="M3 21a7 7 0 0 1 11.5-5.4"/><path d="m17 15 4 4"/><path d="m21 15-4 4"/>',
+  copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
+  // Where to find something, such as the server people meet at.
+  pin: '<path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/>',
+  signal: '<path d="M4.5 9.5a11 11 0 0 1 15 0"/><path d="M7.5 13a6.5 6.5 0 0 1 9 0"/><path d="M12 17h.01"/>',
+  'eye-off': '<path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.2 3.2"/><path d="M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m3 3 18 18"/>',
+  leave: '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="m10 17-5-5 5-5"/><path d="M5 12h11"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
+  alert: '<path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
   'page-break': '<path d="M6 8V4a1 1 0 0 1 1-1h7l4 4v1"/><path d="M6 16v4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-4"/><path d="M3 12h2"/><path d="M8 12h2"/><path d="M14 12h2"/><path d="M19 12h2"/>',
 };
 
@@ -678,6 +691,115 @@ export function openModal(parent, { title, icon: iconName, body, actions, onClos
   return { dialog, close: () => dialog.close() };
 }
 
+/**
+ * A text box with an icon before it and buttons, such as Copy, at its end. With `showLabel` its
+ * label shows above it too; otherwise the icon and placeholder say what it's for. `onInput(value)`
+ * runs as it's typed in. Returns { root, input }.
+ */
+export function textField({ label, icon: iconName, value = '', placeholder = label, type = 'text', showLabel = false, readOnly = false, attrs, end = [], onInput }) {
+  const input = document.createElement('input');
+  input.type = type;
+  input.value = value;
+  input.placeholder = placeholder;
+  input.readOnly = readOnly;
+  input.spellcheck = false;
+  input.autocomplete = 'off';
+  input.setAttribute('aria-label', label);
+  setAttrs(input, attrs);
+  if (onInput) input.addEventListener('input', () => onInput(input.value));
+  const box = div('fl-field-box', input, ...end);
+  const field = div('fl-field', ...[iconName ? icon(iconName) : null, box].filter(Boolean));
+  if (!showLabel) return { root: field, input };
+  const caption = document.createElement('label');
+  caption.className = 'fl-field-caption';
+  caption.textContent = label;
+  fieldCount += 1;
+  input.id ||= `fl-field-${fieldCount}`;
+  caption.htmlFor = input.id;
+  return { root: div('fl-field-labelled', caption, field), input };
+}
+let fieldCount = 0;
+
+/** A turning ring, for something that's on its way. */
+export function spinner(label = 'Working') {
+  const node = document.createElement('span');
+  node.className = 'fl-spinner';
+  node.setAttribute('role', 'progressbar');
+  node.setAttribute('aria-label', label);
+  return node;
+}
+
+/**
+ * A message across the top of a card or dialog, such as an error, with an × to dismiss it.
+ * `tone` is 'danger' (the default) or 'info'. The node's `show(message)` shows another message
+ * and `show(null)` hides it.
+ */
+export function banner({ message = null, tone = 'danger', onDismiss } = {}) {
+  const text = document.createElement('span');
+  text.className = 'fl-banner-text';
+  const node = div(`fl-banner fl-banner-${tone}`, icon(tone === 'danger' ? 'alert' : 'info'), text,
+    button({ label: 'Dismiss', icon: 'close', iconOnly: true, cls: 'fl-banner-close', onClick: () => {
+      node.show(null);
+      onDismiss?.();
+    } }));
+  node.setAttribute('role', 'alert');
+  node.show = (next) => {
+    text.textContent = next ?? '';
+    node.hidden = !next;
+  };
+  node.show(message);
+  return node;
+}
+
+// The same width as the container queries that fold the bars.
+const SMALL_SCREEN = '(max-width: 600px)';
+
+/**
+ * Opens a card hanging below `anchor`, lined up with its right edge, as the top right corner's
+ * widgets need. It's in a modal dialog in `parent` (the page's body by default), so it keeps
+ * focus and closes with Escape or a click outside. On a small screen it flies in from the right
+ * and takes most of the screen. `content` is the card's nodes, and `set(nodes)` swaps them, as
+ * stepping into a detail does. `onClose` runs however it closes. Returns { dialog, card, set, close }.
+ */
+export function openPopover(anchor, { label, content = [], parent = document.body, onClose }) {
+  const card = div('fl-popover-card');
+  card.setAttribute('role', 'group');
+  card.setAttribute('aria-label', label);
+  card.tabIndex = -1;
+  const dialog = document.createElement('dialog');
+  dialog.className = 'fl-popover';
+  dialog.setAttribute('aria-label', label);
+  dialog.append(card);
+  const place = () => {
+    const small = matchMedia(SMALL_SCREEN).matches;
+    dialog.dataset.mode = small ? 'sheet' : 'card';
+    dialog.style.right = '';
+    dialog.style.top = '';
+    if (small) return;
+    const box = anchor.getBoundingClientRect();
+    dialog.style.right = `${Math.max(MENU_MARGIN, document.documentElement.clientWidth - box.right)}px`;
+    dialog.style.top = `${box.bottom + 6}px`;
+  };
+  const set = (nodes) => {
+    card.replaceChildren(...nodes.filter(Boolean));
+    card.focus({ preventScroll: true });
+  };
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  dialog.addEventListener('close', () => {
+    window.removeEventListener('resize', place);
+    dialog.remove();
+    onClose?.();
+  });
+  parent.append(dialog);
+  place();
+  window.addEventListener('resize', place);
+  dialog.showModal();
+  set(content);
+  return { dialog, card, set, close: () => dialog.close() };
+}
+
 // What each component's look is built from. Any of these can be set from outside as
 // --flow-<name>, in CSS or through registerTheme, and each defaults to the theme's colors.
 const CONTROL_TOKENS = {
@@ -912,6 +1034,77 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
   .fl-wide-only, .fl-compact-hide { display: none; }
   .fl-compact-only { display: contents; }
 }
+
+/* A text box with an icon before it and buttons at its end. */
+.fl-field-labelled { display: flex; flex-direction: column; gap: 4px; }
+.fl-field-caption { color: var(--flow-muted); font-size: 12.5px; font-weight: 600; }
+.fl-field { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fl-field > .fl-svg { color: var(--flow-accent); }
+.fl-field-box {
+  flex: 1; display: flex; align-items: center; gap: 2px; min-width: 0; height: 34px; padding: 0 3px 0 12px;
+  background: ${token('field-bg')}; color: ${token('field-ink')};
+  border: 1px solid ${token('field-border')}; border-radius: ${token('button-radius')};
+}
+.fl-field-box:focus-within { outline: 2px solid ${token('focus')}; outline-offset: 1px; }
+.fl-field-box > input {
+  flex: 1; min-width: 0; height: 100%; padding: 0;
+  background: transparent; color: inherit; border: 0; font: inherit;
+}
+.fl-field-box > input:focus-visible { outline: none; }
+.fl-field-box > input[readonly] { color: var(--flow-muted); }
+.fl-field-box > input::placeholder { color: var(--flow-muted); opacity: 0.8; }
+.fl-field-box > .fl-btn { flex: none; }
+
+.fl-spinner {
+  display: inline-block; flex: none; width: 1em; height: 1em; box-sizing: border-box;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: fl-spin 700ms linear infinite;
+}
+@keyframes fl-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .fl-spinner { animation-duration: 2s; } }
+
+.fl-banner {
+  display: flex; align-items: center; gap: 8px; padding: 6px 4px 6px 10px;
+  border: 1px solid; border-radius: 10px; font-size: 13.5px;
+}
+.fl-banner[hidden] { display: none; }
+.fl-banner-danger {
+  color: var(--flow-danger); border-color: color-mix(in srgb, var(--flow-danger) 45%, transparent);
+  background: color-mix(in srgb, var(--flow-danger) 12%, ${token('dialog-bg')});
+}
+.fl-banner-info {
+  color: var(--flow-ink); border-color: ${token('pill-tint-border')}; background: ${token('pill-tint-bg')};
+}
+.fl-banner-text { flex: 1; min-width: 0; color: var(--flow-ink); }
+
+/* A card hanging from a button in the top right corner, or a sheet from the right on a phone. */
+.fl-popover {
+  position: fixed; inset: auto; margin: 0; padding: 0; overflow: visible;
+  max-width: none; max-height: none; background: transparent; border: 0;
+  color: ${token('menu-ink')};
+  font-family: var(--flow-ui-font, Roboto, system-ui, sans-serif); font-size: 14px; line-height: 1.35;
+}
+.fl-popover::backdrop { background: transparent; }
+.fl-popover-card {
+  display: flex; flex-direction: column; gap: 10px;
+  box-sizing: border-box; width: 20rem; max-height: calc(100dvh - 90px); overflow: auto; padding: 10px;
+  background: ${token('menu-bg')};
+  border: 1px solid ${token('menu-border')}; border-radius: 14px;
+  box-shadow: 0 8px 28px var(--flow-shadow);
+  animation: fl-popover-in 150ms ease-out;
+}
+.fl-popover-card:focus { outline: none; }
+@keyframes fl-popover-in { from { opacity: 0; transform: translateY(-4px) scale(0.97); } }
+.fl-popover[data-mode="sheet"] { inset: 0; width: 100%; height: 100%; }
+.fl-popover[data-mode="sheet"]::backdrop { background: rgb(0 0 0 / 0.35); }
+.fl-popover[data-mode="sheet"] .fl-popover-card {
+  position: absolute; top: 0; right: 0; bottom: 0; width: min(400px, calc(100% - 48px)); max-height: none;
+  padding: 16px 14px calc(16px + env(safe-area-inset-bottom));
+  border-radius: 18px 0 0 18px; border-right: 0;
+  animation: fl-popover-fly 180ms ease-out;
+}
+@keyframes fl-popover-fly { from { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .fl-popover-card, .fl-popover[data-mode="sheet"] .fl-popover-card { animation: none; } }
 
 .fl-dialog {
   width: min(460px, calc(100vw - 32px)); padding: 20px;

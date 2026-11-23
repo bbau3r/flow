@@ -68,13 +68,27 @@ const cell = (className, ...children) => {
 // the action center to lean against when everything fits on one row.
 function createTopBar(actions) {
   const menu = createDocMenu({ onClose: actions.onMenuClose });
-  // The top right corner holds the app's widgets placed there.
+  // The top right corner holds the app's widgets placed there. On a small screen they fold
+  // behind a ⋮ button and drop down from it.
   const widgets = createWidgetShelf();
-  const end = cell('fl-topbar-end', widgets.root);
+  const end = cell('fl-topbar-end');
+  const setOpen = (open) => {
+    end.classList.toggle('fl-widgets-open', open);
+    more.setAttribute('aria-expanded', String(open));
+    if (open) document.addEventListener('pointerdown', outside, true);
+    else document.removeEventListener('pointerdown', outside, true);
+  };
+  const outside = (event) => {
+    if (!event.composedPath().includes(end)) setOpen(false);
+  };
+  const more = button({ label: 'More', icon: 'more', iconOnly: true, attrs: { 'aria-expanded': 'false' }, onClick: () => setOpen(!end.classList.contains('fl-widgets-open')) });
+  // Choosing a widget folds them away again.
+  widgets.root.addEventListener('click', () => setOpen(false));
+  end.append(pill({ label: 'More', cls: 'fl-topbar-more' }, more), widgets.root);
   const bar = document.createElement('div');
   bar.className = 'fl-topbar';
   bar.append(cell('fl-topbar-start', menu.root, cell('fl-topbar-tabs', slot('tabs'))), end);
-  return { bar, end, menu, widgets };
+  return { bar, end, menu, widgets, fold: () => setOpen(false) };
 }
 
 export function createRibbon(actions) {
@@ -166,6 +180,7 @@ export function createRibbon(actions) {
       document.fonts.removeEventListener('loadingdone', recenter);
       topics.close();
       topBar.menu.close();
+      topBar.fold();
       root.remove();
     },
     update(state) {

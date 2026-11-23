@@ -34,6 +34,28 @@ const docLines = (doc) => {
 const lineToJson = (text) => (text ? { type: 'line', content: [{ type: 'text', text }] } : { type: 'line' });
 const textToJson = (text) => ({ type: 'doc', content: parse(text).source.split('\n').map(lineToJson) });
 
+// Replaces the document between two positions inside lines with text, which may hold line breaks.
+function replaceText(tr, from, to, text) {
+  if (text) {
+    const nodes = text.split('\n').map((t) => tr.doc.type.schema.nodeFromJSON(lineToJson(t)));
+    tr.replace(from, to, new Slice(Fragment.from(nodes), 1, 1));
+  } else if (from !== to) tr.delete(from, to);
+  return tr;
+}
+
+// The position of an offset into the script's text, where each line ends in one line break.
+function offsetPos(doc, offset) {
+  let pos = 0;
+  let left = Math.max(0, offset);
+  for (let i = 0; i < doc.childCount; i++) {
+    const size = doc.child(i).content.size;
+    if (left <= size || i === doc.childCount - 1) return pos + 1 + Math.min(left, size);
+    left -= size + 1;
+    pos += doc.child(i).nodeSize;
+  }
+  return 1;
+}
+
 function lineClasses(line) {
   const classes = [`fl-${line.type}`];
   if (line.forced) classes.push('fl-forced');
@@ -616,6 +638,21 @@ export class FlowEditor {
     this.focus();
   }
 
+  /**
+   * Puts in changes made somewhere else, such as by someone writing in the same script: a list
+   * of { from, to, text }, with offsets into the script's text, in order and apart. They aren't
+   * steps of this editor's undo, which maps its own steps past them, so undo only takes back what
+   * was written here. The cursor moves with the text around it, and the page stays put.
+   */
+  applyChanges(changes) {
+    const tr = this.editor.state.tr;
+    // The last first, so that the offsets before each one still hold.
+    for (const { from, to, text } of [...changes].sort((x, y) => y.from - x.from)) {
+      replaceText(tr, offsetPos(tr.doc, from), offsetPos(tr.doc, to), text);
+    }
+    if (tr.docChanged) this.view.dispatch(tr.setMeta('addToHistory', false));
+  }
+
   // Edits from the Outline tab, where the script is hidden and keeps its place. Typing
   // joins the undo step before it, and anything else is a step of its own.
   commitFromOutline(lines, { typing = false } = {}) {
@@ -813,15 +850,11 @@ export class FlowEditor {
         dispatch(tr.setSelection(TextSelection.create(doc, posIn(doc, anchor), posIn(doc, head))));
       },
       replace: (from, to, text, cursor, { join = false } = {}) => {
-        const { doc, tr, schema } = state();
+        const { doc, tr } = state();
         let a = posIn(doc, from);
         let b = posIn(doc, to);
         if (a > b) [a, b] = [b, a];
-        const typed = String(text ?? '').replace(/\r\n?/g, '\n');
-        if (typed) {
-          const nodes = typed.split('\n').map((t) => schema.nodeFromJSON(lineToJson(t)));
-          tr.replace(a, b, new Slice(Fragment.from(nodes), 1, 1));
-        } else if (a !== b) tr.delete(a, b);
+        replaceText(tr, a, b, String(text ?? '').replace(/\r\n?/g, '\n'));
         if (cursor) tr.setSelection(TextSelection.create(tr.doc, posIn(tr.doc, cursor)));
         // Joining the undo step before it, as typing does; otherwise it's a step of its own.
         dispatch(join ? tr : closeHistory(tr));

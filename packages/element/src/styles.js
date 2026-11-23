@@ -149,6 +149,17 @@ ${PAGE_PREVIEW_CSS}
 .fl-widgets { display: contents; }
 .fl-widget[hidden] { display: none; }
 .fl-topbar-end > .fl-widgets { display: flex; align-items: center; gap: 8px; }
+.fl-topbar-more { display: none; }
+/* On a small screen the top right corner's widgets fold behind ⋮ and drop down from it. */
+@container (max-width: 600px) {
+  .fl-topbar-end { position: relative; }
+  .fl-topbar-end:has(> .fl-widgets > .fl-widget:not([hidden])) > .fl-topbar-more { display: inline-flex; }
+  .fl-topbar-end > .fl-widgets {
+    display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 6;
+    flex-direction: column; align-items: flex-end; gap: 6px;
+  }
+  .fl-topbar-end.fl-widgets-open > .fl-widgets { display: flex; }
+}
 /* An app's own tab, sized by the page scale like the outline. */
 .fl-workspace {
   position: relative; width: 100%; max-width: 52em; margin: 0 auto; padding: 1em 1em 2em;

@@ -8,7 +8,7 @@ import { PAGE_PREVIEW_CSS } from './page-preview.js';
 
 export { FlowScript, loadFonts };
 export { addPalette, registerTheme, removePalette, PALETTES } from './themes.js';
-export { actionPill, button, icon, iconSwitch, keyCapture, keyName, Menu, openModal, pill, pillSep, searchField, tabs, toggleSwitch } from './controls.js';
+export { actionPill, banner, button, icon, iconSwitch, keyCapture, keyName, Menu, menuHeading, openModal, openPopover, pill, pillSep, searchField, spinner, tabs, textField, toggleSwitch } from './controls.js';
 export { openSettingsPanel } from './settings-panel.js';
 export { dimensionsField, pageSizeSetting } from './dimensions-field.js';
 export { themeChooser, THEME_MODES } from './theme-chooser.js';
