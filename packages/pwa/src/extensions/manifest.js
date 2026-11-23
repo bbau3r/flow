@@ -9,7 +9,7 @@ export const PALETTE_COLORS = [
   'success', 'warning', 'danger', 'rule', 'ribbon-bg', 'ribbon-ink', 'bubble-bg', 'bubble-ink', 'shadow',
 ];
 
-export const SETTING_TYPES = ['boolean', 'choice', 'text', 'number'];
+export const SETTING_TYPES = ['boolean', 'choice', 'text', 'number', 'key'];
 
 const ID = /^[a-z][a-z0-9-]{1,39}$/;
 const PALETTE_ID = /^[a-z][a-z0-9]{1,23}$/;
@@ -112,11 +112,13 @@ function readSetting(setting) {
 export function settingValue(setting, value) {
   const fallback = () => {
     if ('default' in setting) return setting.default;
-    return { boolean: false, choice: setting.options?.[0]?.value, text: '', number: setting.min ?? 0 }[setting.type];
+    return { boolean: false, choice: setting.options?.[0]?.value, text: '', number: setting.min ?? 0, key: '' }[setting.type];
   };
   if (setting.type === 'boolean') return typeof value === 'boolean' ? value : fallback();
   if (setting.type === 'choice') return setting.options.some((option) => option.value === value) ? value : fallback();
   if (setting.type === 'text') return typeof value === 'string' ? value.slice(0, setting.multiline ? 5000 : 500) : fallback();
+  // A key, as KeyboardEvent.key names it, such as CapsLock, or '' for none.
+  if (setting.type === 'key') return typeof value === 'string' && value.length <= 40 ? value : fallback();
   const number = Number(value);
   if (value === '' || value == null || !Number.isFinite(number)) return fallback();
   return Math.min(setting.max ?? Infinity, Math.max(setting.min ?? -Infinity, number));

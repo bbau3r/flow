@@ -354,8 +354,12 @@ test.describe('Vim lite', () => {
     await page.keyboard.press('Escape');
     await expect(vimMode(page)).toHaveText('NORMAL');
     await expect.poll(() => value(page)).toBe('one big two three');
-    // The block cursor follows Normal mode.
+    // The block cursor follows Normal mode, with no thin line beside it.
     await expect(page.locator('flow-script .fl-caret-char')).toHaveCount(1);
+    await expect(editor(page)).toHaveCSS('caret-color', 'rgba(0, 0, 0, 0)');
+    await page.keyboard.type('i');
+    await expect(editor(page)).not.toHaveCSS('caret-color', 'rgba(0, 0, 0, 0)');
+    await page.keyboard.press('Escape');
     // Read has no cursor, so the widget stays in Write.
     await page.getByRole('tab', { name: 'Read' }).click();
     await expect(widget(page)).toBeHidden();
@@ -448,7 +452,7 @@ test.describe('Vim lite', () => {
     await expect.poll(() => value(page)).toBe('First new\nsecond');
   });
 
-  test('follows its settings: start mode, an escape chord, the widget', async ({ page }) => {
+  test('follows its settings: start mode and an escape chord', async ({ page }) => {
     await openExtensions(page);
     await toggleFor(page, 'vim-lite').check();
     await details(page, 'vim-lite').locator('[data-action="settings"]').click();
@@ -462,15 +466,37 @@ test.describe('Vim lite', () => {
     await page.keyboard.type('jk');
     await expect(vimMode(page)).toHaveText('NORMAL');
     await expect.poll(() => value(page)).toBe('abone');
+    // The widget is always there, and the clipboard always shared: they're no settings.
+    await expect(widget(page)).toHaveCount(1);
+  });
 
-    // Turned off, the widget goes; the keys still work.
-    await docPill(page).click();
-    await docMenu(page).locator('#app-settings').click();
-    await rail(page).getByRole('button', { name: 'Vim lite' }).click();
-    await settings(page).getByRole('switch', { name: 'Mode widget' }).uncheck();
+  test('a key chosen in its settings works as Escape, and can be cleared', async ({ page }) => {
+    await openExtensions(page);
+    await toggleFor(page, 'vim-lite').check();
+    await details(page, 'vim-lite').locator('[data-action="settings"]').click();
+    const field = settings(page).locator('.fl-key-capture');
+    await expect(field).toHaveText('None');
+    // Clicked, it takes the next key, even Escape, which would otherwise close the panel.
+    await field.click();
+    await expect(field).toHaveText('Press a key…');
+    await page.keyboard.press('CapsLock');
+    await expect(field).toHaveText('Caps Lock');
+    await settings(page).getByRole('button', { name: 'Clear Alternative Escape' }).click();
+    await expect(field).toHaveText('None');
+    await field.click();
     await page.keyboard.press('Escape');
-    await expect(widget(page)).toHaveCount(0);
-    await page.keyboard.type('x');
+    await expect(settings(page)).toBeVisible();
+    await expect(field).toHaveText('Esc');
+    await field.click();
+    await page.keyboard.press(';');
+    await expect(field).toHaveText(';');
+    await page.keyboard.press('Escape');
+
+    await scriptWith(page, 'one');
+    await page.keyboard.type('i');
+    await expect(vimMode(page)).toHaveText('INSERT');
+    await page.keyboard.type('a;');
+    await expect(vimMode(page)).toHaveText('NORMAL');
     await expect.poll(() => value(page)).toBe('aone');
   });
 
@@ -496,34 +522,141 @@ test.describe('Vim lite', () => {
     await expect(keys).toHaveText('/two');
     await expect(widget(page)).toContainText('2 matches');
     await page.keyboard.press('Enter');
-    await expect(vimMode(page)).toHaveText('NORMAL');
-    await expect(widget(page)).toContainText('Match 1 of 2');
+    // Found, the mode reads Match, with which one it is.
+    await expect(vimMode(page)).toHaveText('MATCH');
+    await expect(widget(page)).toContainText('1 of 2');
     // The cursor is on it: x takes its first letter.
     await page.keyboard.type('x');
+    await expect(vimMode(page)).toHaveText('NORMAL');
     await expect.poll(() => value(page)).toBe('one wo\nthree two\nfour');
     await page.keyboard.type('u');
     await page.keyboard.type('n');
-    await expect(widget(page)).toContainText('Match 2 of 2');
+    await expect(vimMode(page)).toHaveText('MATCH');
+    await expect(widget(page)).toContainText('2 of 2');
     await page.keyboard.type('n');
-    await expect(widget(page)).toContainText('Match 1 of 2, from the top');
+    await expect(widget(page)).toContainText('1 of 2, from the top');
     await page.keyboard.type('N');
-    await expect(widget(page)).toContainText('Match 2 of 2, from the bottom');
+    await expect(widget(page)).toContainText('2 of 2, from the bottom');
     // ? searches back; a capital makes it match case.
     await page.keyboard.type('?One');
     await page.keyboard.press('Enter');
     await expect(widget(page)).toContainText('No match for “One”');
     await page.keyboard.type('?one');
     await page.keyboard.press('Enter');
-    await expect(widget(page)).toContainText('Match 1 of 1');
+    await expect(widget(page)).toContainText('1 of 1');
     // * looks for the word under the cursor, whole.
     await page.keyboard.type('*');
-    await expect(widget(page)).toContainText('Match 1 of 1, from the top');
+    await expect(widget(page)).toContainText('1 of 1, from the top');
     // Escape leaves a search being typed.
     await page.keyboard.type('/thr');
     await page.keyboard.press('Escape');
     await expect(vimMode(page)).toHaveText('NORMAL');
     await expect(widget(page)).toContainText('Cancelled');
     await expect.poll(() => value(page)).toBe('one two\nthree two\nfour');
+  });
+
+  test('j and k follow wrapped lines, or whole lines with the setting off', async ({ page }) => {
+    await turnOn(page, 'vim-lite');
+    const long = Array.from({ length: 60 }, (_, i) => `word${i}`).join(' ');
+    await scriptWith(page, `${long}\nnext`);
+    // A row down is still the long line, so x takes a letter from it.
+    await page.keyboard.type('jx');
+    await expect.poll(() => value(page)).not.toBe(`${long}\nnext`);
+    expect((await value(page)).split('\n')[1]).toBe('next');
+    expect((await value(page)).split('\n')[0]).not.toBe(long);
+
+    await openExtensions(page);
+    await details(page, 'vim-lite').locator('[data-action="settings"]').click();
+    await settings(page).getByRole('switch', { name: 'Follow wrapped lines' }).uncheck();
+    await page.keyboard.press('Escape');
+    await scriptWith(page, `${long}\nnext`);
+    await page.keyboard.type('jx');
+    await expect.poll(() => value(page)).toBe(`${long}\next`);
+  });
+
+  test('moving into a narrower column, such as dialogue, lands at the row’s start or end', async ({ page }) => {
+    await turnOn(page, 'vim-lite');
+    const long = Array.from({ length: 40 }, (_, i) => `word${i}`).join(' ');
+    const script = `${long}\n\nBOB\nHello there.`;
+    // From the blank line, up onto the start of the action's last row, then two rows down to the
+    // character cue, which starts further in: its start.
+    await scriptWith(page, script, 1);
+    await page.keyboard.type('kjjx');
+    await expect.poll(() => value(page)).toBe(`${long}\n\nOB\nHello there.`);
+    // From the end of a line of dialogue, further right than the cue above it ends: the cue's end.
+    const dialogue = `${long}\n\nBOB\nHello there, how are you today?`;
+    await scriptWith(page, dialogue, 3);
+    await page.keyboard.type('$kx');
+    await expect.poll(() => value(page)).toBe(`${long}\n\nBO\nHello there, how are you today?`);
+  });
+
+  test('the block cursor blinks at the speed chosen, or not at all', async ({ page }) => {
+    await turnOn(page, 'vim-lite');
+    await scriptWith(page, 'one');
+    const caret = page.locator('flow-script .fl-caret-char');
+    await expect(caret).toHaveClass(/fl-caret-blink/);
+    await expect(caret).toHaveAttribute('style', /--fl-caret-period: 1000ms/);
+    await openExtensions(page);
+    await details(page, 'vim-lite').locator('[data-action="settings"]').click();
+    await settings(page).getByRole('combobox', { name: 'Blink speed' }).selectOption('fast');
+    await page.keyboard.press('Escape');
+    await scriptWith(page, 'one');
+    await expect(caret).toHaveAttribute('style', /--fl-caret-period: 600ms/);
+    await openExtensions(page);
+    await details(page, 'vim-lite').locator('[data-action="settings"]').click();
+    await settings(page).getByRole('switch', { name: 'Cursor blinks' }).uncheck();
+    await page.keyboard.press('Escape');
+    await scriptWith(page, 'one');
+    await expect(caret).not.toHaveClass(/fl-caret-blink/);
+  });
+
+  test('copies to the system clipboard, pastes what was copied elsewhere, and keeps named registers', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await turnOn(page, 'vim-lite');
+    await scriptWith(page, 'alpha\nbeta');
+    // Windows keeps line breaks on the clipboard as \r\n.
+    const clipboard = () => page.evaluate(async () => (await navigator.clipboard.readText()).replace(/\r\n?/g, '\n'));
+    // A copied line goes to the clipboard as a line.
+    await page.keyboard.type('yy');
+    await expect.poll(clipboard).toBe('alpha\n');
+    await page.keyboard.type('p');
+    await expect.poll(() => value(page)).toBe('alpha\nalpha\nbeta');
+    // Something newer copied elsewhere is what p pastes.
+    await page.evaluate(() => navigator.clipboard.writeText('ELSE'));
+    await page.keyboard.type('0P');
+    await expect.poll(() => value(page)).toBe('alpha\nELSEalpha\nbeta');
+    // A named register keeps its own, and "_ keeps nothing.
+    await page.keyboard.type('G"ayy');
+    await page.keyboard.type('gg"_dd');
+    await expect.poll(() => value(page)).toBe('ELSEalpha\nbeta');
+    await expect.poll(clipboard).toBe('beta\n');
+    await page.keyboard.type('"ap');
+    await expect.poll(() => value(page)).toBe('ELSEalpha\nbeta\nbeta');
+  });
+
+  test('records a macro with q and plays it back with @, @@ and a count', async ({ page }) => {
+    await turnOn(page, 'vim-lite');
+    await scriptWith(page, 'one\ntwo\nthree\nfour');
+    await page.keyboard.type('qa');
+    await expect(page.locator('flow-script .vim-rec')).toHaveText('REC a');
+    await page.keyboard.type('I- ');
+    await page.keyboard.press('Escape');
+    await page.keyboard.type('j');
+    await page.keyboard.type('q');
+    await expect(page.locator('flow-script .vim-rec')).toBeHidden();
+    await expect(widget(page)).toContainText('Recorded @a');
+    await expect.poll(() => value(page)).toBe('- one\ntwo\nthree\nfour');
+    await page.keyboard.type('@a');
+    await expect.poll(() => value(page)).toBe('- one\n- two\nthree\nfour');
+    await page.keyboard.type('@@');
+    await expect.poll(() => value(page)).toBe('- one\n- two\n- three\nfour');
+    // What a macro types is one undo step, as typing is.
+    await page.keyboard.type('u');
+    await expect.poll(() => value(page)).toBe('- one\n- two\nthree\nfour');
+    await page.locator('flow-script').evaluate((el) => { el.value = 'one\ntwo\nthree\nfour'; el.selectText(1, 0, 0); });
+    await page.keyboard.press('Escape');
+    await page.keyboard.type('2@a');
+    await expect.poll(() => value(page)).toBe('one\n- two\n- three\nfour');
   });
 
   test('turned off again, it leaves nothing behind', async ({ page }) => {

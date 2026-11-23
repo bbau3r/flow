@@ -3,7 +3,9 @@
 // register for what was last deleted or copied. Each change it makes is one undo step.
 //
 // Normal mode moves and edits; Insert types as usual; Visual and Visual line select. / and ?
-// search for words, which n and N find again. What it knows is in MOTIONS, OPERATORS,
+// search for words, which n and N find again. Registers hold what's copied: the unnamed one,
+// a to z, and + and * for the system clipboard, which the unnamed one can share. q records the
+// keys of a macro into a register, and @ plays it back. What it knows is in MOTIONS, OPERATORS,
 // commandKey, normalKey and visualKey, and the README lists it too.
 
 // Motions, by key: what they're called and what an operator takes with them. `inclusive` takes
@@ -40,7 +42,18 @@ const KEY_ALIASES = {
   ArrowLeft: 'h', ArrowRight: 'l', ArrowDown: 'j', ArrowUp: 'k', Backspace: 'h', Enter: '+', Home: '0', End: '$', Delete: 'x',
 };
 
-export const MODE_LABELS = { normal: 'NORMAL', insert: 'INSERT', visual: 'VISUAL', 'visual-line': 'V-LINE', search: 'SEARCH' };
+export const MODE_LABELS = { normal: 'NORMAL', insert: 'INSERT', visual: 'VISUAL', 'visual-line': 'V-LINE', search: 'SEARCH', match: 'MATCH' };
+
+// How long a blinking cursor takes to blink once, in milliseconds.
+const BLINK_PERIODS = { slow: 1600, normal: 1000, fast: 600 };
+
+// The keys a macro keeps: what was pressed, and the modifiers that change what it does.
+const remember = (event) => ({ key: event.key, ctrlKey: !!event.ctrlKey, metaKey: !!event.metaKey, altKey: !!event.altKey, shiftKey: !!event.shiftKey });
+const SPECIAL_KEYS = new Set(['Escape', 'Enter', 'Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
+const worthKeeping = (event) => event.key.length === 1 || SPECIAL_KEYS.has(event.key);
+
+// Macros can play other macros, up to here, so one that plays itself stops.
+const MACRO_DEPTH = 20;
 
 const CHORD_MS = 600;
 
@@ -56,17 +69,33 @@ const classOf = (char, big) => {
 };
 
 /**
- * Starts an engine. `options()` gives { startMode, chord, blockCursor } as they are now, and
- * `onStatus({ mode, keys, pending, action })` hears what to show after every key: the mode, the
- * keys of the command typed or being typed, and what it did or is waiting for.
+ * Starts an engine. `options()` gives { startMode, chord, blockCursor, blink, blinkSpeed, wrap,
+ * escapeKey } as they are now, and `onStatus({ mode, keys, pending, action, recording })` hears
+ * what to show after every key: the mode, the keys of the command typed or being typed, what it
+ * did or is waiting for, and the register a macro is being recorded into, if one is.
  */
 export function createVim({ options, onStatus }) {
   let mode = options().startMode === 'insert' ? 'insert' : 'normal';
   let keys = ''; // the command so far, as typed
   let shownKeys = ''; // the last command, shown until the next key
   let action = '';
-  let pending = { count: '', op: '', opCount: '', prefix: '' };
+  let pending = { count: '', op: '', opCount: '', prefix: '', reg: '' };
+  // The unnamed register, and a to z. Each holds { text, linewise }.
   let register = { text: '', linewise: false };
+  const named = new Map();
+  // What Flow last put on the system clipboard, to tell when something newer was copied elsewhere.
+  let lastClip = null;
+  // A macro being recorded, { name, keys }, the macros kept, by register, and the last one played.
+  let recording = null;
+  const macros = new Map();
+  let lastMacro = '';
+  let playing = 0;
+  // Work that has to wait, such as reading the clipboard, and the keys pressed meanwhile.
+  let busy = null;
+  const backlog = [];
+  // A search's match was the last thing found, so the mode reads Match until the next key.
+  let matched = false;
+  let goalX = null; // how far across the screen j and k keep to, following wrapped lines
   let anchor = null; // where Visual mode started
   let cursor = null; // Visual mode's moving end; the other modes use the editor's own cursor
   let column = null; // the column j and k try to keep
@@ -79,11 +108,16 @@ export function createVim({ options, onStatus }) {
   let text = null;
 
   const visual = () => mode === 'visual' || mode === 'visual-line';
-  // While a search is typed, the mode reads Search.
-  const status = () => onStatus({ mode: searching ? 'search' : mode, keys: keys || shownKeys, pending: !!keys, action });
+  // While a search is typed the mode reads Search, and once it's found, Match.
+  const shownMode = () => (searching ? 'search' : matched && mode === 'normal' ? 'match' : mode);
+  const status = () => onStatus({ mode: shownMode(), keys: keys || shownKeys, pending: !!keys, action, recording: recording?.name ?? '' });
 
   const caret = () => {
-    text?.setCaret(mode !== 'insert' && options().blockCursor !== false ? 'block' : null);
+    const settings = options();
+    text?.setCaret(mode !== 'insert' && settings.blockCursor !== false ? 'block' : null, {
+      blink: settings.blink !== false,
+      period: BLINK_PERIODS[settings.blinkSpeed] ?? BLINK_PERIODS.normal,
+    });
   };
 
   // --- Reading the text ---
@@ -185,6 +219,18 @@ export function createVim({ options, onStatus }) {
       return at;
     };
     const vertical = (delta, toFirst) => {
+      // Following wrapped lines, each step is a row on screen, keeping to the same distance
+      // across. An operator still takes whole lines, as in Vim.
+      if (!toFirst && !forOperator && options().wrap !== false && text.screenLine) {
+        let at = pos;
+        for (let n = 0; n < Math.abs(delta); n++) {
+          const next = text.screenLine(at, Math.sign(delta), goalX);
+          if (!next) break;
+          at = next.place;
+          goalX = next.x;
+        }
+        return at;
+      }
       const line = Math.max(0, Math.min(lastLine(), pos.line + delta));
       if (toFirst) return { line, ch: firstNonBlank(line) };
       column ??= pos.ch;
@@ -219,10 +265,78 @@ export function createVim({ options, onStatus }) {
     }
   }
 
+  // --- Registers and the clipboard ---
+
+  const shareClipboard = () => !!navigator.clipboard;
+
+  // Puts what was copied or deleted where the command asked: a named register, the system
+  // clipboard, or nowhere for _, and the unnamed register too, which shares the clipboard.
+  function keep(entry) {
+    const target = pending.reg;
+    if (target === '_') return;
+    if (/^[a-z]$/.test(target)) named.set(target, entry);
+    if (/^[A-Z]$/.test(target)) {
+      // A capital adds to the register.
+      const was = named.get(target.toLowerCase());
+      named.set(target.toLowerCase(), was ? { text: `${was.text}${entry.linewise || was.linewise ? '\n' : ''}${entry.text}`, linewise: was.linewise || entry.linewise } : entry);
+    }
+    register = entry;
+    if (target === '+' || target === '*' || shareClipboard()) {
+      lastClip = entry.linewise ? `${entry.text}\n` : entry.text;
+      navigator.clipboard?.writeText(lastClip).catch(() => {});
+    }
+  }
+
+  const fromClipboard = (clip) => {
+    const clean = clip.replace(/\r\n?/g, '\n');
+    return clean.endsWith('\n') ? { text: clean.slice(0, -1), linewise: true } : { text: clean, linewise: false };
+  };
+
+  // What a paste puts in, which can wait on reading the system clipboard: a named register, the
+  // clipboard for + and *, or the unnamed register, unless something newer was copied elsewhere.
+  async function pasteSource(target) {
+    if (/^[a-zA-Z]$/.test(target)) return named.get(target.toLowerCase()) ?? null;
+    if (target === '+' || target === '*' || shareClipboard()) {
+      try {
+        const clip = await navigator.clipboard.readText();
+        if (clip && (target === '+' || target === '*' || clip !== lastClip)) return fromClipboard(clip);
+      } catch {
+        // Not allowed to read it, which leaves Vim's own.
+      }
+    }
+    return register;
+  }
+
+  // Runs work that waits, such as on the clipboard. Keys pressed meanwhile wait their turn, and
+  // are played once it's done, before anything else. Work started by other work, such as a paste
+  // in a macro, is what the key that started it waits on.
+  let inner = null;
+  function later(work) {
+    const run = async () => {
+      try {
+        await work();
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    if (busy) {
+      inner = run();
+      return;
+    }
+    let release;
+    busy = new Promise((resolve) => { release = resolve; });
+    (async () => {
+      await run();
+      while (backlog.length) await feed(backlog.shift());
+      busy = null;
+      release();
+    })();
+  }
+
   // --- Changing the text ---
 
   function deleteLines(a, b, { keepOne = false } = {}) {
-    register = { text: linesOf(a, b), linewise: true };
+    keep({ text: linesOf(a, b), linewise: true });
     if (keepOne) text.replace({ line: a, ch: 0 }, { line: b, ch: len(b) }, '', { line: a, ch: 0 });
     else if (b < lastLine()) text.replace({ line: a, ch: 0 }, { line: b + 1, ch: 0 }, '', { line: a, ch: firstNonBlank(b + 1) });
     else if (a > 0) text.replace({ line: a - 1, ch: len(a - 1) }, { line: b, ch: len(b) }, '', { line: a - 1, ch: firstNonBlank(a - 1) });
@@ -236,7 +350,7 @@ export function createVim({ options, onStatus }) {
       const a = Math.min(from.line, to.line);
       const b = Math.max(from.line, to.line);
       if (op === 'y') {
-        register = { text: linesOf(a, b), linewise: true };
+        keep({ text: linesOf(a, b), linewise: true });
         text.setCursor(clampNormal({ line: a, ch: before(to, from) ? to.ch : from.ch }));
         return;
       }
@@ -246,7 +360,7 @@ export function createVim({ options, onStatus }) {
     }
     const [a, last] = ordered(from, to);
     const b = inclusive ? { line: last.line, ch: Math.min(last.ch + 1, len(last.line)) } : last;
-    register = { text: between(a, b), linewise: false };
+    keep({ text: between(a, b), linewise: false });
     if (op === 'y') {
       text.setCursor(a);
       return;
@@ -256,11 +370,19 @@ export function createVim({ options, onStatus }) {
     else text.setCursor(clampNormal(a));
   }
 
+  // Pastes from the register the command named, once its text is known.
   function paste(after, count) {
-    if (!register.text) return;
+    const target = pending.reg;
+    later(async () => {
+      const entry = await pasteSource(target);
+      if (text && entry?.text) put(entry, after, count);
+    });
+  }
+
+  function put(entry, after, count) {
     const pos = text.cursor();
-    const chunk = Array(count).fill(register.text).join(register.linewise ? '\n' : '');
-    if (register.linewise) {
+    const chunk = Array(count).fill(entry.text).join(entry.linewise ? '\n' : '');
+    if (entry.linewise) {
       const end = { line: pos.line, ch: len(pos.line) };
       if (after) text.replace(end, end, `\n${chunk}`, { line: pos.line + 1, ch: 0 });
       else text.replace({ line: pos.line, ch: 0 }, { line: pos.line, ch: 0 }, `${chunk}\n`, { line: pos.line, ch: 0 });
@@ -368,7 +490,7 @@ export function createVim({ options, onStatus }) {
   const reset = () => {
     keys = '';
     searching = null;
-    pending = { count: '', op: '', opCount: '', prefix: '' };
+    pending = { count: '', op: '', opCount: '', prefix: '', reg: '' };
   };
 
   function done(name) {
@@ -395,9 +517,44 @@ export function createVim({ options, onStatus }) {
     const count = (Number(pending.opCount) || 1) * (Number(pending.count) || 1);
     const { op, prefix } = pending;
 
+    if (prefix === '"') {
+      if (!/^[a-zA-Z+*_"]$/.test(key)) return unknown();
+      pending.reg = key === '"' ? '' : key;
+      pending.prefix = '';
+      return wait(key === '+' || key === '*' ? 'System clipboard…' : key === '_' ? 'Nowhere…' : `Register ${key}…`);
+    }
+    if (prefix === 'q') {
+      if (!/^[a-z]$/.test(key)) return unknown();
+      recording = { name: key, keys: [] };
+      return done(`Recording @${key}`);
+    }
+    if (prefix === '@') {
+      const name = key === '@' ? lastMacro : key;
+      if (!/^[a-z]$/.test(name) || !macros.has(name)) return done(name ? `No macro in @${name}` : 'No macro played yet');
+      return playMacro(name, count);
+    }
     if (prefix === 'r') return replaceChar(key, count);
     if (prefix && MOTIONS[prefix]?.wantsChar) return runMotion(op, prefix, { count, counted, char: key });
     if (prefix === 'g') return key === 'g' ? runMotion(op, 'gg', { count, counted }) : unknown();
+
+    if (key === '"' && !op) {
+      pending.prefix = '"';
+      return wait('Register…');
+    }
+    if (key === 'q' && !op && !visual()) {
+      if (recording) {
+        const { name, keys: kept } = recording;
+        recording = null;
+        macros.set(name, kept);
+        return done(`Recorded @${name}`);
+      }
+      pending.prefix = 'q';
+      return wait('Record into…');
+    }
+    if (key === '@' && !op && !visual()) {
+      pending.prefix = '@';
+      return wait('Play…');
+    }
 
     // A lone 0 is a motion; after another digit it's part of the count.
     if (/\d/.test(key) && (key !== '0' || pending.count)) {
@@ -478,16 +635,18 @@ export function createVim({ options, onStatus }) {
       at = found[index];
     }
     column = null;
+    goalX = null;
     if (visual()) {
       cursor = at;
       drawVisual();
     } else text.setCursor(at);
     const round = wrapped ? (dir > 0 ? ', from the top' : ', from the bottom') : '';
-    return done(`Match ${index + 1} of ${found.length}${round}`);
+    matched = !visual();
+    return done(`${index + 1} of ${found.length}${round}`);
   }
 
   function startSearch(dir, count) {
-    pending = { count: '', op: '', opCount: '', prefix: '' };
+    pending = { count: '', op: '', opCount: '', prefix: '', reg: '' };
     searching = { dir, count, text: '' };
     keys = dir > 0 ? '/' : '?';
     return wait(dir > 0 ? 'Type to search forward' : 'Type to search back');
@@ -527,7 +686,10 @@ export function createVim({ options, onStatus }) {
     const pos = here();
     const target = move(motion, pos, { count, counted, char, forOperator: !!op });
     if (!target) return done(`${spec.name}: not found`);
-    if (!['j', 'k'].includes(motion)) column = null;
+    if (!['j', 'k'].includes(motion)) {
+      column = null;
+      goalX = null;
+    }
     if (!op) {
       if (visual()) {
         cursor = target;
@@ -656,6 +818,117 @@ export function createVim({ options, onStatus }) {
     return false;
   }
 
+  // --- Macros ---
+
+  // Plays a macro's keys `count` times, as if they were pressed, once anything waiting is done.
+  function playMacro(name, count) {
+    lastMacro = name;
+    const kept = macros.get(name);
+    done(`Playing @${name}`);
+    if (playing >= MACRO_DEPTH) return true;
+    later(async () => {
+      playing += 1;
+      try {
+        for (let n = 0; n < count; n++) {
+          for (const key of kept) await feed(key);
+        }
+      } finally {
+        playing -= 1;
+      }
+    });
+    return true;
+  }
+
+  // A key from a macro or one that waited: handled as if pressed, and in Insert mode, typed.
+  async function feed(key) {
+    if (!text) return;
+    if (!handle(key) && mode === 'insert') typeInInsert(key);
+    if (inner) {
+      const waiting = inner;
+      inner = null;
+      await waiting;
+    }
+  }
+
+  // Types what a key would type in Insert mode, as the browser does for a key that's pressed.
+  // What's typed joins one undo step, as typing does.
+  function typeInInsert(key) {
+    if (key.ctrlKey || key.metaKey || key.altKey) return;
+    const pos = text.cursor();
+    const typing = { join: true };
+    if (key.key.length === 1) text.replace(pos, pos, key.key, { line: pos.line, ch: pos.ch + 1 }, typing);
+    else if (key.key === 'Enter') text.replace(pos, pos, '\n', { line: pos.line + 1, ch: 0 }, typing);
+    else if (key.key === 'Backspace') {
+      const back = backward(pos);
+      if (back) text.replace(back, pos, '', back, typing);
+    } else if (key.key === 'Delete') {
+      const on = forward(pos);
+      if (on) text.replace(pos, on, '', pos, typing);
+    } else if (key.key === 'ArrowLeft') text.setCursor(backward(pos) ?? pos);
+    else if (key.key === 'ArrowRight') text.setCursor(forward(pos) ?? pos);
+    else if (key.key === 'ArrowUp' || key.key === 'ArrowDown') {
+      const line = Math.max(0, Math.min(lastLine(), pos.line + (key.key === 'ArrowUp' ? -1 : 1)));
+      text.setCursor({ line, ch: Math.min(pos.ch, len(line)) });
+    }
+  }
+
+  // The key as Vim reads it. The key chosen to work as Escape reads as Escape. Caps Lock still
+  // turns capitals on when it's that key, so letters read as if it were off.
+  function settle(event) {
+    const kept = remember(event);
+    const chosen = options().escapeKey;
+    if (chosen && event.key === chosen && !event.ctrlKey && !event.metaKey && !event.altKey) return { ...kept, key: 'Escape' };
+    if (chosen === 'CapsLock' && /^[a-zA-Z]$/.test(event.key) && event.getModifierState?.('CapsLock')) {
+      const flipped = event.key === event.key.toUpperCase() ? event.key.toLowerCase() : event.key.toUpperCase();
+      return { ...kept, key: flipped, flipped: true };
+    }
+    return kept;
+  }
+
+  // Handles a key, pressed or played: returns true when Vim takes it.
+  function handle(event) {
+    if (event.isComposing || event.key === 'Dead' || event.key === 'Process') return false;
+    matched = false;
+    if (event.key === 'Escape' || (event.ctrlKey && event.key === '[')) {
+      // With nothing to cancel, Escape is left for whatever else wants it.
+      if (mode === 'normal' && !keys) {
+        status();
+        return false;
+      }
+      if (keys) {
+        reset();
+        return done('Cancelled');
+      }
+      enterNormal();
+      return done('Normal');
+    }
+    if (searching) return searchKey(event);
+    if (mode === 'insert') {
+      if (insertKey(event)) return true;
+      // With Caps Lock as Escape, a letter types as if Caps Lock were off.
+      if (event.flipped) {
+        typeInInsert(event);
+        return true;
+      }
+      return false;
+    }
+    // Ctrl and Cmd shortcuts belong to the app, apart from Ctrl+R, which redoes.
+    if (event.ctrlKey || event.metaKey) {
+      if (event.key.toLowerCase() !== 'r' || event.shiftKey || event.altKey) return false;
+      reset();
+      text.redo();
+      if (!visual()) text.setCursor(clampNormal(text.cursor()));
+      keys = 'Ctrl+R';
+      return done('Redo');
+    }
+    if (event.altKey) return false;
+    // Tab would type, so outside Insert it does nothing.
+    if (event.key === 'Tab') return !event.shiftKey;
+    const key = KEY_ALIASES[event.key] ?? event.key;
+    if (key.length !== 1) return false;
+    return commandKey(key);
+  }
+
   return {
     get mode() { return mode; },
     attach(api) {
@@ -685,33 +958,18 @@ export function createVim({ options, onStatus }) {
     keydown(event, api) {
       text = api;
       if (event.isComposing || event.key === 'Dead' || event.key === 'Process') return false;
-      if (event.key === 'Escape' || (event.ctrlKey && event.key === '[')) {
-        // With nothing to cancel, Escape is left for whatever else wants it.
-        if (mode === 'normal' && !keys) return false;
-        if (keys) {
-          reset();
-          return done('Cancelled');
-        }
-        enterNormal();
-        return done('Normal');
+      const key = settle(event);
+      // While something waits, such as a paste on the clipboard, keys wait their turn.
+      if (busy && worthKeeping(key)) {
+        backlog.push(key);
+        if (recording) recording.keys.push(key);
+        return true;
       }
-      if (searching) return searchKey(event);
-      if (mode === 'insert') return insertKey(event);
-      // Ctrl and Cmd shortcuts belong to the app, apart from Ctrl+R, which redoes.
-      if (event.ctrlKey || event.metaKey) {
-        if (event.key.toLowerCase() !== 'r' || event.shiftKey || event.altKey) return false;
-        reset();
-        text.redo();
-        if (!visual()) text.setCursor(clampNormal(text.cursor()));
-        keys = 'Ctrl+R';
-        return done('Redo');
-      }
-      if (event.altKey) return false;
-      // Tab would type, so outside Insert it does nothing.
-      if (event.key === 'Tab') return !event.shiftKey;
-      const key = KEY_ALIASES[event.key] ?? event.key;
-      if (key.length !== 1) return false;
-      return commandKey(key);
+      // A macro keeps every key pressed while it records, apart from the q that ends it.
+      const recordingInto = recording;
+      const taken = handle(key);
+      if (recordingInto && recording === recordingInto && worthKeeping(key)) recordingInto.keys.push(key);
+      return taken;
     },
     // Text that arrives without a key, such as from a phone's keyboard, stays out of the
     // script outside Insert mode.

@@ -41,7 +41,7 @@ The PWA imports the element from source (`@flow/element/source`), not from its b
 | `inline.js` | Emphasis (`*`, `**`, `***`, `_`, `\`) as runs with offsets | `parseInline` |
 | `layout.js` | Parsed script to pages of positioned rows. Wrapping, dialogue, (MORE)/(CONT'D), pagination. | `layout`, `titlePositions`, `wrapRuns`, `COL`, `WIDTH`, `DEFAULT_OPTIONS` |
 | `settings.js` | Paper profiles, dimension parsing/formatting, reading/writing the Settings boneyard | `parseDimensions`, `formatDimensions`, `pageProfile`, `resolvePaper`, `writeSetting`, `PROFILES`, `CUSTOM_LIMITS` |
-| `convert.js` | Ribbon edits: change a line's type, emphasis, boneyard, dual dialogue, page break, title-page Enter/Backspace | `applyLineType`, `toggleEmphasis`, `emphasisAt`, `toggleBoneyard`, `toggleDual`, `dualAt`, `insertPageBreak`, `continueTitleField`, `joinTitleValue`, `lineTypeKey` |
+| `convert.js` | Ribbon edits: change a line's type, emphasis, boneyard, dual dialogue, page break, title-page Enter/Backspace, and the title page's fields as values for Project settings' Cover | `applyLineType`, `toggleEmphasis`, `emphasisAt`, `toggleBoneyard`, `toggleDual`, `dualAt`, `insertPageBreak`, `continueTitleField`, `joinTitleValue`, `titleFields`, `setTitleFields`, `lineTypeKey` |
 | `outline.js` | Outline-tab edits: cards from `#`/`##`/scenes/transitions, drop slots, moving blocks, adding/removing acts, sequences, synopses | `outlineCards`, `outlineSlots`, `moveOutlineBlock`, `addOutlineSection`, `addOutlineSynopsis`, `removeOutlineCard`, `setOutlineSceneNumber`, ... |
 | `template.js` | New-script title page, from given fields and page size | `newScript`, `DEFAULT_COVER` |
 | `pdf.js` | Draws `layout()` output with pdf-lib. Separate entry `@flow/core/pdf`. | `renderPdf` |
@@ -89,10 +89,10 @@ return new lines, plus a cursor where relevant.
 | `statusbar.js` | Bottom pills: each tab's view pill (built by `viewPill()`: view menu plus the width `iconSwitch`), scale, page jump, widget shelves (after the left pills, and just before undo/redo), `status-end` slot. `SCALE_MIN/MAX/STEP`. Add view controls inside `viewPill()` so Write and Read both get them. |
 | `highlights.js` | Read-tab highlights via the CSS Custom Highlight API: painter, toolbar dots, Highlight Manager dialog, color popover (vanilla-colorful) |
 | `export-dialog.js` | PDF export options modal |
-| `settings-dialog.js` | Project settings (page dimensions) on `openSettingsPanel`, previews live, Save writes the boneyard |
+| `settings-dialog.js` | Project settings on `openSettingsPanel`, in two sections: Cover (the title page's own fields, in order) and Page (dimensions). Changes go into the script as they're made, through `FlowScript.#writeProject` |
 | `dimensions-field.js` | Paper size picker (`dimensionsField`, used by the PDF export) and `pageSizeSetting`, the picker plus the sheet drawing as one settings property, used by project settings and the PWA's Defaults. `DIMENSIONS_CSS` |
 | `page-preview.js` | Small drawing of the sheet with measurements. `PAGE_PREVIEW_CSS` |
-| `controls.js` | Shared UI kit: `button`, `pill`, `pillSep`, `foldingPill`, `tabs` (`fixed` keeps the pill at any width), `actionPill`, `searchField`, `iconSwitch`, `toggleSwitch`, `Menu`, `icon` (a name, or `{ paths }` from an extension), `tabs({ fit })` (measures, and folds to a dropdown), `openModal`, `icon`, `CONTROL_TOKENS` (including `page-shadow`, `desk-noise`, `desk-gradient`), `DESK_BACKGROUND` and the `.fl-desk` and `.fl-paper` classes, `CONTROLS_CSS`, `token()`. New components build on these and style with `token()`. |
+| `controls.js` | Shared UI kit: `button`, `pill`, `pillSep`, `foldingPill`, `tabs` (`fixed` keeps the pill at any width), `actionPill`, `searchField`, `iconSwitch`, `toggleSwitch`, `keyCapture` (takes a key, for `key` settings), `Menu`, `icon` (a name, or `{ paths }` from an extension), `tabs({ fit })` (measures, and folds to a dropdown), `openModal`, `icon`, `CONTROL_TOKENS` (including `page-shadow`, `desk-noise`, `desk-gradient`), `DESK_BACKGROUND` and the `.fl-desk` and `.fl-paper` classes, `CONTROLS_CSS`, `token()`. New components build on these and style with `token()`. |
 | `themes.js` | `PALETTES` (sage, sand, sea, romance, forest, lavender, graphite x light/dark), `registerTheme`, `THEME_CSS` (`:host`), `PAGE_THEME_CSS` (`:root[data-theme]`), and `addPalette`/`removePalette` for palettes added at run time, in adopted stylesheets |
 | `styles.js` | The shadow-root stylesheet `STYLES`, page geometry in em |
 | `fonts.js` / `pdf-fonts.js` | Courier Prime and Roboto inlined; WOFF2 on screen, WOFF for PDF |
@@ -140,7 +140,7 @@ element changes tab itself; the PWA moves its tabs and address along, through `t
 | `extensions/settings.js` | `extensionSection`: an app's settings, from its manifest, as a settings section, with a Connection topic for each cloud source it adds that signs in |
 | `extensions/shortcuts.js` | `matchesShortcut`, `shortcutLabel` for `Mod+Shift+K` style shortcuts |
 | `extensions/built-in.js` | The extensions that ship with Flow, all off by default (what someone adds starts on) |
-| `extensions/vim-lite/` | Vim lite: `manifest.json`, `index.js` (widget and keys per script, only through the API), `vim.js` (the engine, editing through the text API, with search) |
+| `extensions/vim-lite/` | Vim lite: `manifest.json`, `index.js` (widget and keys per script, only through the API), `vim.js` (the engine, editing through the text API: search, registers and the clipboard, macros, wrapped-line moves through `screenLine`) |
 | `extensions/typewriter/` | The Typewriter theme, a manifest only |
 
 `vite.config.js` holds the PWA manifest (file handlers, icons) and Workbox precaching.

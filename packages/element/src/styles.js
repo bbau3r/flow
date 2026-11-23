@@ -156,8 +156,15 @@ ${PAGE_PREVIEW_CSS}
 }
 .fl-workspace[hidden] { display: none; }
 /* A block cursor, for key bindings that ask for one, over the character it's on. */
-.ProseMirror.fl-caret-on { caret-color: transparent; }
+/* Above the editor's own caret color below, so a block cursor never shows the thin line too. */
+.fl-editor-host .ProseMirror.fl-caret-on { caret-color: transparent; }
 .fl-caret-char { background: var(--flow-accent); color: var(--flow-accent-ink); border-radius: 1px; }
+/* A blinking block cursor turns off for half of each period. */
+.fl-caret-blink.fl-caret-char { animation: fl-caret-blink var(--fl-caret-period, 1s) steps(1) infinite; }
+.fl-caret-blink.fl-caret-end::after { animation: fl-caret-blink-end var(--fl-caret-period, 1s) steps(1) infinite; }
+@keyframes fl-caret-blink { 50% { background: transparent; color: inherit; } }
+@keyframes fl-caret-blink-end { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .fl-caret-blink.fl-caret-char, .fl-caret-blink.fl-caret-end::after { animation: none; } }
 .fl-caret-end::after {
   content: ""; display: inline-block; width: 0.6em; height: 1.15em; vertical-align: text-bottom;
   background: var(--flow-accent); border-radius: 1px;

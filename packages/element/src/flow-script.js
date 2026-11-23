@@ -3,7 +3,7 @@
 // Storage-agnostic on purpose: it takes text in and emits text out, so the Google
 // Drive plugin and the PWA can each supply their own persistence around it.
 
-import { parse, layout, scriptTitle, DEFAULT_OPTIONS, formatDimensions, pageProfile, parseDimensions, resolvePaper, writeSetting } from '@flow/core';
+import { parse, layout, scriptTitle, DEFAULT_OPTIONS, formatDimensions, pageProfile, parseDimensions, resolvePaper, setTitleFields, titleFields, writeSetting } from '@flow/core';
 import { STYLES } from './styles.js';
 import { addedPaletteSheet, getTheme } from './themes.js';
 import { button, pill } from './controls.js';
@@ -33,8 +33,6 @@ export class FlowScript extends HTMLElement {
   #options = { ...DEFAULT_OPTIONS };
   // The page size the export dialog last chose for PDFs, or null for the script's own.
   #exportPaper = null;
-  // The size the settings dialog is trying out, shown until it saves or closes.
-  #previewPaper = null;
   #shownPaper = '';
   #editor = null;
   #ribbon = null;
@@ -469,16 +467,7 @@ export class FlowScript extends HTMLElement {
   }
 
   #layoutOptions() {
-    return this.#previewPaper ? { ...this.#options, paperOverride: this.#previewPaper } : this.#options;
-  }
-
-  #preview(size) {
-    this.#previewPaper = size;
-    this.#applyPaper();
-    if (!this.#editor) return;
-    this.#editor.relayout();
-    this.#showRead();
-    this.#trackPageSoon();
+    return this.#options;
   }
 
   #applyPaper() {
@@ -968,20 +957,24 @@ export class FlowScript extends HTMLElement {
   #openSettings() {
     openSettingsDialog(this.shadowRoot, {
       getDimensions: () => this.#scriptPaper(),
-      setDimensions: (size) => this.#setDimensions(size),
-      preview: (size) => this.#preview(size),
+      getCover: () => titleFields(this.#editor ? this.#editor.parsed : parse(this.#value)),
+      setCover: (values) => this.#writeProject((lines) => setTitleFields(lines, values)),
+      setDimensions: (size) => this.#writeProject((lines) => {
+        const parsed = parse(lines.join('\n'));
+        // A script with no page size of its own that keeps the size it shows at gets none written.
+        if (parsed.settings.dimensions === undefined && JSON.stringify(size) === JSON.stringify(this.#scriptPaper())) return lines;
+        return writeSetting(parsed, 'Dimensions', formatDimensions(size));
+      }),
       onClose: () => this.focus(),
     });
   }
 
-  // Writes the page size into the script's settings. A script that has none and keeps the size
-  // it already shows at stays as it is.
-  #setDimensions(size) {
-    this.#preview(null);
+  // Project settings go into the script as they change, joining one undo step as typing does.
+  #writeProject(change) {
     if (!this.#editor) return;
-    const { parsed } = this.#editor;
-    if (parsed.settings.dimensions === undefined && JSON.stringify(size) === JSON.stringify(this.#scriptPaper())) return;
-    this.#editor.commitFromOutline(writeSetting(parsed, 'Dimensions', formatDimensions(size)));
+    const before = this.#editor.value;
+    const lines = change(before.split('\n'));
+    if (lines.join('\n') !== before) this.#editor.commitFromOutline(lines, { typing: true });
   }
 
   async #exportFromDialog() {

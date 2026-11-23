@@ -419,20 +419,25 @@ const AppKeys = Extension.create({
           apply: (tr, style) => (tr.getMeta(caretKey) !== undefined ? tr.getMeta(caretKey) : style),
         },
         props: {
-          attributes: (state) => (caretKey.getState(state) === 'block' ? { class: 'fl-caret-on' } : {}),
+          attributes: (state) => (caretKey.getState(state) ? { class: 'fl-caret-on' } : {}),
           decorations: (state) => {
-            if (caretKey.getState(state) !== 'block' || !activeKey.getState(state)?.focused) return null;
+            const caret = caretKey.getState(state);
+            if (!caret || !activeKey.getState(state)?.focused) return null;
             const { selection, doc } = state;
             if (!selection.empty) return null;
             const { $head } = selection;
             const at = $head.pos;
+            // A blinking cursor blinks at its own pace, set as a custom property.
+            const cls = caret.blink ? ' fl-caret-blink' : '';
+            const style = caret.blink ? `--fl-caret-period: ${caret.period}ms` : '';
             const deco = $head.parentOffset < $head.parent.content.size
-              ? Decoration.inline(at, at + 1, { class: 'fl-caret-char' })
+              ? Decoration.inline(at, at + 1, { class: `fl-caret-char${cls}`, style })
               : Decoration.widget(at, () => {
                 const node = document.createElement('span');
-                node.className = 'fl-caret-end';
+                node.className = `fl-caret-end${cls}`;
+                if (style) node.setAttribute('style', style);
                 return node;
-              }, { side: 1, key: 'caret-end' });
+              }, { side: 1, key: `caret-end${cls}${style}` });
             return DecorationSet.create(doc, [deco]);
           },
         },
@@ -763,10 +768,17 @@ export class FlowEditor {
    *   select(anchor, head)             selects from anchor to head
    *   replace(from, to, text, cursor)  replaces the text between two places as one undo step,
    *                                    `text` may hold line breaks, then puts the cursor at
-   *                                    `cursor` in the new text, if given
+   *                                    `cursor` in the new text, if given. With { join: true }
+   *                                    as a fifth argument, it joins the step before, as typing
+   *                                    does
    *   undo(), redo()
-   *   setCaret(style)                  'block' draws the cursor over the character it's on;
-   *                                    null for the usual line
+   *   setCaret(style, options)         'block' draws the cursor over the character it's on;
+   *                                    null for the usual line. `options` is { blink, period },
+   *                                    to blink every `period` milliseconds
+   *   screenLine(from, dir, x)         where the cursor lands one row down (dir 1) or up (-1)
+   *                                    on screen, following wrapped lines, as { place, x }, at
+   *                                    `x`, a distance across the screen to keep to, or its own;
+   *                                    null when there's no row there
    *   hidden(i)                        whether line i is out of sight, such as the settings
    */
   textApi() {
@@ -800,7 +812,7 @@ export class FlowEditor {
         const { doc, tr } = state();
         dispatch(tr.setSelection(TextSelection.create(doc, posIn(doc, anchor), posIn(doc, head))));
       },
-      replace: (from, to, text, cursor) => {
+      replace: (from, to, text, cursor, { join = false } = {}) => {
         const { doc, tr, schema } = state();
         let a = posIn(doc, from);
         let b = posIn(doc, to);
@@ -811,16 +823,66 @@ export class FlowEditor {
           tr.replace(a, b, new Slice(Fragment.from(nodes), 1, 1));
         } else if (a !== b) tr.delete(a, b);
         if (cursor) tr.setSelection(TextSelection.create(tr.doc, posIn(tr.doc, cursor)));
-        dispatch(closeHistory(tr));
+        // Joining the undo step before it, as typing does; otherwise it's a step of its own.
+        dispatch(join ? tr : closeHistory(tr));
       },
       undo: () => this.undo(),
       redo: () => this.redo(),
-      setCaret: (style) => {
+      setCaret: (style, { blink = false, period = 1000 } = {}) => {
         if (this.view.isDestroyed) return;
-        this.view.dispatch(state().tr.setMeta(caretKey, style === 'block' ? 'block' : null));
+        const caret = style === 'block' ? { blink: !!blink, period: Math.max(200, Number(period) || 1000) } : null;
+        this.view.dispatch(state().tr.setMeta(caretKey, caret));
       },
+      screenLine: (from, direction, goalX = null) => this.screenLine(posIn(state().doc, from), direction, goalX, place),
       hidden: (i) => scriptKey.getState(state()).hidden.has(i),
     };
+  }
+
+  // Finds the position one row up or down on screen from `pos`, near `goalX`, by looking just
+  // beyond the row it's on, a little further each time, past the gaps between lines and pages.
+  // Lines sit in columns of their own, such as dialogue, narrower and further in than action, so
+  // a place across that falls before the row's start lands at its start, and one after its end,
+  // at its end.
+  screenLine(pos, direction, goalX, place) {
+    const { view } = this;
+    const start = view.coordsAtPos(pos);
+    const height = Math.max(4, start.bottom - start.top);
+    const x = goalX ?? start.left;
+    // Rows are found down the middle of the page, which every line's column crosses, so a line
+    // set further in, such as a character cue, isn't passed over.
+    const page = view.dom.getBoundingClientRect();
+    const across = page.left + page.width / 2;
+    for (let step = 1; step <= 16; step++) {
+      const reach = (step - 0.5) * (height / 2);
+      const top = direction > 0 ? start.bottom + reach : start.top - reach;
+      const hit = view.posAtCoords({ left: across, top });
+      if (!hit || hit.pos === pos) continue;
+      const found = view.coordsAtPos(hit.pos);
+      if (direction > 0 ? found.top < start.bottom - 1 : found.bottom > start.top + 1) continue;
+      return { place: place(this.alongRow(hit.pos, found, x)), x };
+    }
+    return null;
+  }
+
+  // The position on the row holding `pos` nearest to `x`: its start when `x` is before the row,
+  // its end when after it, or where `x` falls on it.
+  alongRow(pos, coords, x) {
+    const { view } = this;
+    const dom = view.domAtPos(pos).node;
+    const line = (dom.nodeType === 1 ? dom : dom.parentElement)?.closest('.fl-line');
+    if (!line) return pos;
+    const box = line.getBoundingClientRect();
+    const middle = (coords.top + coords.bottom) / 2;
+    const rowStart = view.posAtCoords({ left: box.left + 1, top: middle })?.pos;
+    const rowEnd = view.posAtCoords({ left: box.right - 1, top: middle })?.pos;
+    if (rowStart == null || rowEnd == null) return pos;
+    // A row's ends, by the positions on the same row as `pos`.
+    const sameRow = (at) => Math.abs((view.coordsAtPos(at).top + view.coordsAtPos(at).bottom) / 2 - middle) < (coords.bottom - coords.top) / 2;
+    const first = sameRow(rowStart) ? rowStart : pos;
+    const last = sameRow(rowEnd) ? rowEnd : pos;
+    if (x <= view.coordsAtPos(first).left) return first;
+    if (x >= view.coordsAtPos(last).left) return last;
+    return view.posAtCoords({ left: x, top: middle })?.pos ?? pos;
   }
 
   undo({ focus = true } = {}) {

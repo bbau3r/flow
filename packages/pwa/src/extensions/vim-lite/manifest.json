@@ -4,8 +4,13 @@
   "name": "Vim lite",
   "version": "1.0.0",
   "author": "Flow",
-  "icon": { "paths": ["M12 2.5 21.5 12 12 21.5 2.5 12z", "m8.5 8 3.5 8 3.5-8"] },
-  "description": "A small set of Vim's keys for writing: Normal, Insert and Visual modes, motions, operators, counts and a register. A widget beside undo and redo shows the mode and what each command just did.",
+  "icon": {
+    "paths": [
+      "M12 2.5 21.5 12 12 21.5 2.5 12z",
+      "m8.5 8 3.5 8 3.5-8"
+    ]
+  },
+  "description": "A small set of Vim's keys for writing: Normal, Insert and Visual modes, motions, operators, counts, search, registers shared with the system clipboard, and macros. A widget beside undo and redo shows the mode and what each command just did.",
   "settings": [
     {
       "key": "startMode",
@@ -14,8 +19,14 @@
       "label": "Start in",
       "default": "normal",
       "options": [
-        { "value": "normal", "label": "Normal" },
-        { "value": "insert", "label": "Insert" }
+        {
+          "value": "normal",
+          "label": "Normal"
+        },
+        {
+          "value": "insert",
+          "label": "Insert"
+        }
       ],
       "description": "The mode a script opens in."
     },
@@ -28,6 +39,22 @@
       "description": "Two keys typed quickly, such as jk, that work like Escape. Leave it empty to use only Escape."
     },
     {
+      "key": "escapeKey",
+      "type": "key",
+      "topic": "Modes",
+      "label": "Alternative Escape",
+      "default": "",
+      "description": "Assigns an alternative key to act as escape. Click it, then press a key to set. Caps Lock works too, without turning on capitals."
+    },
+    {
+      "key": "wrap",
+      "type": "boolean",
+      "topic": "Moving",
+      "label": "Follow wrapped lines",
+      "default": true,
+      "description": "j, k and the up and down arrows move a row on screen, through lines that wrap. Off, they move a whole line of the script. With an operator, such as dj, they always take whole lines."
+    },
+    {
       "key": "blockCursor",
       "type": "boolean",
       "topic": "Display",
@@ -36,12 +63,33 @@
       "description": "Outside Insert mode, draws the cursor over the character it's on."
     },
     {
-      "key": "widget",
+      "key": "blink",
       "type": "boolean",
       "topic": "Display",
-      "label": "Mode widget",
+      "label": "Cursor blinks",
       "default": true,
-      "description": "Shows the mode, the keys typed and what they did, beside undo and redo. Tap its mode to switch between Normal and Insert."
+      "description": "Blinks the block cursor. In Insert mode the cursor is the system’s own, which blinks as the system is set to."
+    },
+    {
+      "key": "blinkSpeed",
+      "type": "choice",
+      "topic": "Display",
+      "label": "Blink speed",
+      "default": "normal",
+      "options": [
+        {
+          "value": "slow",
+          "label": "Slow"
+        },
+        {
+          "value": "normal",
+          "label": "Normal"
+        },
+        {
+          "value": "fast",
+          "label": "Fast"
+        }
+      ]
     }
   ]
 }
