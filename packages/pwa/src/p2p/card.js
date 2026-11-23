@@ -297,7 +297,7 @@ export function attachP2p(script, doc, { persist }) {
               h('strong', {}, entry.by === session.self?.id ? 'You' : entry.alias),
               h('span', {}, describeChange(entry, parsed))),
             h('time', { class: 'p2p-when', datetime: new Date(entry.at).toISOString() }, timeAgo(entry.at))))
-          : [h('li', { class: 'p2p-empty' }, 'No changes yet. Each edit shows here with who made it.')]));
+          : [h('li', { class: 'p2p-empty' }, 'No changes for this session.')]));
         const done = button({ label: 'Done', cls: 'fl-btn-outline', onClick: () => popover.close() });
         if (session.status === 'closed') {
           actions.replaceChildren(done);
