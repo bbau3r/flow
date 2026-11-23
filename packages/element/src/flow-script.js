@@ -55,6 +55,7 @@ export class FlowScript extends HTMLElement {
   #jump = null;
   // What an app has added: widgets in the bars, tabs of its own, and key handlers.
   #widgets = new Set();
+  #readRefresh = 0;
   #workspaces = new Map();
   #keyHandlers = new Set();
 
@@ -341,6 +342,36 @@ export class FlowScript extends HTMLElement {
     this.#editor.insertText(String(text));
     this.#editor.focus();
     return true;
+  }
+
+  /**
+   * Puts in changes made somewhere else, such as by someone writing in the same script: a list of
+   * { from, to, text }, with offsets into `value`, in order and apart. They don't join the undo
+   * history, so undo only takes back what was written here, and the cursor and the page stay put.
+   * `flow-change` fires as for any edit.
+   */
+  applyChanges(changes) {
+    if (!changes?.length) return;
+    if (this.#editor) {
+      this.#editor.applyChanges(changes);
+      // Read shows the pages as they print, so it catches up once the changes pause.
+      if (this.workspace === 'read') {
+        clearTimeout(this.#readRefresh);
+        this.#readRefresh = setTimeout(() => {
+          if (this.workspace !== 'read' || !this.#editor) return;
+          const place = this.#placeIn('read');
+          this.#showRead();
+          this.#keepPlace(place);
+        }, READ_REFRESH_MS);
+      }
+      return;
+    }
+    let text = this.value;
+    for (const { from, to, text: inserted } of [...changes].sort((x, y) => y.from - x.from)) {
+      text = text.slice(0, from) + inserted + text.slice(to);
+    }
+    this.value = text;
+    this.dispatchEvent(new CustomEvent('flow-change', { detail: { value: this.value, outline: parse(this.value).outline } }));
   }
 
   // --- Extending ---
@@ -996,6 +1027,8 @@ const DEFAULT_MENU = [['pdf'], ['project-settings']];
 const BUILT_IN_WORKSPACES = ['write', 'outline', 'read'];
 
 const WIDGET_PLACES = ['bottom-start', 'bottom-end', 'top-end'];
+// How long Read waits for changes from elsewhere to pause before drawing the pages again.
+const READ_REFRESH_MS = 400;
 
 const workspaceOf = (value) => (value === 'outline' || value === 'read' ? value : 'write');
 

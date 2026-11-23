@@ -44,6 +44,7 @@ The PWA imports the element from source (`@flow/element/source`), not from its b
 | `convert.js` | Ribbon edits: change a line's type, emphasis, boneyard, dual dialogue, page break, title-page Enter/Backspace, and the title page's fields as values for Project settings' Cover | `applyLineType`, `toggleEmphasis`, `emphasisAt`, `toggleBoneyard`, `toggleDual`, `dualAt`, `insertPageBreak`, `continueTitleField`, `joinTitleValue`, `titleFields`, `setTitleFields`, `lineTypeKey` |
 | `outline.js` | Outline-tab edits: cards from `#`/`##`/scenes/transitions, drop slots, moving blocks, adding/removing acts, sequences, synopses | `outlineCards`, `outlineSlots`, `moveOutlineBlock`, `addOutlineSection`, `addOutlineSynopsis`, `removeOutlineCard`, `setOutlineSceneNumber`, ... |
 | `template.js` | New-script title page, from given fields and page size | `newScript`, `DEFAULT_COVER` |
+| `ot.js` | Edits as operations for writing together: `diffText` makes one from an edit, `transform` lets two made at once both apply, `compose`, `operationChanges` (as `{ from, to, text }`). Used by the PWA's P2P sessions. | `diffText`, `applyOperation`, `transform`, `compose`, `operationChanges`, `isOperation` |
 | `pdf.js` | Draws `layout()` output with pdf-lib. Separate entry `@flow/core/pdf`. | `renderPdf` |
 
 ### Data shapes
@@ -75,12 +76,12 @@ return new lines, plus a cursor where relevant.
 | File | What it does |
 | --- | --- |
 | `index.js` | Package entry. Defines `<flow-script>`, exports shared controls, `addPalette`/`removePalette`, `installControlStyles()` |
-| `flow-script.js` | `FlowScript` custom element. Attributes, properties, events, theme and paper, pinch-to-scale, page tracking, switching between Write / Outline / Read, building the bars, PDF export, and the extension hooks: `addWidget` (an app's pills in the bars), `addWorkspace` (an app's own tab), `addEditorKeys`, `insertText`. The hub: start here. |
+| `flow-script.js` | `FlowScript` custom element. Attributes, properties, events, theme and paper, pinch-to-scale, page tracking, switching between Write / Outline / Read, building the bars, PDF export, and the extension hooks: `addWidget` (an app's pills in the bars), `addWorkspace` (an app's own tab), `addEditorKeys`, `insertText`, and `applyChanges` (edits made elsewhere, kept out of undo). The hub: start here. |
 | `editor.js` | `FlowEditor`, the Tiptap editor (loaded on demand). `Line` node, the `FountainDecorations` plugin (incremental reparse in `updateScript`, decorations in `lineDecorations`/`activeDecorations`, page gaps in `computeGaps`), title-page key handling, ribbon commands (`setLineType`, `emphasis`, `boneyard`, `dual`, `pageBreak`), `commit`/`commitFromOutline`. `AppKeys` runs an app's key handlers first and draws the block caret; `textApi()` is the line-based text API they get. |
 | `readonly.js` | Plain-DOM renderer for Read tab and `readonly`: paged (`renderPages`) or seamless (`renderFlow`), comment bubbles. No Tiptap. |
 | `outline.js` | Outline tab UI (`createOutline`): cards, drag and keyboard moves, add tools, the right-click menu (Show in Write / Read). Every change goes through core `outline.js` and back into the editor. |
 | `position.js` | Keeping your place between tabs and views: `placeOf` records the source line at the top and its offset, `restorePlace` scrolls another tab to it. `FlowScript.#placeIn`/`#keepPlace` wrap tab and view changes with them. |
-| `ribbon.js` | Top row: the Document menu and tabs slot, the action center, and the top right corner's widget shelf. Formatting pills that follow the cursor's line. |
+| `ribbon.js` | Top row: the Document menu and tabs slot, the action center, and the top right corner's widget shelf, which folds behind ⋮ on small screens. Formatting pills that follow the cursor's line. |
 | `widgets.js` | `createWidgetShelf`: where an app's widgets sit in a bar, each shown only in its tabs |
 | `doc-menu.js` | `createDocMenu`: the Document pill (menu icon + `document` slot) and the card it opens, in a modal `<dialog>`. Items with a `panel` swap in a card of their own; on small screens it's a flyout sheet. Items come from `FlowScript.menuItems`, with `'pdf'`/`'project-settings'` resolved in `#builtInItem`. |
 | `settings-panel.js` | `openSettingsPanel`: the shared settings layout (search in the panel's head, a rail of section pages with `'divider'` rules, hidden sections, collapse-all, folding topics, properties). Returns `show(id)` and `setHidden(id, hidden)`. Used by project settings and the PWA's App settings. |
@@ -92,7 +93,7 @@ return new lines, plus a cursor where relevant.
 | `settings-dialog.js` | Project settings on `openSettingsPanel`, in two sections: Cover (the title page's own fields, in order) and Page (dimensions). Changes go into the script as they're made, through `FlowScript.#writeProject` |
 | `dimensions-field.js` | Paper size picker (`dimensionsField`, used by the PDF export) and `pageSizeSetting`, the picker plus the sheet drawing as one settings property, used by project settings and the PWA's Defaults. `DIMENSIONS_CSS` |
 | `page-preview.js` | Small drawing of the sheet with measurements. `PAGE_PREVIEW_CSS` |
-| `controls.js` | Shared UI kit: `button`, `pill`, `pillSep`, `foldingPill`, `tabs` (`fixed` keeps the pill at any width), `actionPill`, `searchField`, `iconSwitch`, `toggleSwitch`, `keyCapture` (takes a key, for `key` settings), `Menu`, `icon` (a name, or `{ paths }` from an extension), `tabs({ fit })` (measures, and folds to a dropdown), `openModal`, `icon`, `CONTROL_TOKENS` (including `page-shadow`, `desk-noise`, `desk-gradient`), `DESK_BACKGROUND` and the `.fl-desk` and `.fl-paper` classes, `CONTROLS_CSS`, `token()`. New components build on these and style with `token()`. |
+| `controls.js` | Shared UI kit: `button`, `pill`, `pillSep`, `foldingPill`, `tabs` (`fixed` keeps the pill at any width), `actionPill`, `searchField`, `iconSwitch`, `toggleSwitch`, `keyCapture` (takes a key, for `key` settings), `Menu`, `icon` (a name, or `{ paths }` from an extension), `tabs({ fit })` (measures, and folds to a dropdown), `openModal`, `openPopover` (a card from a top-right button, a sheet on phones), `textField`, `banner`, `spinner`, `icon`, `CONTROL_TOKENS` (including `page-shadow`, `desk-noise`, `desk-gradient`), `DESK_BACKGROUND` and the `.fl-desk` and `.fl-paper` classes, `CONTROLS_CSS`, `token()`. New components build on these and style with `token()`. |
 | `themes.js` | `PALETTES` (sage, sand, sea, romance, forest, lavender, graphite x light/dark), `registerTheme`, `THEME_CSS` (`:host`), `PAGE_THEME_CSS` (`:root[data-theme]`), and `addPalette`/`removePalette` for palettes added at run time, in adopted stylesheets |
 | `styles.js` | The shadow-root stylesheet `STYLES`, page geometry in em |
 | `fonts.js` / `pdf-fonts.js` | Courier Prime and Roboto inlined; WOFF2 on screen, WOFF for PDF |
@@ -120,8 +121,8 @@ element changes tab itself; the PWA moves its tabs and address along, through `t
 | File | What it does |
 | --- | --- |
 | `main.js` | Boot: styles, theme, fonts, hash router (`#/edit/<id>` or home), `launchQueue` file opening, service-worker update banner |
-| `home.js` | Home page: header (wordmark, search, App settings gear), then a shelf of New, Open (this device), a sheet per cloud provider, and recent scripts drawn as title-page covers |
-| `app-settings.js` | App settings on `openSettingsPanel`: Appearance (theme, and Settings tabs for extensions), Defaults (size, each standard cover field's text and an on/off switch), Extensions (from `extensions/manager.js`), App (install), then a rule and each app extension's settings. Reopens itself when extensions or palettes come and go. Holds the `beforeinstallprompt` handling |
+| `home.js` | Home page: header (wordmark, search, App settings gear), then a shelf of New, Open (this device), Connect (with P2P on), a sheet per cloud provider, and recent scripts drawn as title-page covers |
+| `app-settings.js` | App settings on `openSettingsPanel`: Appearance (theme, and Settings tabs for extensions), Defaults (size, each standard cover field's text and an on/off switch), Extensions (from `extensions/manager.js`), App (install, and P2P with its signal server), then a rule and each app extension's settings. Reopens itself when extensions or palettes come and go. Holds the `beforeinstallprompt` handling |
 | `defaults.js` | New-script defaults in local storage (`readDefaults`, `saveDefaults`) and `scriptFromDefaults()`, used by New |
 | `editor-view.js` | Hosts `<flow-script>` for one doc: fills slots (document name with its source, tabs), `menuItems` (Home, Save, Save as, Theme, App settings, then extension commands), autosave on `flow-change`, highlights, `?tab=` in the URL, provider chooser. Adds extension tabs, shortcuts and command widgets, and `attachEditor`s the script for extensions. |
 | `save-folder.js` | The save folder chosen in Defaults (`readSaveFolder`, `saveFolderSetting`), where the local provider's dialogs start; its handle is kept with `store.js`'s `getKept`/`putKept` |
@@ -133,6 +134,11 @@ element changes tab itself; the PWA moves its tabs and address along, through `t
 | `mark.js` | `flowMark()`: the logo mark as inline SVG, colored from `--flow-accent` / `--flow-secondary`. The home wordmark is the mark plus "low". |
 | `mark-paths.js` | Generated by `scripts/icons.mjs`: the mark's shapes and gradient lines. Don't edit by hand. |
 | `styles.css` | App page styles |
+| `p2p/config.js` | P2P on/off, the signal server route (`routeOptions`), alias, random server names, tokens and member colors, and invites signed with the token (`makeInvite`, `readInvite`) |
+| `p2p/session.js` | The session: PeerJS peers (loaded on demand), the host checking tokens and putting commits in order, the guest's outstanding/buffered commits, members, kicking, and the list of changes by author. `hostSession`, `joinSession`, `currentSession`, `onSessionChange` |
+| `p2p/card.js` | `attachP2p`: the editor's top right button (connect mark, or stacked badges in a session) and its card: setup, session (status, members, changes) and a member with Kick |
+| `p2p/connect-dialog.js` | `openConnectDialog`: Connect on the home page, with its spinner, error banner, Route, and paste-an-invite |
+| `p2p/avatars.js` | Member badges and their stack, `AVATAR_CSS` for page and shadow root |
 | `extensions/host.js` | The extension host: built-in, added (from files, with or without code) and code-registered extensions, on/off and settings in local storage, async activation (code loads first), the `flow` API given to `activate` (documented at the top), `attachEditor`, `window.flowExtensions.register` |
 | `extensions/manifest.js` | `readManifest`: checks and cleans a manifest (colors must be colors, icons only path data, `main` a .js name), `settingValue`, `PALETTE_COLORS`, `WIDGET_PLACES` |
 | `extensions/code-store.js` | IndexedDB for added apps' code (`{ main, files }`), the folders they came from, and each extension's `flow.storage`; `loadModule` turns the files into modules, resolving `./name.js` imports |
@@ -153,14 +159,14 @@ element changes tab itself; the PWA moves its tabs and address along, through `t
 
 | Command | What runs |
 | --- | --- |
-| `npm test` | Vitest: `packages/core/test/core.test.js` (parser, layout, edits, settings, PDF) |
+| `npm test` | Vitest: `packages/core/test/core.test.js` (parser, layout, edits, settings, PDF, operations) |
 | `npm run test:e2e` | Builds element and PWA, then Playwright in Edge (CI: Chromium). Use this, not bare `playwright test`, which tests a stale PWA build. |
 | `npm run dev` / `dev:pwa` | Vite dev servers |
 
 E2E specs: `packages/element/e2e/element.spec.js` (large; grouped by `test.describe`: phone
 width, outline tab, title page, project settings, Highlight Manager, ...),
 `element/e2e/dist.spec.js` (built bundles), `packages/pwa/e2e/pwa.spec.js`,
-`pwa/e2e/extensions.spec.js` (extensions, widgets, cloud providers, code and its trust warning, Vim lite), `pwa/e2e/scrollbars.spec.js`.
+`pwa/e2e/extensions.spec.js` (extensions, widgets, cloud providers, code and its trust warning, Vim lite), `pwa/e2e/scrollbars.spec.js`, `pwa/e2e/p2p.spec.js` (two browsers through the local PeerJS server that `pwa/e2e/peer-server.mjs` runs on port 4180).
 
 CI: `.github/workflows/ci.yml` runs both test suites on branches and PRs. `deploy.yml` runs CI
 on push to `main`, then publishes `packages/pwa/dist` to `gh-pages`. Pushing to `main` deploys.
@@ -183,6 +189,7 @@ on push to `main`, then publishes `packages/pwa/dist` to `gh-pages`. Pushing to 
 | Extensions, or a new built-in one | `pwa/src/extensions/host.js`, then `built-in.js`; the guides in `docs/extensions/` |
 | A cloud provider | `pwa/src/providers/index.js`, `extensions/host.js` (`addSource`), `docs/extensions/sources.md` |
 | Vim lite's keys | `pwa/src/extensions/vim-lite/vim.js` |
+| P2P, writing together | `pwa/src/p2p/session.js`, then `card.js`; edits merge in `core/src/ot.js` |
 
 ## Conventions
 

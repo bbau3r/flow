@@ -34,5 +34,11 @@ export default defineConfig({
       url: 'http://localhost:4179/flow/',
       reuseExistingServer: true,
     },
+    {
+      // A local PeerJS signal server, so the P2P tests don't depend on the public one.
+      command: 'node packages/pwa/e2e/peer-server.mjs',
+      url: 'http://localhost:4180/peerjs/id',
+      reuseExistingServer: true,
+    },
   ],
 });

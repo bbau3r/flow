@@ -302,7 +302,7 @@ export const SETTINGS_PANEL_CSS = `
 .fl-prop-label { font-weight: 500; }
 .fl-prop-control { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
 .fl-prop-below { grid-column: 1 / -1; min-width: 0; }
-.fl-prop-desc { grid-column: 1 / -1; margin: 0; color: var(--flow-muted); font-size: 12.5px; line-height: 1.4; }
+.fl-prop-desc { grid-column: 1 / -1; margin: 0; white-space: pre-line; color: var(--flow-muted); font-size: 12.5px; line-height: 1.4; }
 .fl-prop-wide { grid-template-columns: minmax(0, 1fr); }
 .fl-prop-wide > .fl-prop-control { display: block; }
 .fl-prop-wide > .fl-prop-control > textarea { display: block; box-sizing: border-box; width: 100%; }
@@ -318,6 +318,9 @@ export const SETTINGS_PANEL_CSS = `
 .fl-prop-control > input[type="checkbox"]:not(.fl-switch) { width: 18px; height: 18px; margin: 6px 2px; }
 .fl-prop-control > .fl-switch { margin: 5px 2px; }
 .fl-prop textarea:disabled { opacity: 0.5; }
+/* A shared text field brings its own box, so the row's look stays off the input inside it. */
+.fl-prop .fl-field-box > input:not([type="checkbox"]):not([type="radio"]) { min-height: 0; padding: 0; background: transparent; border: 0; border-radius: 0; }
+.fl-prop-control > .fl-field { flex: 0 1 280px; }
 .fl-prop:not(.fl-prop-wide) { grid-template-columns: minmax(6em, 1fr) minmax(0, auto); }
 .fl-settings-empty { margin: 24px 0; color: var(--flow-muted); text-align: center; }
 .fl-settings-actions { flex: none; margin: 0; padding: 6px 16px 14px; }

@@ -1,6 +1,6 @@
 // The home page: the wordmark, a search of the recent scripts and the app settings along the
-// top, then a shelf of sheets. New and Open come first, then a sheet for each cloud provider
-// an extension adds, then every recent script, each shown by its own title page, wrapping onto
+// top, then a shelf of sheets. New and Open come first, then Connect when P2P is on, then a sheet
+// for each cloud provider an extension adds, then every recent script, each shown by its own title page, wrapping onto
 // as many rows as it takes.
 
 import { parse } from '@flow/core';
@@ -12,6 +12,8 @@ import { h, timeAgo, toast } from './ui.js';
 import { flowMark } from './mark.js';
 import { openAppSettings } from './app-settings.js';
 import { scriptFromDefaults } from './defaults.js';
+import { p2pEnabled } from './p2p/config.js';
+import { openConnectDialog } from './p2p/connect-dialog.js';
 
 // A title page never runs this long, and reading no further keeps long scripts quick.
 const COVER_LINES = 80;
@@ -107,6 +109,21 @@ function openTile() {
     h('span', { class: 'recent-meta' }, `From ${localProvider.label.toLowerCase()}`)));
 }
 
+// Connect joins someone else's session, when P2P is on in App settings.
+function connectTile() {
+  return h('li', { class: 'tile' },
+    h('button', {
+      type: 'button',
+      class: 'tile-button',
+      id: 'connect-script',
+      title: 'Join a script someone is hosting',
+      onclick: () => openConnectDialog(),
+    },
+    h('span', { class: 'tile-face tile-open fl-paper' }, icon('connect')),
+    h('span', { class: 'tile-label' }, 'Connect'),
+    h('span', { class: 'recent-meta' }, 'Write with others')));
+}
+
 // Each cloud provider an extension adds has a tile of its own beside Open, with its icon, that
 // connects if it needs to and then opens from it.
 function cloudTile(provider) {
@@ -162,6 +179,7 @@ export async function renderHome(root) {
             h('span', { class: 'tile-face tile-new' }, icon('plus')),
             h('span', { class: 'tile-label' }, 'New'))),
         openTile(),
+        p2pEnabled() ? connectTile() : null,
         ...providers.filter((provider) => provider.kind === 'cloud').map(cloudTile),
         rule,
         ...cards),

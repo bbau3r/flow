@@ -33,6 +33,8 @@ window.addEventListener('hashchange', () => route().catch((err) => toast(err.mes
 onExtensionsChange((change) => {
   if (onHome() && ['enabled', 'added', 'removed', 'error'].includes(change.type)) route().catch((err) => toast(err.message));
 });
+// Connect is on the home page while P2P is on.
+window.addEventListener('flow-p2p', () => { if (onHome()) route(); });
 // Provider availability depends on the connection, so keep the home page's cards current.
 for (const event of ['online', 'offline']) {
   window.addEventListener(event, () => { if (onHome()) route(); });

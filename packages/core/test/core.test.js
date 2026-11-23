@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { PDFDict, PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import { newScript, parse, parseInline, layout, titlePositions, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey, dualAt, scriptTitle, continueTitleField, joinTitleValue, setTitleFields, titleFields, outlineCards, outlineSlots, moveOutlineBlock, setOutlineSceneNumber, addOutlineSection, addOutlineSynopsis, setOutlineText, removeOutlineCard, removeOutlineSynopsis, parseDimensions, formatDimensions, pageProfile, resolvePaper, writeSetting } from '../src/index.js';
+import { newScript, parse, parseInline, layout, titlePositions, wrapRuns, applyLineType, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey, dualAt, scriptTitle, continueTitleField, joinTitleValue, setTitleFields, titleFields, outlineCards, outlineSlots, moveOutlineBlock, setOutlineSceneNumber, addOutlineSection, addOutlineSynopsis, setOutlineText, removeOutlineCard, removeOutlineSynopsis, parseDimensions, formatDimensions, pageProfile, resolvePaper, writeSetting, diffText, applyOperation, operationChanges, compose, transform, isOperation } from '../src/index.js';
 import { renderPdf } from '../src/pdf.js';
 
 const types = (src) => parse(src).lines.map((l) => l.type);
@@ -1376,5 +1376,68 @@ describe('scriptTitle', () => {
     expect(scriptTitle(parse('Title:'))).toBe('');
     expect(scriptTitle(parse('Author: Me'))).toBe('');
     expect(scriptTitle(parse('Just action.'))).toBe('');
+  });
+});
+
+describe('operations, for writing together', () => {
+  // A small seeded random, so a failure can be run again.
+  const random = (seed) => () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed / 2147483648;
+  };
+  const randomEdit = (next, text) => {
+    const from = Math.floor(next() * (text.length + 1));
+    const to = Math.min(text.length, from + Math.floor(next() * 4));
+    const inserted = next() < 0.6 ? 'ab\ncd'.slice(0, Math.floor(next() * 5)) : '';
+    return text.slice(0, from) + inserted + text.slice(to);
+  };
+
+  it('diffs an edit into what changed between the shared start and end', () => {
+    expect(diffText('INT. HOUSE', 'INT. BIG HOUSE')).toEqual([5, 'BIG ', 5]);
+    expect(diffText('abc', 'ac')).toEqual([1, -1, 1]);
+    expect(diffText('abc', 'abc')).toEqual([3]);
+    expect(diffText('', 'x')).toEqual(['x']);
+    expect(applyOperation('one\ntwo', diffText('one\ntwo', 'one\n2\ntwo!'))).toBe('one\n2\ntwo!');
+  });
+
+  it('gives the replacements an operation makes, in the old text’s offsets', () => {
+    expect(operationChanges(diffText('hello world', 'hello there world'))).toEqual([{ from: 6, to: 6, text: 'there ' }]);
+    expect(operationChanges([2, 'X', -3, 1, -1])).toEqual([{ from: 2, to: 5, text: 'X' }, { from: 6, to: 7, text: '' }]);
+  });
+
+  it('refuses an operation made for other text, and tells operations from anything else', () => {
+    expect(() => applyOperation('abc', [5])).toThrow();
+    expect(isOperation([3, 'x', -1])).toBe(true);
+    expect(isOperation([0])).toBe(false);
+    expect(isOperation('abc')).toBe(false);
+    expect(isOperation([{}])).toBe(false);
+  });
+
+  it('composes two edits into one', () => {
+    const next = random(7);
+    for (let n = 0; n < 300; n++) {
+      const start = 'INT. HOUSE - DAY\n\nBOB\nHi.';
+      const middle = randomEdit(next, start);
+      const end = randomEdit(next, middle);
+      const both = compose(diffText(start, middle), diffText(middle, end));
+      expect(applyOperation(start, both)).toBe(end);
+    }
+  });
+
+  it('lets edits made at the same time apply in either order with the same result', () => {
+    const next = random(42);
+    for (let n = 0; n < 500; n++) {
+      const start = 'INT. HOUSE - DAY\n\nBOB\nHi there.';
+      const a = diffText(start, randomEdit(next, start));
+      const b = diffText(start, randomEdit(next, start));
+      const [a2, b2] = transform(a, b);
+      expect(applyOperation(applyOperation(start, a), b2)).toBe(applyOperation(applyOperation(start, b), a2));
+    }
+  });
+
+  it('puts the first edit’s text first where both insert at one place', () => {
+    const [a2, b2] = transform(['A', 3], ['B', 3]);
+    expect(applyOperation(applyOperation('xyz', ['A', 3]), b2)).toBe('ABxyz');
+    expect(applyOperation(applyOperation('xyz', ['B', 3]), a2)).toBe('ABxyz');
   });
 });

@@ -2,7 +2,7 @@
 // It fills the element's slots and Document menu, autosaves, saves to files through providers,
 // and keeps the tab in the address. Extensions that are on reach the script from here: their
 // tabs join Write, Outline and Read, their commands join the Document menu, and their editor
-// hooks run on the script.
+// hooks run on the script. With P2P on, its button sits in the top right corner (see p2p/card.js).
 
 import { button, openModal, tabs } from '@flow/element/source';
 import { parse, scriptTitle } from '@flow/core';
@@ -12,6 +12,7 @@ import { currentTheme, h, themeControls, toast } from './ui.js';
 import { openAppSettings } from './app-settings.js';
 import { attachEditor, extensionCommands, extensionTabs, onExtensionsChange } from './extensions/host.js';
 import { matchesShortcut, shortcutLabel } from './extensions/shortcuts.js';
+import { attachP2p } from './p2p/card.js';
 
 const AUTOSAVE_DELAY_MS = 300;
 const SCALE_KEY = 'flow-scale';
@@ -332,6 +333,7 @@ export function renderEditor(root, doc) {
 
   root.replaceChildren(h('div', { class: 'editor' }, script));
   const detach = attachEditor(script);
+  const detachP2p = attachP2p(script, doc, { persist });
   const stopListening = onExtensionsChange((change) => {
     if (change.type === 'setting' || change.type === 'layout') return;
     drawMenu();
@@ -344,6 +346,7 @@ export function renderEditor(root, doc) {
     window.removeEventListener('flow-theme', onTheme);
     stopListening();
     detach();
+    detachP2p();
     if (timer) persist();
   };
 }
