@@ -1,0 +1,1 @@
+var e={},t=t=>{let n=e[t];return n||(n=document.createElement(`template`),n.innerHTML=t,e[t]=n),n},n=(e,t,n)=>{e.dispatchEvent(new CustomEvent(t,{bubbles:!0,detail:n}))};export{t as n,n as t};
