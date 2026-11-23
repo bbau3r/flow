@@ -5,3 +5,4 @@ export { layout, titlePositions, wrapRuns, PROFILES, COL, WIDTH, DEFAULT_OPTIONS
 export { outlineCards, outlineSlots, moveOutlineBlock, cleanSceneNumber, setOutlineSceneNumber, addOutlineSection, addOutlineSynopsis, setOutlineText, removeOutlineCard, removeOutlineSynopsis } from './outline.js';
 export { continueTitleField, joinTitleValue, setTitleFields, titleFields, applyLineType, dualAt, insertPageBreak, toggleBoneyard, toggleDual, toggleEmphasis, emphasisAt, lineTypeKey } from './convert.js';
 export { parseDimensions, formatDimensions, pageProfile, resolvePaper, writeSetting, PAPER_NAMES, CUSTOM_LIMITS, UNITS, customLimits } from './settings.js';
+export { diffText, applyOperation, operationChanges, compose, transform, isOperation, isNoop, baseLength, targetLength } from './ot.js';

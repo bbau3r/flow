@@ -44,6 +44,7 @@ The PWA imports the element from source (`@flow/element/source`), not from its b
 | `convert.js` | Ribbon edits: change a line's type, emphasis, boneyard, dual dialogue, page break, title-page Enter/Backspace, and the title page's fields as values for Project settings' Cover | `applyLineType`, `toggleEmphasis`, `emphasisAt`, `toggleBoneyard`, `toggleDual`, `dualAt`, `insertPageBreak`, `continueTitleField`, `joinTitleValue`, `titleFields`, `setTitleFields`, `lineTypeKey` |
 | `outline.js` | Outline-tab edits: cards from `#`/`##`/scenes/transitions, drop slots, moving blocks, adding/removing acts, sequences, synopses | `outlineCards`, `outlineSlots`, `moveOutlineBlock`, `addOutlineSection`, `addOutlineSynopsis`, `removeOutlineCard`, `setOutlineSceneNumber`, ... |
 | `template.js` | New-script title page, from given fields and page size | `newScript`, `DEFAULT_COVER` |
+| `ot.js` | Edits as operations for writing together: `diffText` makes one from an edit, `transform` lets two made at once both apply, `compose`, `operationChanges` (as `{ from, to, text }`). Used by the PWA's P2P sessions. | `diffText`, `applyOperation`, `transform`, `compose`, `operationChanges`, `isOperation` |
 | `pdf.js` | Draws `layout()` output with pdf-lib. Separate entry `@flow/core/pdf`. | `renderPdf` |
 
 ### Data shapes
@@ -153,7 +154,7 @@ element changes tab itself; the PWA moves its tabs and address along, through `t
 
 | Command | What runs |
 | --- | --- |
-| `npm test` | Vitest: `packages/core/test/core.test.js` (parser, layout, edits, settings, PDF) |
+| `npm test` | Vitest: `packages/core/test/core.test.js` (parser, layout, edits, settings, PDF, operations) |
 | `npm run test:e2e` | Builds element and PWA, then Playwright in Edge (CI: Chromium). Use this, not bare `playwright test`, which tests a stale PWA build. |
 | `npm run dev` / `dev:pwa` | Vite dev servers |
 
