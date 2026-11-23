@@ -1052,6 +1052,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 }
 .fl-field-box > input:focus-visible { outline: none; }
 .fl-field-box > input[readonly] { color: var(--flow-muted); }
+/* A field that can't be changed shows it: no fill, a dashed edge, and no focus ring of its own. */
+.fl-field-box:has(> input[readonly]) { background: transparent; border-style: dashed; }
+.fl-field-box:has(> input[readonly]):focus-within { outline: none; }
 .fl-field-box > input::placeholder { color: var(--flow-muted); opacity: 0.8; }
 .fl-field-box > .fl-btn { flex: none; }
 
