@@ -2,10 +2,10 @@
 // new scripts start with and where they're saved, which extension settings get a tab, the
 // extensions themselves, and installing Flow as an app. A cloud source connects on the settings
 // page of the extension that adds it. Each app extension that's on and has settings follows Flow's own
-// sections, after a rule. They open from the gear on the home page and from App settings in a
+// sections, after a rule. P2P, writing in one script with others, turns on under App. They open from the gear on the home page and from App settings in a
 // script's Document menu, and every change applies at once.
 
-import { button, openSettingsPanel, pageSizeSetting, PALETTES, toggleSwitch } from '@flow/element/source';
+import { button, openSettingsPanel, pageSizeSetting, PALETTES, textField, toggleSwitch } from '@flow/element/source';
 import { DEFAULT_COVER } from '@flow/core';
 import { readDefaults, saveDefaults } from './defaults.js';
 import { saveFolderSetting } from './save-folder.js';
@@ -14,6 +14,7 @@ import { getExtension, hasSettingsPage, isEnabled, listExtensions, onExtensionsC
 import { extensionsSection } from './extensions/manager.js';
 import { providers } from './providers/index.js';
 import { extensionSection, sectionId } from './extensions/settings.js';
+import { p2pEnabled, readRoute, routeOptions, saveRoute, setP2pEnabled } from './p2p/config.js';
 
 // The browser offers installing once, through this event, and only while it's not installed.
 let installPrompt = null;
@@ -156,6 +157,38 @@ function settingsTabsTopic(apps, panel) {
   return { label: 'Settings tabs', properties };
 }
 
+// Part of the App page: P2P, off until turned on here, and the signal server it meets through.
+function p2pTopic() {
+  const route = textField({ label: 'Signal server', icon: 'signal', value: readRoute(), placeholder: 'PeerJS’s public server', attrs: { id: 'p2p-route' } });
+  route.input.addEventListener('change', () => {
+    try {
+      routeOptions(route.input.value);
+      route.input.setCustomValidity('');
+      saveRoute(route.input.value);
+    } catch (err) {
+      route.input.setCustomValidity(err.message);
+      route.input.reportValidity();
+    }
+  });
+  return {
+    label: 'Connecting',
+    properties: [
+      {
+        label: 'P2P',
+        keywords: 'p2p peer collaborate connect share host join together write with others',
+        control: toggleSwitch({ label: 'P2P', checked: p2pEnabled(), attrs: { id: 'p2p-enabled' }, onChange: (on) => setP2pEnabled(on) }),
+        description: 'Write in one script with others, each in their own browser, joined directly. Adds Connect to the home page and to the top right of a script.',
+      },
+      {
+        label: 'Signal server',
+        keywords: 'p2p route peerjs signal server local',
+        control: route.root,
+        description: 'Server to connect with other peers. Leave unset to use PeerJS’s free public server.\nYou can run your own server with npx peerjs --port 9000 and enter localhost:9000.',
+      },
+    ],
+  };
+}
+
 const tabShown = (id) => isEnabled(id) && showsInSettings(id);
 
 /**
@@ -232,7 +265,7 @@ export function openAppSettings({ onClose, start } = {}) {
             control: install.control,
             description: 'Opens Flow in its own window and keeps it working offline. Browsers that can install it offer this here; others have it in their own menu, such as Add to Home Screen.',
           }],
-        }],
+        }, p2pTopic()],
       },
       ...(extensionSections.length ? ['divider', ...extensionSections] : []),
     ],
